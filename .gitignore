@@ -1,0 +1,23 @@
+node_modules/
+dist/
+build/
+coverage/
+
+# Local data
+data/*.json
+!data/.gitkeep
+
+# Logs
+*.log
+npm-debug.log*
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
