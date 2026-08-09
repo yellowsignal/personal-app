@@ -1,0 +1,25 @@
+{
+  "name": "personal-app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A personal full-stack starter app (React + Vite client, Express + TypeScript API).",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:server dev:client",
+    "dev:server": "npm run dev --workspace server",
+    "dev:client": "npm run dev --workspace client",
+    "build": "npm run build --workspace server && npm run build --workspace client",
+    "lint": "npm run lint --workspace server && npm run lint --workspace client",
+    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace client",
+    "test": "npm run test --workspace server"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
+  }
+}
