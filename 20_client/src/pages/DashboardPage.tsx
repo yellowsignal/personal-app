@@ -1,0 +1,174 @@
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { Bell, ChevronRight, Images, Settings } from "lucide-react";
+import TopBar from "../components/TopBar";
+import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
+import { useLanguage } from "../i18n/LanguageContext";
+import { useCurrency } from "../context/CurrencyContext";
+import {
+  assets,
+  calendarEvents,
+  categoryColor,
+  currentUser,
+  documents,
+  exchangeRates,
+  familyInfo,
+  familyMembers,
+  subscriptions,
+  type Currency,
+} from "../mocks/data";
+
+const CURRENCIES: Currency[] = ["KRW", "JPY", "USD"];
+const CURRENCY_SYMBOL: Record<Currency, string> = { KRW: "₩", JPY: "¥", USD: "$" };
+
+function scoped<T extends { isShared: boolean }>(items: T[], scope: ViewScope) {
+  if (scope === "personal") return items.filter((i) => !i.isShared);
+  if (scope === "family") return items.filter((i) => i.isShared);
+  return items;
+}
+
+export default function DashboardPage() {
+  const { lang, t } = useLanguage();
+  const { currency: displayCurrency, setCurrency: setDisplayCurrency } = useCurrency();
+  const [scope, setScope] = useState<ViewScope>("all");
+
+  const visibleAssets = scoped(assets, scope);
+  const totalKRW = useMemo(
+    () => visibleAssets.reduce((sum, a) => sum + a.amount * exchangeRates[a.currency], 0),
+    [visibleAssets],
+  );
+  const displayedTotal = totalKRW / exchangeRates[displayCurrency];
+
+  const upcomingExpiry = [...documents].sort((a, b) => a.daysLeft - b.daysLeft)[0];
+  const nextBilling = [...subscriptions].sort((a, b) => a.billingDate - b.billingDate)[0];
+  const upcomingEvents = calendarEvents
+    .filter((e) => new Date(e.date) >= new Date("2026-08-11"))
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 3);
+
+  const scopeLabel = t(scope === "all" ? "scope.all" : scope === "personal" ? "scope.personal" : "scope.family");
+
+  return (
+    <div className="pb-4">
+      <TopBar
+        title={t("dashboard.greeting", { name: currentUser.name[lang] })}
+        subtitle={t("dashboard.familySubtitle", { family: familyInfo.familyName[lang] })}
+        right={
+          <div className="flex -space-x-2">
+            {familyMembers.map((m) => (
+              <div
+                key={m.id}
+                className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white text-xs font-bold text-white"
+                style={{ backgroundColor: m.avatarColor }}
+              >
+                {m.initial[lang]}
+              </div>
+            ))}
+          </div>
+        }
+      />
+
+      <div className="mx-auto max-w-md px-4 pt-4">
+        <ScopeToggle value={scope} onChange={setScope} />
+
+        <section className="mt-4 rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-500 p-5 text-white">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-indigo-100">{t("dashboard.totalAssets", { scope: scopeLabel })}</p>
+            <div className="flex gap-1 rounded-full bg-white/15 p-0.5">
+              {CURRENCIES.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setDisplayCurrency(c)}
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold transition-colors ${
+                    displayCurrency === c ? "bg-white text-indigo-600" : "text-indigo-100"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="mt-2 text-3xl font-bold tracking-tight">
+            {CURRENCY_SYMBOL[displayCurrency]}
+            {displayedTotal.toLocaleString(undefined, { maximumFractionDigits: displayCurrency === "KRW" ? 0 : 2 })}
+          </p>
+          <p className="mt-1 text-[11px] text-indigo-100">
+            {t("dashboard.assetsCountNote", { n: visibleAssets.length })}
+          </p>
+        </section>
+
+        <section className="mt-4 grid grid-cols-2 gap-3">
+          <Link
+            to="/documents"
+            className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"
+          >
+            <Bell size={18} className="text-rose-500" />
+            <p className="mt-2 text-xs text-neutral-400">{t("dashboard.upcomingExpiry")}</p>
+            <p className="mt-0.5 text-sm font-bold text-neutral-900">
+              {t(`documentType.${upcomingExpiry.docType}`)} D-{upcomingExpiry.daysLeft}
+            </p>
+          </Link>
+          <Link
+            to="/subscriptions"
+            className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"
+          >
+            <div className="h-[18px] w-[18px] rounded-full" style={{ backgroundColor: nextBilling.color }} />
+            <p className="mt-2 text-xs text-neutral-400">{t("dashboard.nextBilling")}</p>
+            <p className="mt-0.5 text-sm font-bold text-neutral-900">
+              {nextBilling.serviceName[lang]} {t("dashboard.billingDaySuffix", { d: nextBilling.billingDate })}
+            </p>
+          </Link>
+        </section>
+
+        <section className="mt-5">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-sm font-bold text-neutral-900">{t("dashboard.upcomingEvents")}</h2>
+            <Link to="/calendar" className="flex items-center text-xs text-indigo-500">
+              {t("dashboard.viewAll")} <ChevronRight size={14} />
+            </Link>
+          </div>
+          <div className="mt-2 divide-y divide-neutral-100 rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+            {upcomingEvents.map((e) => (
+              <div key={e.id} className="flex items-center gap-3 px-4 py-3">
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: categoryColor[e.category] }}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-neutral-800">{e.title[lang]}</p>
+                  <p className="text-[11px] text-neutral-400">
+                    {e.date} {e.time && `· ${e.time}`}
+                  </p>
+                </div>
+                <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500">
+                  {t(`category.${e.category}`)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="mt-5 grid grid-cols-2 gap-3">
+          <Link
+            to="/photos"
+            className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"
+          >
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-50">
+              <Images size={18} className="text-amber-500" />
+            </div>
+            <span className="text-sm font-semibold text-neutral-800">{t("dashboard.photoAlbum")}</span>
+          </Link>
+          <Link
+            to="/settings"
+            className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"
+          >
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100">
+              <Settings size={18} className="text-neutral-500" />
+            </div>
+            <span className="text-sm font-semibold text-neutral-800">{t("dashboard.settings")}</span>
+          </Link>
+        </section>
+      </div>
+    </div>
+  );
+}

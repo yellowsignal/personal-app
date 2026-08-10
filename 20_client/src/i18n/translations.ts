@@ -1,0 +1,197 @@
+export type Lang = "ko" | "ja";
+
+export interface LocalText {
+  ko: string;
+  ja: string;
+}
+
+export function pick(text: LocalText, lang: Lang): string {
+  return text[lang];
+}
+
+export const dict: Record<Lang, Record<string, string>> = {
+  ko: {
+    "nav.home": "홈",
+    "nav.assets": "자산",
+    "nav.documents": "증명서",
+    "nav.subscriptions": "구독",
+    "nav.calendar": "캘린더",
+
+    "scope.all": "전체",
+    "scope.personal": "개인",
+    "scope.family": "가족 공유",
+
+    "login.tagline.login": "우리 가족의 모든 것을 한 곳에",
+    "login.tagline.signup": "가족 초댓코드로 간편하게 합류하세요",
+    "login.tab.login": "로그인",
+    "login.tab.signup": "가족 초댓코드로 가입",
+    "login.placeholder.name": "이름",
+    "login.placeholder.email": "이메일",
+    "login.placeholder.password": "비밀번호",
+    "login.placeholder.invite": "8X39A (가족 초댓코드)",
+    "login.button.login": "로그인",
+    "login.button.signup": "가입하기",
+    "login.button.faceId": "Face ID로 로그인",
+    "login.mockupNotice": "화면 예시(mock-up)입니다 · 실제 인증은 WebAuthn 연동 후 동작합니다",
+
+    "settings.title": "설정",
+    "settings.subtitle": "계정 · 가족 · 앱 환경설정",
+    "settings.membersCount": "{n}명 참여 중",
+    "settings.inviteCode": "가족 초댓코드",
+    "settings.copy": "복사",
+    "settings.language": "언어",
+    "settings.faceId": "Face ID 로그인",
+    "settings.logout": "로그아웃",
+
+    "dashboard.greeting": "안녕하세요, {name}님",
+    "dashboard.familySubtitle": "{family} 가족",
+    "dashboard.totalAssets": "총자산 ({scope})",
+    "dashboard.assetsCountNote": "자산 {n}건 · 실시간 환율 기준 자동 환산",
+    "dashboard.upcomingExpiry": "만료 임박",
+    "dashboard.nextBilling": "다음 결제일",
+    "dashboard.billingDaySuffix": "{d}일",
+    "dashboard.upcomingEvents": "다가오는 일정",
+    "dashboard.viewAll": "전체보기",
+    "dashboard.photoAlbum": "사진 앨범",
+    "dashboard.settings": "설정",
+
+    "assets.title": "자산",
+    "assets.subtitle": "예금 · 주식 · 현금 통합 조회",
+    "assets.buyPrice": "매수가 {v}",
+    "assets.currentPrice": "현재가 {v}",
+
+    "assetType.deposit": "예금",
+    "assetType.stock": "주식",
+    "assetType.cash": "현금",
+    "assetType.realestate": "부동산",
+
+    "documents.title": "증명서 · 신분증",
+    "documents.subtitle": "만료일 자동 캘린더 등록",
+    "documents.ocrButton": "카메라로 촬영해 OCR 자동 입력",
+    "documents.expiryLabel": "만료일 {date}",
+
+    "documentType.license": "운전면허증",
+    "documentType.passport": "여권",
+    "documentType.idcard": "주민등록증",
+    "documentType.certificate": "자격증",
+
+    "subscriptions.title": "구독 관리",
+    "subscriptions.subtitle": "결제일 · 해지 링크 한눈에",
+    "subscriptions.monthlyTotal": "월 예상 지출 ({currency} 환산)",
+    "subscriptions.activeCount": "구독 {n}건 활성 중",
+    "subscriptions.perMonth": "/월",
+    "subscriptions.billingDay": "매월 {d}일 결제",
+    "subscriptions.cancel": "해지하기",
+
+    "calendar.title": "캘린더",
+    "calendar.subtitle": "개인 · 가족 일정을 겹쳐서 보기",
+    "calendar.noEvents": "선택한 날짜에 일정이 없습니다",
+    "calendar.allDay": "종일",
+    "calendar.scheduleFor": "{date} 일정",
+    "calendar.monthYear": "{year}년 {month}월",
+    "calendar.weekdays": "일,월,화,수,목,금,토",
+
+    "category.personal": "개인",
+    "category.family": "가족",
+    "category.holiday": "공휴일",
+    "category.document_expiry": "만료 알림",
+
+    "photos.title": "사진 앨범",
+    "photos.subtitle": "iCloud 연동 · 가족 공유 앨범",
+    "photos.synced": "iCloud 공유 앨범 연동됨",
+    "photos.lastSync": "마지막 동기화 · 10분 전",
+    "photos.familyBadge": "가족",
+  },
+  ja: {
+    "nav.home": "ホーム",
+    "nav.assets": "資産",
+    "nav.documents": "証明書",
+    "nav.subscriptions": "サブスク",
+    "nav.calendar": "カレンダー",
+
+    "scope.all": "すべて",
+    "scope.personal": "個人",
+    "scope.family": "家族共有",
+
+    "login.tagline.login": "家族のすべてをひとつの場所に",
+    "login.tagline.signup": "家族の招待コードで簡単に参加できます",
+    "login.tab.login": "ログイン",
+    "login.tab.signup": "招待コードで登録",
+    "login.placeholder.name": "お名前",
+    "login.placeholder.email": "メールアドレス",
+    "login.placeholder.password": "パスワード",
+    "login.placeholder.invite": "8X39A（家族招待コード）",
+    "login.button.login": "ログイン",
+    "login.button.signup": "登録する",
+    "login.button.faceId": "Face IDでログイン",
+    "login.mockupNotice": "これはモックアップ画面です・実際の認証はWebAuthn連携後に動作します",
+
+    "settings.title": "設定",
+    "settings.subtitle": "アカウント・家族・アプリ設定",
+    "settings.membersCount": "{n}人が参加中",
+    "settings.inviteCode": "家族招待コード",
+    "settings.copy": "コピー",
+    "settings.language": "言語",
+    "settings.faceId": "Face IDログイン",
+    "settings.logout": "ログアウト",
+
+    "dashboard.greeting": "こんにちは、{name}さん",
+    "dashboard.familySubtitle": "{family}ファミリー",
+    "dashboard.totalAssets": "総資産（{scope}）",
+    "dashboard.assetsCountNote": "資産{n}件・リアルタイム為替で自動換算",
+    "dashboard.upcomingExpiry": "期限間近",
+    "dashboard.nextBilling": "次回請求日",
+    "dashboard.billingDaySuffix": "{d}日",
+    "dashboard.upcomingEvents": "今後の予定",
+    "dashboard.viewAll": "すべて見る",
+    "dashboard.photoAlbum": "写真アルバム",
+    "dashboard.settings": "設定",
+
+    "assets.title": "資産",
+    "assets.subtitle": "預金・株式・現金を統合照会",
+    "assets.buyPrice": "取得価格 {v}",
+    "assets.currentPrice": "現在価格 {v}",
+
+    "assetType.deposit": "預金",
+    "assetType.stock": "株式",
+    "assetType.cash": "現金",
+    "assetType.realestate": "不動産",
+
+    "documents.title": "証明書・身分証",
+    "documents.subtitle": "有効期限をカレンダーに自動登録",
+    "documents.ocrButton": "カメラで撮影してOCR自動入力",
+    "documents.expiryLabel": "有効期限 {date}",
+
+    "documentType.license": "運転免許証",
+    "documentType.passport": "パスポート",
+    "documentType.idcard": "住民登録証",
+    "documentType.certificate": "資格証",
+
+    "subscriptions.title": "サブスク管理",
+    "subscriptions.subtitle": "請求日・解約リンクを一目で",
+    "subscriptions.monthlyTotal": "月間予想支出（{currency}換算）",
+    "subscriptions.activeCount": "{n}件のサブスクが有効",
+    "subscriptions.perMonth": "/月",
+    "subscriptions.billingDay": "毎月{d}日に請求",
+    "subscriptions.cancel": "解約する",
+
+    "calendar.title": "カレンダー",
+    "calendar.subtitle": "個人・家族の予定を重ねて表示",
+    "calendar.noEvents": "選択した日付に予定はありません",
+    "calendar.allDay": "終日",
+    "calendar.scheduleFor": "{date}の予定",
+    "calendar.monthYear": "{year}年{month}月",
+    "calendar.weekdays": "日,月,火,水,木,金,土",
+
+    "category.personal": "個人",
+    "category.family": "家族",
+    "category.holiday": "祝日",
+    "category.document_expiry": "期限通知",
+
+    "photos.title": "写真アルバム",
+    "photos.subtitle": "iCloud連携・家族共有アルバム",
+    "photos.synced": "iCloud共有アルバム連携済み",
+    "photos.lastSync": "最終同期・10分前",
+    "photos.familyBadge": "家族",
+  },
+};
