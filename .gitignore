@@ -18,7 +18,7 @@ npm-debug.log*
 .env.*.local
 
 # Editor / OS
-.DS_Store
+.DS_Store   
 .idea/
 .vscode/
 *.swp
