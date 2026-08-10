@@ -22,3 +22,9 @@ npm-debug.log*
 .idea/
 .vscode/
 *.swp
+
+# key
+*.key
+*.pub
+# secrets (SSH keys, OCI API keys, retry logs)
+90_secret/
