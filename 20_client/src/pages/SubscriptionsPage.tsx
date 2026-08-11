@@ -219,7 +219,11 @@ export default function SubscriptionsPage() {
                       {s.reason && (
                         <p className="mt-0.5 text-xs text-neutral-400">{s.reason}</p>
                       )}
-                      <p className="mt-0.5 text-[10px] text-neutral-300">{s.ownerName}</p>
+                      {(s.isShared || scope === "family") && (
+                        <p className="mt-1 inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-600">
+                          {t("subscriptions.registeredBy", { name: s.ownerName })}
+                        </p>
+                      )}
                     </div>
                   </div>
 
