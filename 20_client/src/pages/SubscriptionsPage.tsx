@@ -209,7 +209,7 @@ export default function SubscriptionsPage() {
                 required
                 value={form.serviceName}
                 onChange={(e) => setForm((f) => ({ ...f, serviceName: e.target.value }))}
-                className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
               />
             </label>
 
@@ -225,7 +225,7 @@ export default function SubscriptionsPage() {
                   onChange={(e) =>
                     setForm((f) => ({ ...f, cost: Number(e.target.value) || 0 }))
                   }
-                  className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
                 />
               </label>
               <label className="block text-xs font-semibold text-neutral-500">
@@ -235,7 +235,7 @@ export default function SubscriptionsPage() {
                   onChange={(e) =>
                     setForm((f) => ({ ...f, currency: e.target.value as SubscriptionCurrency }))
                   }
-                  className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
                 >
                   <option value="KRW">KRW</option>
                   <option value="JPY">JPY</option>
@@ -255,7 +255,7 @@ export default function SubscriptionsPage() {
                 onChange={(e) =>
                   setForm((f) => ({ ...f, billingDate: Number(e.target.value) || 1 }))
                 }
-                className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
               />
             </label>
 
@@ -264,7 +264,7 @@ export default function SubscriptionsPage() {
               <input
                 value={form.reason ?? ""}
                 onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
-                className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
               />
             </label>
 
@@ -274,7 +274,7 @@ export default function SubscriptionsPage() {
                 type="url"
                 value={form.cancelUrl ?? ""}
                 onChange={(e) => setForm((f) => ({ ...f, cancelUrl: e.target.value }))}
-                className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
               />
             </label>
 

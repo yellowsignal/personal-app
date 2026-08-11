@@ -34,3 +34,10 @@ body {
   width: 0px;
   height: 0px;
 }
+
+/* iOS Safari zooms focused fields when font-size < 16px. Keep ≥16px instead of locking zoom. */
+input,
+textarea,
+select {
+  font-size: 16px;
+}

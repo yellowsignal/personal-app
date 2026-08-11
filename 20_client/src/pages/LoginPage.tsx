@@ -167,7 +167,7 @@ export default function LoginPage() {
             <label className="flex items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3">
               <UserPlus size={18} className="text-neutral-400" />
               <input
-                className="w-full text-sm outline-none placeholder:text-neutral-300"
+                className="w-full text-base outline-none placeholder:text-neutral-300"
                 placeholder={t("login.placeholder.name")}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -180,7 +180,7 @@ export default function LoginPage() {
             <label className="flex items-center gap-3 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 px-4 py-3">
               <span className="text-xs font-semibold text-indigo-500">OTP</span>
               <input
-                className="w-full text-sm uppercase outline-none placeholder:text-neutral-300"
+                className="w-full text-base uppercase outline-none placeholder:text-neutral-300"
                 placeholder={t("login.placeholder.inviteToken")}
                 value={inviteToken}
                 onChange={(e) => setInviteToken(e.target.value)}
@@ -192,7 +192,7 @@ export default function LoginPage() {
             <Mail size={18} className="text-neutral-400" />
             <input
               type="email"
-              className="w-full text-sm outline-none placeholder:text-neutral-300"
+              className="w-full text-base outline-none placeholder:text-neutral-300"
               placeholder={t("login.placeholder.email")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -204,7 +204,7 @@ export default function LoginPage() {
             <KeyRound size={18} className="text-neutral-400" />
             <input
               type="password"
-              className="w-full text-sm outline-none placeholder:text-neutral-300"
+              className="w-full text-base outline-none placeholder:text-neutral-300"
               placeholder={t("login.placeholder.password")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -217,7 +217,7 @@ export default function LoginPage() {
             <label className="flex items-center gap-3 rounded-xl border border-dashed border-neutral-200 px-4 py-3">
               <span className="text-sm font-semibold text-neutral-400">FAM-</span>
               <input
-                className="w-full text-sm uppercase outline-none placeholder:text-neutral-300"
+                className="w-full text-base uppercase outline-none placeholder:text-neutral-300"
                 placeholder={t("login.placeholder.inviteLegacy")}
                 value={inviteCode}
                 onChange={(e) => setInviteCode(e.target.value)}
