@@ -44,10 +44,17 @@ starter task API persists to `30_data/tasks.json`.
 | Method | Path | Description |
 | --- | --- | --- |
 | `GET` | `/api/health` | Health probe |
+| `POST` | `/api/auth/register` | Sign up (create family or join via invite) |
+| `POST` | `/api/auth/login` | Login → JWT |
+| `GET` | `/api/auth/me` | Current user + family (Bearer) |
+| `GET` | `/api/family` | Family details (Bearer) |
+| `POST` | `/api/family/join` | Join family by invite code (Bearer) |
 | `GET` | `/api/tasks` | List tasks (newest first) |
 | `POST` | `/api/tasks` | Create a task (`{ "title": "..." }`) |
 | `PATCH` | `/api/tasks/:id` | Toggle a task's `done` flag |
 | `DELETE` | `/api/tasks/:id` | Delete a task |
+
+Auth/family details: `10_docs/인증_가족_API.md`
 
 ## Cloud Agent environment
 

@@ -1,8 +1,17 @@
 import cors from "cors";
 import express, { type Express } from "express";
 import { TaskStore } from "./store.js";
+import type { AuthRepository } from "./domain/authRepository.js";
+import { AuthService } from "./services/authService.js";
+import { createAuthRouter } from "./routes/authRoutes.js";
+import { createFamilyRouter } from "./routes/familyRoutes.js";
 
-export function createApp(store: TaskStore): Express {
+export interface AppDeps {
+  authRepo?: AuthRepository;
+  jwtSecret?: string;
+}
+
+export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
   const app = express();
   app.use(cors());
   app.use(express.json());
@@ -41,6 +50,13 @@ export function createApp(store: TaskStore): Express {
     }
     res.status(204).end();
   });
+
+  if (deps.authRepo) {
+    const jwtSecret = deps.jwtSecret ?? process.env.JWT_SECRET ?? "dev-secret-change-me";
+    const authService = new AuthService(deps.authRepo, jwtSecret);
+    app.use("/api/auth", createAuthRouter(authService, jwtSecret));
+    app.use("/api/family", createFamilyRouter(authService, jwtSecret));
+  }
 
   return app;
 }
