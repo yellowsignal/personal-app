@@ -1,0 +1,27 @@
+# Dig / staging Postgres on the OCI host (persists Passkeys & users across API restarts).
+# Usage on server:
+#   cd ~/personal-app/40_server
+#   docker compose -f docker-compose.dig.yml up -d
+#   cp .env.example .env   # edit JWT_SECRET, passwords
+#   export $(grep -v '^#' .env | xargs) && npx prisma migrate deploy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: myfamilyhub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_dig}
+      POSTGRES_DB: myfamilyhub
+    volumes:
+      - myfamilyhub_pg_dig:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myfamilyhub -d myfamilyhub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  myfamilyhub_pg_dig:
