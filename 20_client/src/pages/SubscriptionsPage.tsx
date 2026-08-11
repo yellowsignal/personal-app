@@ -67,22 +67,33 @@ export default function SubscriptionsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await subscriptionsApi.list(token, scope);
+      // Always fetch full visible set; filter by tab on the client so
+      // "personal" = everything I own (including shared-with-family).
+      const data = await subscriptionsApi.list(token, "all");
       setItems(data);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("subscriptions.loadError"));
     } finally {
       setLoading(false);
     }
-  }, [scope, t, token]);
+  }, [t, token]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  const visible = useMemo(() => {
+    if (scope === "personal") {
+      if (!user) return [];
+      return items.filter((s) => s.userId === user.id);
+    }
+    if (scope === "family") return items.filter((s) => s.isShared);
+    return items;
+  }, [items, scope, user]);
+
   const monthlyTotalBase = useMemo(
-    () => items.reduce((sum, s) => sum + s.cost * exchangeRates[s.currency], 0),
-    [items],
+    () => visible.reduce((sum, s) => sum + s.cost * exchangeRates[s.currency], 0),
+    [visible],
   );
   const monthlyTotalDisplay = monthlyTotalBase / exchangeRates[currency];
 
@@ -174,7 +185,7 @@ export default function SubscriptionsPage() {
             {formatMoney(monthlyTotalDisplay, currency)}
           </p>
           <p className="mt-1 text-[11px] text-neutral-400">
-            {t("subscriptions.activeCount", { n: items.length })}
+            {t("subscriptions.activeCount", { n: visible.length })}
           </p>
         </div>
 
@@ -184,11 +195,11 @@ export default function SubscriptionsPage() {
 
         {loading ? (
           <p className="mt-6 text-center text-sm text-neutral-400">{t("subscriptions.loading")}</p>
-        ) : items.length === 0 ? (
+        ) : visible.length === 0 ? (
           <p className="mt-6 text-center text-sm text-neutral-400">{t("subscriptions.empty")}</p>
         ) : (
           <div className="mt-4 flex flex-col gap-3">
-            {items.map((s) => {
+            {visible.map((s) => {
               const canManage = user?.id === s.userId;
               return (
                 <div key={s.id} className="relative rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">

@@ -53,7 +53,7 @@ export class SubscriptionService {
     userId: number,
   ): PublicSubscription[] {
     // personal = what I pay (owned by me), even if also shared with family
-    if (scope === "personal") return items.filter((s) => s.userId === userId);
+    if (scope === "personal") return items.filter((s) => Number(s.userId) === Number(userId));
     if (scope === "family") return items.filter((s) => s.isShared);
     return items;
   }
