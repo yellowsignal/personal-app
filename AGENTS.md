@@ -24,7 +24,7 @@
 - 불필요한 대규모 리팩터·문서 남발 금지. `10_docs/작업내용.md`와 관련 전용 문서만 갱신
 - PR/브랜치 작업 시 기존 Cloud Agent 브랜치 규칙을 존중하고, 의미 있는 단위로 커밋
 
-## Cursor 전용
+## Cursor
 
 - 추가 규칙은 `.cursor/rules/*.mdc` 에 있다 (`alwaysApply` 포함).
-- GitHub Copilot용으로는 `.github/copilot-instructions.md` 도 동일 내용을 가리킨다.
+- 공통 지침은 이 파일(`AGENTS.md`)과 `10_docs/작업내용.md` 를 기준으로 한다.

@@ -7,7 +7,7 @@ PWA 기반 개인·가족 통합 관리 앱을 위한 monorepo입니다.
 - **40_server/** — Express + TypeScript REST API (스타터 태스크 API + OCI infra 초안)
 - **30_data/** — 로컬 JSON 영속 데이터
 - **10_docs/** — 기획서·프롬프트·로드맵·**작업내용.md** (현황판)
-- **AGENTS.md** / `.cursor/rules/` / `.github/copilot-instructions.md` — 에이전트 지침
+- **AGENTS.md** / `.cursor/rules/` — 에이전트 지침
 
 The two packages are wired together with npm workspaces. The Vite dev server
 proxies `/api` requests to the API, so the frontend and backend run as one app
