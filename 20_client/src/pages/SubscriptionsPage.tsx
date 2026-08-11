@@ -14,6 +14,7 @@ import {
   type SubscriptionCurrency,
 } from "../api/subscriptions";
 import { ApiError } from "../api/http";
+import { formatMoney } from "../utils/formatMoney";
 
 const CURRENCY_SYMBOL = { KRW: "₩", JPY: "¥", USD: "$" };
 const COLOR_PALETTE = ["#E50914", "#5B5BF6", "#34C759", "#8E8E93", "#FF6B81", "#FFB199"];
@@ -170,9 +171,7 @@ export default function SubscriptionsPage() {
           <p className="text-xs text-neutral-400">{t("subscriptions.monthlyTotal", { currency })}</p>
           <p className="mt-1 text-2xl font-bold">
             {CURRENCY_SYMBOL[currency]}
-            {monthlyTotalDisplay.toLocaleString(undefined, {
-              maximumFractionDigits: currency === "KRW" ? 0 : 2,
-            })}
+            {formatMoney(monthlyTotalDisplay, currency)}
           </p>
           <p className="mt-1 text-[11px] text-neutral-400">
             {t("subscriptions.activeCount", { n: items.length })}
@@ -258,7 +257,7 @@ export default function SubscriptionsPage() {
                     <div>
                       <p className="text-base font-bold text-neutral-900">
                         {CURRENCY_SYMBOL[s.currency]}
-                        {s.cost.toLocaleString()}
+                        {formatMoney(s.cost, s.currency)}
                         <span className="ml-1 text-xs font-medium text-neutral-400">
                           {t("subscriptions.perMonth")}
                         </span>

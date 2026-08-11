@@ -5,6 +5,7 @@ import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
 import { assets } from "../mocks/data";
 import { useLanguage } from "../i18n/LanguageContext";
+import { formatMoney } from "../utils/formatMoney";
 
 const CURRENCY_SYMBOL = { KRW: "₩", JPY: "¥", USD: "$" };
 
@@ -45,7 +46,7 @@ export default function AssetsPage() {
               <div className="mt-3 flex items-end justify-between">
                 <p className="text-xl font-bold text-neutral-900">
                   {CURRENCY_SYMBOL[a.currency]}
-                  {a.amount.toLocaleString()}
+                  {formatMoney(a.amount, a.currency)}
                 </p>
                 {a.changePercent !== undefined && (
                   <span
@@ -61,8 +62,22 @@ export default function AssetsPage() {
 
               {a.stockCode && (
                 <div className="mt-2 flex items-center justify-between rounded-lg bg-neutral-50 px-3 py-2 text-[11px] text-neutral-500">
-                  <span>{t("assets.buyPrice", { v: a.buyPrice?.toLocaleString() ?? "" })}</span>
-                  <span>{t("assets.currentPrice", { v: a.currentPrice?.toLocaleString() ?? "" })}</span>
+                  <span>
+                    {t("assets.buyPrice", {
+                      v:
+                        a.buyPrice !== undefined
+                          ? formatMoney(a.buyPrice, a.currency)
+                          : "",
+                    })}
+                  </span>
+                  <span>
+                    {t("assets.currentPrice", {
+                      v:
+                        a.currentPrice !== undefined
+                          ? formatMoney(a.currentPrice, a.currency)
+                          : "",
+                    })}
+                  </span>
                   <span className="font-mono text-neutral-400">{a.stockCode}</span>
                 </div>
               )}

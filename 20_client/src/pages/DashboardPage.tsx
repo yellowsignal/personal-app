@@ -18,6 +18,7 @@ import {
   subscriptions,
   type Currency,
 } from "../mocks/data";
+import { formatMoney } from "../utils/formatMoney";
 
 const CURRENCIES: Currency[] = ["KRW", "JPY", "USD"];
 const CURRENCY_SYMBOL: Record<Currency, string> = { KRW: "₩", JPY: "¥", USD: "$" };
@@ -106,7 +107,7 @@ export default function DashboardPage() {
           </div>
           <p className="mt-2 text-3xl font-bold tracking-tight">
             {CURRENCY_SYMBOL[displayCurrency]}
-            {displayedTotal.toLocaleString(undefined, { maximumFractionDigits: displayCurrency === "KRW" ? 0 : 2 })}
+            {formatMoney(displayedTotal, displayCurrency)}
           </p>
           <p className="mt-1 text-[11px] text-indigo-100">
             {t("dashboard.assetsCountNote", { n: visibleAssets.length })}
