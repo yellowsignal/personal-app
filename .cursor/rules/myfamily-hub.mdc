@@ -1,0 +1,22 @@
+---
+description: MyFamily Hub project state, docs, and agent workflow
+alwaysApply: true
+---
+
+# MyFamily Hub — always-on project rule
+
+## Before coding
+- Read `10_docs/작업내용.md` for current status and next priorities.
+- Follow product requirements in `10_docs/기획서.md` / `10_docs/프롬프트.md`.
+- Respect folder layout: `20_client`, `40_server`, `30_data`, `10_docs`. npm workspaces must use those paths (not legacy `client`/`server`).
+
+## Constraints
+- Primary user environment is **iPhone** (no assumed always-on PC). Prefer console/mobile-friendly steps; do not require Windows-only tooling as the only path.
+- Do not commit secrets (DuckDNS token, SSH keys under `90_secret/`, JWT/DB passwords).
+- Live HTTP mockup: `sumicchogurashi.duckdns.org` → `129.225.196.226`. HTTPS may still be pending.
+- Local auth without Postgres: `MEMORY_AUTH=1`. Auth is wired in the client; assets/subscriptions/etc. may still be mock data.
+
+## After coding
+- Update `10_docs/작업내용.md` (checkboxes, blockers, next steps, date).
+- Keep changes scoped; put deep design in dedicated docs (`DB_스키마.md`, `인증_가족_API.md`, infra checklist).
+- Cross-tool baseline also lives in root `AGENTS.md` — keep it consistent when instructions change.
