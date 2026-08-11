@@ -181,8 +181,9 @@ export class PasskeyService {
       attestationType: "none",
       excludeCredentials,
       authenticatorSelection: {
-        residentKey: "required",
-        userVerification: "required",
+        residentKey: "preferred",
+        requireResidentKey: false,
+        userVerification: "preferred",
       },
     });
 

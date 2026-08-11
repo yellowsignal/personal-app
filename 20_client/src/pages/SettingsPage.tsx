@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronRight, Copy, Fingerprint, Globe, LogOut, UserPlus, Users } from "lucide-react";
 import TopBar from "../components/TopBar";
+import { ApiError } from "../api/http";
 import { passkeyApi } from "../api/passkey";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -13,6 +14,8 @@ export default function SettingsPage() {
   const [copied, setCopied] = useState(false);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [creatingInvite, setCreatingInvite] = useState(false);
+  const [passkeyMsg, setPasskeyMsg] = useState<string | null>(null);
+  const [linkingPasskey, setLinkingPasskey] = useState(false);
 
   const initial = (user?.name?.trim()?.charAt(0) || "?").toUpperCase();
   const memberCount = family?.members.length ?? 0;
@@ -37,6 +40,22 @@ export default function SettingsPage() {
       setInviteToken(res.token);
     } finally {
       setCreatingInvite(false);
+    }
+  }
+
+  async function linkPasskey() {
+    if (!token || !user) return;
+    setPasskeyMsg(null);
+    setLinkingPasskey(true);
+    try {
+      await passkeyApi.linkWithPasskey(token, user.name);
+      setPasskeyMsg(t("settings.passkeyLinked"));
+    } catch (err) {
+      if (err instanceof ApiError) setPasskeyMsg(err.message);
+      else if (err instanceof Error) setPasskeyMsg(err.message);
+      else setPasskeyMsg(t("login.error.passkey"));
+    } finally {
+      setLinkingPasskey(false);
     }
   }
 
@@ -145,12 +164,24 @@ export default function SettingsPage() {
             </span>
           </button>
 
-          <div className="flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-3">
-              <Fingerprint size={18} className="text-neutral-400" />
-              <span className="text-sm font-medium text-neutral-800">{t("settings.faceId")}</span>
+          <div className="px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Fingerprint size={18} className="text-neutral-400" />
+                <span className="text-sm font-medium text-neutral-800">{t("settings.faceId")}</span>
+              </div>
+              <button
+                type="button"
+                disabled={linkingPasskey}
+                onClick={() => void linkPasskey()}
+                className="rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-600 disabled:opacity-60"
+              >
+                {linkingPasskey ? "…" : t("settings.passkeyLink")}
+              </button>
             </div>
-            <span className="text-xs text-neutral-400">{t("login.button.faceId")}</span>
+            {passkeyMsg && (
+              <p className="mt-2 text-[11px] text-neutral-500">{passkeyMsg}</p>
+            )}
           </div>
         </section>
 

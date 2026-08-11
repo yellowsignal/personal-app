@@ -8,6 +8,20 @@ import { useLanguage } from "../i18n/LanguageContext";
 
 type Mode = "login" | "signup";
 
+function passkeyErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === "object" && err && "name" in err) {
+    const name = String((err as { name?: string }).name ?? "");
+    const message = String((err as { message?: string }).message ?? "");
+    if (name === "NotAllowedError") return "Passkey 등록이 취소되었거나 허용되지 않았습니다.";
+    if (name === "InvalidStateError") return "이미 이 기기에 등록된 Passkey가 있습니다.";
+    if (name === "SecurityError") return "보안 오류: HTTPS 도메인과 RP ID를 확인하세요.";
+    if (message) return `${name}: ${message}`;
+  }
+  return fallback;
+}
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const { token, login, register, passkeyLogin, passkeyRegister } = useAuth();
@@ -58,8 +72,7 @@ export default function LoginPage() {
       await passkeyLogin();
       navigate("/", { replace: true });
     } catch (err) {
-      if (err instanceof ApiError) setError(err.message);
-      else setError(t("login.error.passkey"));
+      setError(passkeyErrorMessage(err, t("login.error.passkey")));
     } finally {
       setSubmitting(false);
     }
@@ -81,8 +94,7 @@ export default function LoginPage() {
       });
       navigate("/", { replace: true });
     } catch (err) {
-      if (err instanceof ApiError) setError(err.message);
-      else setError(t("login.error.passkey"));
+      setError(passkeyErrorMessage(err, t("login.error.passkey")));
     } finally {
       setSubmitting(false);
     }

@@ -57,6 +57,23 @@ export const passkeyApi = {
     return passkeyApi.registerVerify({ challenge: options.challenge, response });
   },
 
+  async linkWithPasskey(token: string, name: string) {
+    const options = await apiFetch<PublicKeyCredentialCreationOptionsJSON>(
+      "/api/auth/passkey/link/options",
+      {
+        method: "POST",
+        token,
+        body: JSON.stringify({ flow: "link", name }),
+      },
+    );
+    const response = await startRegistration({ optionsJSON: options });
+    return apiFetch<AuthResponse>("/api/auth/passkey/link/verify", {
+      method: "POST",
+      token,
+      body: JSON.stringify({ challenge: options.challenge, response }),
+    });
+  },
+
   async loginWithPasskey() {
     const options = await passkeyApi.loginOptions();
     const response = await startAuthentication({ optionsJSON: options });

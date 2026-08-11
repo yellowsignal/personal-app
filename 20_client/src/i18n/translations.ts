@@ -56,6 +56,8 @@ export const dict: Record<Lang, Record<string, string>> = {
     "settings.noFamily": "가족 없음",
     "settings.language": "언어",
     "settings.faceId": "Face ID 로그인",
+    "settings.passkeyLink": "이 기기에 등록",
+    "settings.passkeyLinked": "Passkey가 등록되었습니다. 다음부터 Face ID로 로그인할 수 있습니다.",
     "settings.logout": "로그아웃",
 
     "dashboard.greeting": "안녕하세요, {name}님",
@@ -177,6 +179,8 @@ export const dict: Record<Lang, Record<string, string>> = {
     "settings.noFamily": "家族なし",
     "settings.language": "言語",
     "settings.faceId": "Face IDログイン",
+    "settings.passkeyLink": "この端末に登録",
+    "settings.passkeyLinked": "Passkeyを登録しました。次回からFace IDでログインできます。",
     "settings.logout": "ログアウト",
 
     "dashboard.greeting": "こんにちは、{name}さん",
