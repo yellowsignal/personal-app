@@ -60,3 +60,17 @@ so no custom Dockerfile is required.
 
 Oracle Cloud + temporary DuckDNS + Nginx/HTTPS scaffolding lives in
 `40_server/infra/`. Follow `10_docs/인프라_1단계_체크리스트.md`.
+
+Temporary DuckDNS (HTTP mockup): `http://sumicchogurashi.duckdns.org`
+
+## Database (Prisma / PostgreSQL)
+
+Schema and initial migration live under `40_server/prisma/`.
+See `10_docs/DB_스키마.md`.
+
+```bash
+cd 40_server
+docker compose -f docker-compose.dev.yml up -d   # when Docker is available
+cp .env.example .env
+npm run db:migrate
+```

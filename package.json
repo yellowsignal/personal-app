@@ -14,7 +14,9 @@
     "build": "npm run build --workspace @personal-app/server && npm run build --workspace @personal-app/client",
     "lint": "npm run lint --workspace @personal-app/server && npm run lint --workspace @personal-app/client",
     "typecheck": "npm run typecheck --workspace @personal-app/server && npm run typecheck --workspace @personal-app/client",
-    "test": "npm run test --workspace @personal-app/server"
+    "test": "npm run test --workspace @personal-app/server",
+    "db:generate": "npm run db:generate --workspace @personal-app/server",
+    "db:migrate": "npm run db:migrate --workspace @personal-app/server"
   },
   "engines": {
     "node": ">=20"

@@ -1,0 +1,37 @@
+# DB 스키마 (PostgreSQL + Prisma)
+
+기획서 DDL을 Prisma로 옮긴 상태입니다. 위치: `40_server/prisma/schema.prisma`
+
+## 테이블
+
+| 테이블 | 모델 | 역할 |
+| --- | --- | --- |
+| `families` | `Family` | 가족 그룹 + 초대코드 |
+| `users` | `User` | 계정, 언어/국가/표시통화, 역할(OWNER/MEMBER) |
+| `assets` | `Asset` | 자산·주식 (`label`은 목업 연동용 추가) |
+| `documents` | `Document` | 증명서·신분증 |
+| `subscriptions` | `Subscription` | 구독 |
+| `transactions` | `Transaction` | 수입/지출 |
+| `photos` | `Photo` | 사진 |
+| `calendar_events` | `CalendarEvent` | 일정 + 증명서 만료 연동 |
+
+공통: 도메인 테이블에 `is_shared` (개인 vs 가족 공유).
+
+## 로컬에서 올리기
+
+Cloud Agent / PC에 Docker가 있을 때:
+
+```bash
+cd 40_server
+docker compose -f docker-compose.dev.yml up -d
+cp .env.example .env
+npm run db:migrate    # prisma migrate deploy
+npm run db:generate   # 클라이언트 재생성
+```
+
+초기 마이그레이션 SQL: `prisma/migrations/20260811043000_init/`.
+
+## 다음 단계
+
+- 인증(가입/로그인) + 가족 초대코드 API
+- Prisma로 도메인 CRUD (목업 데이터 대체)

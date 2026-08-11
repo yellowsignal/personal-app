@@ -1,0 +1,26 @@
+# Local development Postgres only (not for OCI production stack).
+# Usage (from 40_server/):
+#   docker compose -f docker-compose.dev.yml up -d
+#   cp .env.example .env
+#   npm run db:migrate
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: myfamilyhub
+      POSTGRES_PASSWORD: change_me
+      POSTGRES_DB: myfamilyhub
+    volumes:
+      - myfamilyhub_pg_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myfamilyhub -d myfamilyhub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  myfamilyhub_pg_dev:

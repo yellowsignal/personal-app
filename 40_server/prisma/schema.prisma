@@ -1,0 +1,196 @@
+// MyFamily Hub — PostgreSQL schema (from 10_docs/기획서.md)
+// Auth / family sharing (`is_shared`) is modeled here; API wiring comes next.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+  MEMBER
+}
+
+model Family {
+  id         Int      @id @default(autoincrement())
+  familyName String   @map("family_name") @db.VarChar(100)
+  inviteCode String   @unique @map("invite_code") @db.VarChar(20)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  users            User[]
+  assets           Asset[]
+  documents        Document[]
+  subscriptions    Subscription[]
+  transactions     Transaction[]
+  photos           Photo[]
+  calendarEvents   CalendarEvent[]
+
+  @@map("families")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  name         String   @db.VarChar(100)
+  familyId     Int?     @map("family_id")
+  role         UserRole @default(MEMBER)
+  languagePref String   @default("ko") @map("language_pref") @db.VarChar(10)
+  countryPref  String   @default("JP") @map("country_pref") @db.VarChar(10)
+  /// Display currency for dashboard / subscriptions (KRW | JPY | USD)
+  currencyPref String   @default("JPY") @map("currency_pref") @db.VarChar(10)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  family           Family?         @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  assets           Asset[]
+  documents        Document[]
+  subscriptions    Subscription[]
+  transactions     Transaction[]
+  photos           Photo[]
+  calendarEvents   CalendarEvent[]
+
+  @@index([familyId])
+  @@map("users")
+}
+
+model Asset {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  familyId   Int?     @map("family_id")
+  /// deposit | stock | cash | account | realestate | ...
+  type       String   @db.VarChar(50)
+  /// Display name (e.g. bank account label)
+  label      String   @db.VarChar(200)
+  currency   String   @db.VarChar(10)
+  amount     Decimal  @db.Decimal(15, 2)
+  stockCode  String?  @map("stock_code") @db.VarChar(20)
+  buyPrice   Decimal? @map("buy_price") @db.Decimal(15, 2)
+  isShared   Boolean  @default(false) @map("is_shared")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family Family? @relation(fields: [familyId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([isShared])
+  @@map("assets")
+}
+
+model Document {
+  id         Int       @id @default(autoincrement())
+  userId     Int       @map("user_id")
+  familyId   Int?      @map("family_id")
+  /// license | passport | idcard | certificate | ...
+  docType    String    @map("doc_type") @db.VarChar(50)
+  docNumber  String?   @map("doc_number") @db.VarChar(100)
+  expiryDate DateTime? @map("expiry_date") @db.Date
+  imageUrl   String?   @map("image_url") @db.Text
+  isShared   Boolean   @default(false) @map("is_shared")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family               Family?         @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  calendarExpiryEvents CalendarEvent[]
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiryDate])
+  @@map("documents")
+}
+
+model Subscription {
+  id          Int     @id @default(autoincrement())
+  userId      Int     @map("user_id")
+  familyId    Int?    @map("family_id")
+  serviceName String  @map("service_name") @db.VarChar(100)
+  cost        Decimal @db.Decimal(10, 2)
+  currency    String  @db.VarChar(10)
+  /// Day of month (1–31)
+  billingDate Int     @map("billing_date")
+  cancelUrl   String? @map("cancel_url") @db.Text
+  reason      String? @db.Text
+  isShared    Boolean @default(false) @map("is_shared")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family Family? @relation(fields: [familyId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([billingDate])
+  @@map("subscriptions")
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  familyId    Int?     @map("family_id")
+  category    String   @db.VarChar(50)
+  amount      Decimal  @db.Decimal(15, 2)
+  currency    String   @db.VarChar(10)
+  date        DateTime @db.Date
+  description String?  @db.Text
+  isShared    Boolean  @default(false) @map("is_shared")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family Family? @relation(fields: [familyId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([date])
+  @@map("transactions")
+}
+
+model Photo {
+  id            Int      @id @default(autoincrement())
+  userId        Int      @map("user_id")
+  familyId      Int?     @map("family_id")
+  photoUrl      String   @map("photo_url") @db.Text
+  icloudAssetId String?  @map("icloud_asset_id") @db.VarChar(255)
+  caption       String?  @db.Text
+  isShared      Boolean  @default(false) @map("is_shared")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family Family? @relation(fields: [familyId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("photos")
+}
+
+model CalendarEvent {
+  id                    Int      @id @default(autoincrement())
+  userId                Int      @map("user_id")
+  familyId              Int?     @map("family_id")
+  title                 String   @db.VarChar(200)
+  description           String?  @db.Text
+  startTime             DateTime @map("start_time")
+  endTime               DateTime @map("end_time")
+  isAllDay              Boolean  @default(false) @map("is_all_day")
+  /// personal | family | holiday | document_expiry
+  category              String   @default("personal") @db.VarChar(50)
+  sourceDocumentId      Int?     @map("source_document_id")
+  reminderMinutesBefore Int?     @map("reminder_minutes_before")
+  isReminderSent        Boolean  @default(false) @map("is_reminder_sent")
+  isShared              Boolean  @default(false) @map("is_shared")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family         Family?   @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  sourceDocument Document? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([startTime])
+  @@index([category])
+  @@index([sourceDocumentId])
+  @@map("calendar_events")
+}
