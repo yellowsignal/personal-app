@@ -49,6 +49,12 @@ set +a
 npx prisma migrate deploy
 
 echo "==> Writing systemd unit (no MEMORY_AUTH)"
+# NOTE: systemd EnvironmentFile= overrides Environment= for the same key.
+# Keep PORT only in the unit (3002), not in .env — otherwise .env PORT=3001 wins.
+if grep -q '^PORT=' "$ENV_FILE"; then
+  sed -i '/^PORT=/d' "$ENV_FILE"
+fi
+
 sudo tee /etc/systemd/system/myfamilyhub-dev-api.service >/dev/null <<EOF
 [Unit]
 Description=MyFamily Hub DEV API (Postgres)
