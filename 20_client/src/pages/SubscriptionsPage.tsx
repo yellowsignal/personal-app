@@ -41,16 +41,18 @@ function anchorFromSubscription(item: PublicSubscription): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-const EMPTY_FORM: CreateSubscriptionInput = {
-  serviceName: "",
-  cost: 0,
-  currency: "KRW",
-  billingInterval: "MONTHLY",
-  billingAnchorDate: todayIsoDate(),
-  reason: "",
-  cancelUrl: "",
-  isShared: false,
-};
+function emptyForm(currency: SubscriptionCurrency): CreateSubscriptionInput {
+  return {
+    serviceName: "",
+    cost: 0,
+    currency,
+    billingInterval: "MONTHLY",
+    billingAnchorDate: todayIsoDate(),
+    reason: "",
+    cancelUrl: "",
+    isShared: false,
+  };
+}
 
 function toForm(item: PublicSubscription): CreateSubscriptionInput {
   return {
@@ -76,7 +78,7 @@ export default function SubscriptionsPage() {
   const [menuId, setMenuId] = useState<number | null>(null);
   const [editing, setEditing] = useState<PublicSubscription | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<CreateSubscriptionInput>(EMPTY_FORM);
+  const [form, setForm] = useState<CreateSubscriptionInput>(() => emptyForm(currency));
   const [submitting, setSubmitting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<PublicSubscription | null>(null);
 
@@ -121,7 +123,7 @@ export default function SubscriptionsPage() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ ...EMPTY_FORM, billingAnchorDate: todayIsoDate() });
+    setForm(emptyForm(currency));
     setMenuId(null);
     setShowForm(true);
   }
@@ -136,7 +138,7 @@ export default function SubscriptionsPage() {
   function closeForm() {
     setShowForm(false);
     setEditing(null);
-    setForm(EMPTY_FORM);
+    setForm(emptyForm(currency));
   }
 
   async function handleSubmit(e: React.FormEvent) {
