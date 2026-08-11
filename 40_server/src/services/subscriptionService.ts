@@ -47,8 +47,13 @@ export class SubscriptionService {
     return user;
   }
 
-  private filterScope(items: PublicSubscription[], scope: ViewScope): PublicSubscription[] {
-    if (scope === "personal") return items.filter((s) => !s.isShared);
+  private filterScope(
+    items: PublicSubscription[],
+    scope: ViewScope,
+    userId: number,
+  ): PublicSubscription[] {
+    // personal = what I pay (owned by me), even if also shared with family
+    if (scope === "personal") return items.filter((s) => s.userId === userId);
     if (scope === "family") return items.filter((s) => s.isShared);
     return items;
   }
@@ -73,7 +78,7 @@ export class SubscriptionService {
     const scope = parseScope(scopeRaw);
     const records = await this.subscriptionRepo.listForUser(userId, user.familyId);
     const withOwners = await this.withOwners(records);
-    return this.filterScope(withOwners, scope);
+    return this.filterScope(withOwners, scope, userId);
   }
 
   async create(userId: number, body: Record<string, unknown>): Promise<PublicSubscription> {

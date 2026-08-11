@@ -104,8 +104,12 @@ test("subscription CRUD and scope filtering", async () => {
       headers: { authorization: `Bearer ${owner.token}` },
     });
     const personalItems = (await personalOnly.json()) as Array<{ serviceName: string }>;
-    assert.equal(personalItems.length, 1);
-    assert.equal(personalItems[0].serviceName, "Cursor Pro");
+    // personal = everything I own (shared or not) so monthly spend is visible
+    assert.equal(personalItems.length, 2);
+    assert.deepEqual(
+      personalItems.map((s) => s.serviceName).sort(),
+      ["Cursor Pro", "Netflix"],
+    );
 
     const familyOnly = await fetch(`${base}/api/subscriptions?scope=family`, {
       headers: { authorization: `Bearer ${owner.token}` },
