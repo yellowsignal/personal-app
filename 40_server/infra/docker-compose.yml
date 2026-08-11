@@ -11,9 +11,14 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # app:
-  #   TODO: 백엔드(Node.js/FastAPI) 컨테이너 빌드가 준비되면 여기에 추가
+  #   TODO: add when backend image is ready
   #   depends_on: [postgres]
   #   networks: [internal]
 
@@ -30,7 +35,8 @@ services:
     networks:
       - internal
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   certbot:
     image: certbot/certbot

@@ -1,0 +1,14 @@
+# HTTP-only bootstrap (before Let's Encrypt certificate exists)
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        default_type text/plain;
+        return 200 'MyFamily Hub server is up (${DOMAIN}). App container not deployed yet.\n';
+    }
+}

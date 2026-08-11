@@ -55,3 +55,8 @@ starter task API persists to `30_data/tasks.json`.
 two long-running terminals: `api` (`npm run dev:server`) and `web`
 (`npm run dev:client`). The default Cursor base image already provides Node 22,
 so no custom Dockerfile is required.
+
+## Infrastructure (phase 1)
+
+Oracle Cloud + temporary DuckDNS + Nginx/HTTPS scaffolding lives in
+`40_server/infra/`. Follow `10_docs/인프라_1단계_체크리스트.md`.

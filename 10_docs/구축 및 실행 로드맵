@@ -14,3 +14,6 @@ Docker Compose로 서버 실행 및 HTTPS 도메인 연결, Web Push 환경 세�
 4단계: 가족 기기 설치 및 사용
 
 각 아이폰 Safari 접속 ➔ [공유] ➔ [홈 화면에 추가] 진행 ➔ Face ID 등록 및 가족 초댓코드 연동
+---
+상세 체크리스트: `10_docs/인프라_1단계_체크리스트.md`
+실행 스크립트: `40_server/infra/scripts/`
