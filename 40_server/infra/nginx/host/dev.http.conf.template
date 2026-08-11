@@ -1,0 +1,31 @@
+# HTTP — development / staging (host nginx)
+# DuckDNS does NOT support nested names like dev.foo.duckdns.org.
+# Use a second DuckDNS subdomain, e.g. sumicchogurashi-dev.duckdns.org → DEV_DOMAIN.
+# Place built files in /var/www/myfamily-dev/
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DEV_DOMAIN};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    root /var/www/myfamily-dev;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Dev API (MEMORY_AUTH or separate compose). Default port 3002 to avoid clashing with prod.
+    location /api/ {
+        proxy_pass http://127.0.0.1:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

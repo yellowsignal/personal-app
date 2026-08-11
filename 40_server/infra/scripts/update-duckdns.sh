@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Point DuckDNS temporary subdomain at this host's public IP (or an explicit IP).
+# Update DuckDNS A records for prod + optional dev subdomain.
+# DuckDNS: create TWO subdomains (nested dev.foo.duckdns.org is not supported).
+# Example: sumicchogurashi + sumicchogurashi-dev
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,10 +25,19 @@ if [[ -z "$IP" ]]; then
   IP="$(curl -4 -fsS https://ifconfig.me || curl -4 -fsS https://api.ipify.org)"
 fi
 
-URL="https://www.duckdns.org/update?domains=${DUCKDNS_SUBDOMAIN}&token=${DUCKDNS_TOKEN}&ip=${IP}"
-RESULT="$(curl -fsS "$URL")"
-echo "DuckDNS update (${DUCKDNS_SUBDOMAIN}.duckdns.org -> ${IP}): ${RESULT}"
+update_one() {
+  local name="$1"
+  local url="https://www.duckdns.org/update?domains=${name}&token=${DUCKDNS_TOKEN}&ip=${IP}"
+  local result
+  result="$(curl -fsS "$url")"
+  echo "DuckDNS update (${name}.duckdns.org -> ${IP}): ${result}"
+  if [[ "$result" != "OK" ]]; then
+    exit 1
+  fi
+}
 
-if [[ "$RESULT" != "OK" ]]; then
-  exit 1
+update_one "$DUCKDNS_SUBDOMAIN"
+
+if [[ -n "${DUCKDNS_DEV_SUBDOMAIN:-}" ]]; then
+  update_one "$DUCKDNS_DEV_SUBDOMAIN"
 fi
