@@ -35,6 +35,29 @@ export function createAssetRouter(service: AssetService, jwtSecret: string): Rou
     }
   });
 
+  router.post("/refresh-prices", auth, async (req: AuthedRequest, res) => {
+    try {
+      const items = await service.refreshAllPrices(req.userId!);
+      res.json(items);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  router.post("/:id/refresh-price", auth, async (req: AuthedRequest, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        res.status(400).json({ error: "invalid id" });
+        return;
+      }
+      const updated = await service.refreshPrice(req.userId!, id);
+      res.json(updated);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
   router.patch("/:id", auth, async (req: AuthedRequest, res) => {
     try {
       const id = Number(req.params.id);

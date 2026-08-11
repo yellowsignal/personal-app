@@ -1,4 +1,4 @@
-import type { AssetRecord } from "./assetTypes.js";
+import type { AssetRecord, StockMarket } from "./assetTypes.js";
 
 export interface CreateAssetInput {
   userId: number;
@@ -7,8 +7,11 @@ export interface CreateAssetInput {
   label: string;
   currency: string;
   amount: number;
+  stockMarket: StockMarket | null;
   stockCode: string | null;
+  quantity: number | null;
   buyPrice: number | null;
+  currentPrice: number | null;
   isShared: boolean;
 }
 
@@ -17,8 +20,11 @@ export interface UpdateAssetInput {
   label?: string;
   currency?: string;
   amount?: number;
+  stockMarket?: StockMarket | null;
   stockCode?: string | null;
+  quantity?: number | null;
   buyPrice?: number | null;
+  currentPrice?: number | null;
   isShared?: boolean;
 }
 

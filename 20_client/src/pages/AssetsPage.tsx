@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react";
+import { MoreHorizontal, Pencil, Plus, RefreshCw, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
@@ -12,33 +12,51 @@ import {
   type AssetType,
   type CreateAssetInput,
   type PublicAsset,
+  type StockMarket,
 } from "../api/assets";
 import { ApiError } from "../api/http";
 import { formatMoney } from "../utils/formatMoney";
 
 const CURRENCY_SYMBOL = { KRW: "₩", JPY: "¥", USD: "$" };
 const ASSET_TYPES: AssetType[] = ["deposit", "stock", "cash", "realestate"];
+const MARKETS: StockMarket[] = ["KR", "JP", "US"];
 
-function emptyForm(currency: AssetCurrency): CreateAssetInput {
+type FormState = {
+  type: AssetType;
+  label: string;
+  currency: AssetCurrency;
+  amount: number;
+  stockMarket: StockMarket;
+  stockCode: string;
+  quantity: string;
+  buyPrice: string;
+  isShared: boolean;
+};
+
+function emptyForm(currency: AssetCurrency): FormState {
   return {
     type: "deposit",
     label: "",
     currency,
     amount: 0,
+    stockMarket: "JP",
     stockCode: "",
-    buyPrice: null,
+    quantity: "",
+    buyPrice: "",
     isShared: false,
   };
 }
 
-function toForm(item: PublicAsset): CreateAssetInput {
+function toForm(item: PublicAsset): FormState {
   return {
     type: item.type,
     label: item.label,
     currency: item.currency,
     amount: item.amount,
+    stockMarket: item.stockMarket ?? "JP",
     stockCode: item.stockCode ?? "",
-    buyPrice: item.buyPrice,
+    quantity: item.quantity != null ? String(item.quantity) : "",
+    buyPrice: item.buyPrice != null ? String(item.buyPrice) : "",
     isShared: item.isShared,
   };
 }
@@ -54,8 +72,9 @@ export default function AssetsPage() {
   const [menuId, setMenuId] = useState<number | null>(null);
   const [editing, setEditing] = useState<PublicAsset | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<CreateAssetInput>(() => emptyForm(currency));
+  const [form, setForm] = useState<FormState>(() => emptyForm(currency));
   const [submitting, setSubmitting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<PublicAsset | null>(null);
 
   const load = useCallback(async () => {
@@ -110,12 +129,28 @@ export default function AssetsPage() {
     if (!token || !form.label.trim()) return;
     setSubmitting(true);
     setError(null);
-    const payload: CreateAssetInput = {
-      ...form,
-      label: form.label.trim(),
-      stockCode: form.type === "stock" ? form.stockCode?.trim() || undefined : undefined,
-      buyPrice: form.type === "stock" ? form.buyPrice ?? null : null,
-    };
+
+    let payload: CreateAssetInput;
+    if (form.type === "stock") {
+      payload = {
+        type: "stock",
+        label: form.label.trim(),
+        stockMarket: form.stockMarket,
+        stockCode: form.stockCode.trim(),
+        quantity: Number(form.quantity),
+        buyPrice: Number(form.buyPrice),
+        isShared: form.isShared,
+      };
+    } else {
+      payload = {
+        type: form.type,
+        label: form.label.trim(),
+        currency: form.currency,
+        amount: form.amount,
+        isShared: form.isShared,
+      };
+    }
+
     try {
       if (editing) {
         await assetsApi.update(token, editing.id, payload);
@@ -146,20 +181,59 @@ export default function AssetsPage() {
     }
   }
 
+  async function handleRefreshAll() {
+    if (!token) return;
+    setRefreshing(true);
+    setError(null);
+    try {
+      const data = await assetsApi.refreshAllPrices(token);
+      setItems(data);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("assets.refreshError"));
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function handleRefreshOne(id: number) {
+    if (!token) return;
+    setRefreshing(true);
+    setError(null);
+    try {
+      const updated = await assetsApi.refreshPrice(token, id);
+      setItems((prev) => prev.map((a) => (a.id === id ? updated : a)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("assets.refreshError"));
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   return (
     <div>
       <TopBar
         title={t("assets.title")}
         subtitle={t("assets.subtitle")}
         right={
-          <button
-            type="button"
-            onClick={openCreate}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-white"
-            aria-label={t("assets.add")}
-          >
-            <Plus size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleRefreshAll()}
+              disabled={refreshing}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-neutral-600 disabled:opacity-50"
+              aria-label={t("assets.refreshPrices")}
+            >
+              <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
+            </button>
+            <button
+              type="button"
+              onClick={openCreate}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-white"
+              aria-label={t("assets.add")}
+            >
+              <Plus size={18} />
+            </button>
+          </div>
         }
       />
 
@@ -178,17 +252,30 @@ export default function AssetsPage() {
           <div className="mt-4 flex flex-col gap-3">
             {visible.map((a) => {
               const canManage = user?.id === a.userId;
+              const gain = a.gainPercent;
               return (
                 <div key={a.id} className="relative rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-[11px] font-semibold text-indigo-500">
                         {t(`assetType.${a.type}`)}
+                        {a.stockMarket ? ` · ${t(`stockMarket.${a.stockMarket}`)}` : ""}
                       </p>
                       <p className="mt-0.5 truncate text-sm font-bold text-neutral-900">{a.label}</p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                       <SharedBadge isShared={a.isShared} />
+                      {a.type === "stock" && (
+                        <button
+                          type="button"
+                          disabled={refreshing}
+                          onClick={() => void handleRefreshOne(a.id)}
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-100 disabled:opacity-50"
+                          aria-label={t("assets.refreshPrices")}
+                        >
+                          <RefreshCw size={14} />
+                        </button>
+                      )}
                       {canManage && (
                         <button
                           type="button"
@@ -238,19 +325,49 @@ export default function AssetsPage() {
                     </>
                   )}
 
-                  <p className="mt-3 text-xl font-bold text-neutral-900">
-                    {CURRENCY_SYMBOL[a.currency]}
-                    {formatMoney(a.amount, a.currency)}
-                  </p>
-
-                  {a.type === "stock" && (a.stockCode || a.buyPrice != null) && (
-                    <div className="mt-2 flex items-center justify-between rounded-lg bg-neutral-50 px-3 py-2 text-[11px] text-neutral-500">
-                      <span>
-                        {a.buyPrice != null
-                          ? t("assets.buyPrice", { v: formatMoney(a.buyPrice, a.currency) })
-                          : ""}
+                  <div className="mt-3 flex items-end justify-between gap-2">
+                    <p className="text-xl font-bold text-neutral-900">
+                      {CURRENCY_SYMBOL[a.currency]}
+                      {formatMoney(a.amount, a.currency)}
+                    </p>
+                    {gain != null && (
+                      <span
+                        className={`flex items-center gap-0.5 text-xs font-semibold ${
+                          gain >= 0 ? "text-emerald-500" : "text-rose-500"
+                        }`}
+                      >
+                        {gain >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+                        {Math.abs(gain).toFixed(1)}%
                       </span>
-                      <span className="font-mono text-neutral-400">{a.stockCode}</span>
+                    )}
+                  </div>
+
+                  {a.type === "stock" && (
+                    <div className="mt-2 space-y-1 rounded-lg bg-neutral-50 px-3 py-2 text-[11px] text-neutral-500">
+                      <div className="flex justify-between gap-2">
+                        <span>{a.stockCode}</span>
+                        <span>
+                          {a.quantity != null
+                            ? t("assets.shares", { n: a.quantity })
+                            : ""}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span>
+                          {a.buyPrice != null
+                            ? t("assets.buyPrice", {
+                                v: formatMoney(a.buyPrice, a.currency),
+                              })
+                            : ""}
+                        </span>
+                        <span>
+                          {a.currentPrice != null
+                            ? t("assets.currentPrice", {
+                                v: formatMoney(a.currentPrice, a.currency),
+                              })
+                            : t("assets.noQuote")}
+                        </span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -306,62 +423,100 @@ export default function AssetsPage() {
               />
             </label>
 
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <label className="block text-xs font-semibold text-neutral-500">
-                {t("assets.fieldAmount")}
-                <input
-                  required
-                  type="number"
-                  min={0}
-                  step="any"
-                  value={form.amount || ""}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, amount: Number(e.target.value) || 0 }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
-                />
-              </label>
-              <label className="block text-xs font-semibold text-neutral-500">
-                {t("assets.fieldCurrency")}
-                <select
-                  value={form.currency}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, currency: e.target.value as AssetCurrency }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
-                >
-                  <option value="KRW">KRW</option>
-                  <option value="JPY">JPY</option>
-                  <option value="USD">USD</option>
-                </select>
-              </label>
-            </div>
-
-            {form.type === "stock" && (
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                <label className="block text-xs font-semibold text-neutral-500">
+            {form.type === "stock" ? (
+              <>
+                <label className="mt-3 block text-xs font-semibold text-neutral-500">
+                  {t("assets.fieldMarket")}
+                  <select
+                    value={form.stockMarket}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, stockMarket: e.target.value as StockMarket }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
+                  >
+                    {MARKETS.map((m) => (
+                      <option key={m} value={m}>
+                        {t(`stockMarket.${m}`)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="mt-3 block text-xs font-semibold text-neutral-500">
                   {t("assets.fieldStockCode")}
                   <input
-                    value={form.stockCode ?? ""}
+                    required
+                    value={form.stockCode}
                     onChange={(e) => setForm((f) => ({ ...f, stockCode: e.target.value }))}
+                    placeholder={
+                      form.stockMarket === "KR"
+                        ? "005930"
+                        : form.stockMarket === "JP"
+                          ? "7203"
+                          : "AAPL"
+                    }
+                    className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
+                  />
+                  <span className="mt-1 block text-[11px] font-normal text-neutral-400">
+                    {t("assets.stockCodeHint")}
+                  </span>
+                </label>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <label className="block text-xs font-semibold text-neutral-500">
+                    {t("assets.fieldQuantity")}
+                    <input
+                      required
+                      type="number"
+                      min={0}
+                      step="any"
+                      value={form.quantity}
+                      onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
+                      className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
+                    />
+                  </label>
+                  <label className="block text-xs font-semibold text-neutral-500">
+                    {t("assets.fieldBuyPrice")}
+                    <input
+                      required
+                      type="number"
+                      min={0}
+                      step="any"
+                      value={form.buyPrice}
+                      onChange={(e) => setForm((f) => ({ ...f, buyPrice: e.target.value }))}
+                      className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
+                    />
+                  </label>
+                </div>
+                <p className="mt-2 text-[11px] text-neutral-400">{t("assets.stockFormHint")}</p>
+              </>
+            ) : (
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <label className="block text-xs font-semibold text-neutral-500">
+                  {t("assets.fieldAmount")}
+                  <input
+                    required
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={form.amount || ""}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, amount: Number(e.target.value) || 0 }))
+                    }
                     className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
                   />
                 </label>
                 <label className="block text-xs font-semibold text-neutral-500">
-                  {t("assets.fieldBuyPrice")}
-                  <input
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={form.buyPrice ?? ""}
+                  {t("assets.fieldCurrency")}
+                  <select
+                    value={form.currency}
                     onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        buyPrice: e.target.value === "" ? null : Number(e.target.value) || 0,
-                      }))
+                      setForm((f) => ({ ...f, currency: e.target.value as AssetCurrency }))
                     }
                     className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
-                  />
+                  >
+                    <option value="KRW">KRW</option>
+                    <option value="JPY">JPY</option>
+                    <option value="USD">USD</option>
+                  </select>
                 </label>
               </div>
             )}

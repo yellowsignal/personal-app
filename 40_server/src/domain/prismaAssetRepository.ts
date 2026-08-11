@@ -4,7 +4,7 @@ import type {
   AssetRepository,
   UpdateAssetInput,
 } from "./assetRepository.js";
-import type { AssetRecord } from "./assetTypes.js";
+import type { AssetRecord, StockMarket } from "./assetTypes.js";
 
 function map(row: PrismaAsset): AssetRecord {
   return {
@@ -15,8 +15,11 @@ function map(row: PrismaAsset): AssetRecord {
     label: row.label,
     currency: row.currency,
     amount: Number(row.amount),
+    stockMarket: (row.stockMarket as StockMarket | null) ?? null,
     stockCode: row.stockCode,
+    quantity: row.quantity === null ? null : Number(row.quantity),
     buyPrice: row.buyPrice === null ? null : Number(row.buyPrice),
+    currentPrice: row.currentPrice === null ? null : Number(row.currentPrice),
     isShared: row.isShared,
     updatedAt: row.updatedAt,
     createdAt: row.createdAt,
@@ -52,8 +55,11 @@ export class PrismaAssetRepository implements AssetRepository {
         label: input.label,
         currency: input.currency,
         amount: input.amount,
+        stockMarket: input.stockMarket,
         stockCode: input.stockCode,
+        quantity: input.quantity,
         buyPrice: input.buyPrice,
+        currentPrice: input.currentPrice,
         isShared: input.isShared,
       },
     });
@@ -68,8 +74,11 @@ export class PrismaAssetRepository implements AssetRepository {
         label: input.label,
         currency: input.currency,
         amount: input.amount,
+        stockMarket: input.stockMarket,
         stockCode: input.stockCode,
+        quantity: input.quantity,
         buyPrice: input.buyPrice,
+        currentPrice: input.currentPrice,
         isShared: input.isShared,
       },
     });

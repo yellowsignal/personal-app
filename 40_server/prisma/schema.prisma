@@ -76,8 +76,15 @@ model Asset {
   label      String   @db.VarChar(200)
   currency   String   @db.VarChar(10)
   amount     Decimal  @db.Decimal(15, 2)
-  stockCode  String?  @map("stock_code") @db.VarChar(20)
-  buyPrice   Decimal? @map("buy_price") @db.Decimal(15, 2)
+  /// KR | JP | US — used to resolve Yahoo Finance symbols
+  stockMarket String? @map("stock_market") @db.VarChar(10)
+  stockCode  String?  @map("stock_code") @db.VarChar(32)
+  /// Shares / units for stock assets
+  quantity   Decimal? @db.Decimal(18, 6)
+  /// Average buy price per share
+  buyPrice   Decimal? @map("buy_price") @db.Decimal(15, 4)
+  /// Last fetched market price per share
+  currentPrice Decimal? @map("current_price") @db.Decimal(15, 4)
   isShared   Boolean  @default(false) @map("is_shared")
   updatedAt  DateTime @updatedAt @map("updated_at")
   createdAt  DateTime @default(now()) @map("created_at")

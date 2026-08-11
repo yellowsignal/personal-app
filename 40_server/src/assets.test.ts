@@ -93,14 +93,26 @@ test("asset CRUD and scope filtering", async () => {
       body: JSON.stringify({
         type: "stock",
         label: "Apple",
-        currency: "USD",
-        amount: 3200,
+        stockMarket: "US",
         stockCode: "AAPL",
+        quantity: 10,
         buyPrice: 165.2,
         isShared: true,
       }),
     });
     assert.equal(shared.status, 201);
+    const stockBody = (await shared.json()) as {
+      currency: string;
+      quantity: number;
+      buyPrice: number;
+      amount: number;
+      stockMarket: string;
+    };
+    assert.equal(stockBody.currency, "USD");
+    assert.equal(stockBody.quantity, 10);
+    assert.equal(stockBody.buyPrice, 165.2);
+    assert.equal(stockBody.stockMarket, "US");
+    assert.ok(stockBody.amount > 0);
 
     const all = await fetch(`${base}/api/assets?scope=all`, {
       headers: { authorization: `Bearer ${owner.token}` },
