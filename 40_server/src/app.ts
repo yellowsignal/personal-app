@@ -2,12 +2,16 @@ import cors from "cors";
 import express, { type Express } from "express";
 import { TaskStore } from "./store.js";
 import type { AuthRepository } from "./domain/authRepository.js";
+import type { SubscriptionRepository } from "./domain/subscriptionRepository.js";
 import { AuthService } from "./services/authService.js";
+import { SubscriptionService } from "./services/subscriptionService.js";
 import { createAuthRouter } from "./routes/authRoutes.js";
 import { createFamilyRouter } from "./routes/familyRoutes.js";
+import { createSubscriptionRouter } from "./routes/subscriptionRoutes.js";
 
 export interface AppDeps {
   authRepo?: AuthRepository;
+  subscriptionRepo?: SubscriptionRepository;
   jwtSecret?: string;
 }
 
@@ -56,6 +60,11 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
     const authService = new AuthService(deps.authRepo, jwtSecret);
     app.use("/api/auth", createAuthRouter(authService, jwtSecret));
     app.use("/api/family", createFamilyRouter(authService, jwtSecret));
+
+    if (deps.subscriptionRepo) {
+      const subscriptionService = new SubscriptionService(deps.authRepo, deps.subscriptionRepo);
+      app.use("/api/subscriptions", createSubscriptionRouter(subscriptionService, jwtSecret));
+    }
   }
 
   return app;
