@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Fingerprint, Globe, House, KeyRound, Mail, UserPlus } from "lucide-react";
 import { ApiError } from "../api/http";
+import { isPasskeySupported } from "../api/passkey";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../i18n/LanguageContext";
 
@@ -9,15 +10,17 @@ type Mode = "login" | "signup";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { token, login, register } = useAuth();
+  const { token, login, register, passkeyLogin, passkeyRegister } = useAuth();
   const [mode, setMode] = useState<Mode>("login");
   const { lang, toggleLang, t } = useLanguage();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [inviteToken, setInviteToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const passkeyReady = isPasskeySupported();
 
   if (token) {
     return <Navigate to="/" replace />;
@@ -43,6 +46,43 @@ export default function LoginPage() {
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
       else setError(t("login.error.generic"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onPasskeyLogin() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await passkeyLogin();
+      navigate("/", { replace: true });
+    } catch (err) {
+      if (err instanceof ApiError) setError(err.message);
+      else setError(t("login.error.passkey"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onPasskeySignup() {
+    setError(null);
+    if (!name.trim()) {
+      setError(t("login.error.nameRequired"));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const tokenValue = inviteToken.trim().toUpperCase();
+      await passkeyRegister({
+        flow: tokenValue ? "invite" : "bootstrap",
+        name: name.trim(),
+        inviteToken: tokenValue || undefined,
+      });
+      navigate("/", { replace: true });
+    } catch (err) {
+      if (err instanceof ApiError) setError(err.message);
+      else setError(t("login.error.passkey"));
     } finally {
       setSubmitting(false);
     }
@@ -96,6 +136,20 @@ export default function LoginPage() {
           </button>
         </div>
 
+        {passkeyReady && (
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => void (mode === "login" ? onPasskeyLogin() : onPasskeySignup())}
+            className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-neutral-900 py-3 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            <Fingerprint size={18} />
+            {mode === "login" ? t("login.button.faceId") : t("login.button.passkeySignup")}
+          </button>
+        )}
+
+        <p className="mt-3 text-center text-[11px] text-neutral-400">{t("login.passkeyHint")}</p>
+
         <form className="mt-6 flex flex-col gap-3" onSubmit={onSubmit}>
           {mode === "signup" && (
             <label className="flex items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3">
@@ -110,6 +164,18 @@ export default function LoginPage() {
               />
             </label>
           )}
+          {mode === "signup" && (
+            <label className="flex items-center gap-3 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 px-4 py-3">
+              <span className="text-xs font-semibold text-indigo-500">OTP</span>
+              <input
+                className="w-full text-sm uppercase outline-none placeholder:text-neutral-300"
+                placeholder={t("login.placeholder.inviteToken")}
+                value={inviteToken}
+                onChange={(e) => setInviteToken(e.target.value)}
+                autoComplete="off"
+              />
+            </label>
+          )}
           <label className="flex items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3">
             <Mail size={18} className="text-neutral-400" />
             <input
@@ -118,7 +184,7 @@ export default function LoginPage() {
               placeholder={t("login.placeholder.email")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
+              required={mode === "login" || Boolean(inviteCode.trim())}
               autoComplete="email"
             />
           </label>
@@ -130,17 +196,17 @@ export default function LoginPage() {
               placeholder={t("login.placeholder.password")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required
+              required={mode === "login" || Boolean(email.trim())}
               minLength={8}
               autoComplete={mode === "login" ? "current-password" : "new-password"}
             />
           </label>
           {mode === "signup" && (
-            <label className="flex items-center gap-3 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 px-4 py-3">
-              <span className="text-sm font-semibold text-indigo-500">FAM-</span>
+            <label className="flex items-center gap-3 rounded-xl border border-dashed border-neutral-200 px-4 py-3">
+              <span className="text-sm font-semibold text-neutral-400">FAM-</span>
               <input
                 className="w-full text-sm uppercase outline-none placeholder:text-neutral-300"
-                placeholder={t("login.placeholder.invite")}
+                placeholder={t("login.placeholder.inviteLegacy")}
                 value={inviteCode}
                 onChange={(e) => setInviteCode(e.target.value)}
                 autoComplete="off"
@@ -155,28 +221,17 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="mt-2 rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white active:bg-indigo-700 disabled:opacity-60"
+            className="mt-2 rounded-xl border border-indigo-200 py-3 text-sm font-semibold text-indigo-600 disabled:opacity-60"
           >
             {submitting
               ? t("login.button.working")
               : mode === "login"
-                ? t("login.button.login")
-                : t("login.button.signup")}
+                ? t("login.button.loginPassword")
+                : t("login.button.signupPassword")}
           </button>
         </form>
 
-        {mode === "login" && (
-          <button
-            type="button"
-            disabled
-            className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-neutral-200 py-3 text-sm font-semibold text-neutral-400"
-          >
-            <Fingerprint size={18} className="text-indigo-300" />
-            {t("login.button.faceId")}
-          </button>
-        )}
-
-        <p className="mt-auto pb-8 pt-10 text-center text-[11px] leading-relaxed text-neutral-300">
+        <p className="mt-auto pb-8 pt-6 text-center text-[11px] leading-relaxed text-neutral-300">
           {t("login.apiNotice")}
         </p>
       </div>

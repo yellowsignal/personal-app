@@ -2,7 +2,7 @@ import type { FamilyRecord, UserRecord, UserRole } from "./types.js";
 
 export interface CreateUserInput {
   email: string;
-  passwordHash: string;
+  passwordHash: string | null;
   name: string;
   familyId: number | null;
   role: UserRole;
@@ -17,7 +17,7 @@ export interface AuthRepository {
   createUser(input: CreateUserInput): Promise<UserRecord>;
   updateUser(
     id: number,
-    patch: Partial<Pick<UserRecord, "familyId" | "role" | "languagePref" | "countryPref" | "currencyPref" | "name">>,
+    patch: Partial<Pick<UserRecord, "familyId" | "role" | "languagePref" | "countryPref" | "currencyPref" | "name" | "email">>,
   ): Promise<UserRecord>;
 
   findFamilyById(id: number): Promise<FamilyRecord | null>;
@@ -29,7 +29,7 @@ export interface AuthRepository {
   /** Atomic helper used by register flows */
   createOwnerWithFamily(input: {
     email: string;
-    passwordHash: string;
+    passwordHash: string | null;
     name: string;
     familyName: string;
     inviteCode: string;
@@ -37,4 +37,6 @@ export interface AuthRepository {
     countryPref: string;
     currencyPref: string;
   }): Promise<{ user: UserRecord; family: FamilyRecord }>;
+
+  countUsers(): Promise<number>;
 }

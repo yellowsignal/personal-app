@@ -41,7 +41,7 @@ export class MemoryAuthRepository implements AuthRepository {
 
   async updateUser(
     id: number,
-    patch: Partial<Pick<UserRecord, "familyId" | "role" | "languagePref" | "countryPref" | "currencyPref" | "name">>,
+    patch: Partial<Pick<UserRecord, "familyId" | "role" | "languagePref" | "countryPref" | "currencyPref" | "name" | "email">>,
   ): Promise<UserRecord> {
     const user = this.users.get(id);
     if (!user) throw Object.assign(new Error("user not found"), { code: "NOT_FOUND" });
@@ -90,7 +90,7 @@ export class MemoryAuthRepository implements AuthRepository {
 
   async createOwnerWithFamily(input: {
     email: string;
-    passwordHash: string;
+    passwordHash: string | null;
     name: string;
     familyName: string;
     inviteCode: string;
@@ -110,5 +110,9 @@ export class MemoryAuthRepository implements AuthRepository {
       currencyPref: input.currencyPref,
     });
     return { user, family };
+  }
+
+  async countUsers(): Promise<number> {
+    return this.users.size;
   }
 }

@@ -90,6 +90,12 @@ export class AuthService {
       typeof body.inviteCode === "string" && body.inviteCode.trim()
         ? body.inviteCode.trim().toUpperCase()
         : null;
+
+    const userCount = await this.repo.countUsers();
+    if (userCount > 0 && !inviteCode) {
+      throw new HttpError(403, "registration requires an invite", "CLOSED_REGISTRATION");
+    }
+
     const familyName =
       typeof body.familyName === "string" && body.familyName.trim()
         ? body.familyName.trim()
@@ -171,7 +177,7 @@ export class AuthService {
     }
     const password = body.password;
     const user = await this.repo.findUserByEmail(email);
-    if (!user || !(await verifyPassword(password, user.passwordHash))) {
+    if (!user || !user.passwordHash || !(await verifyPassword(password, user.passwordHash))) {
       throw new HttpError(401, "invalid email or password", "INVALID_CREDENTIALS");
     }
     const token = signAuthToken({ userId: user.id, email: user.email }, this.jwtSecret);

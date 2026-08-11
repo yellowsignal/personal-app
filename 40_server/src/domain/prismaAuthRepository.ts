@@ -64,7 +64,7 @@ export class PrismaAuthRepository implements AuthRepository {
 
   async updateUser(
     id: number,
-    patch: Partial<Pick<UserRecord, "familyId" | "role" | "languagePref" | "countryPref" | "currencyPref" | "name">>,
+    patch: Partial<Pick<UserRecord, "familyId" | "role" | "languagePref" | "countryPref" | "currencyPref" | "name" | "email">>,
   ): Promise<UserRecord> {
     const user = await this.db.user.update({
       where: { id },
@@ -75,6 +75,7 @@ export class PrismaAuthRepository implements AuthRepository {
         countryPref: patch.countryPref,
         currencyPref: patch.currencyPref,
         name: patch.name,
+        email: patch.email?.toLowerCase(),
       },
     });
     return mapUser(user);
@@ -113,6 +114,10 @@ export class PrismaAuthRepository implements AuthRepository {
       orderBy: { id: "asc" },
     });
     return users.map(mapUser);
+  }
+
+  async countUsers(): Promise<number> {
+    return this.db.user.count();
   }
 
   async createOwnerWithFamily(input: {

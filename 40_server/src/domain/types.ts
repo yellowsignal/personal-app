@@ -28,7 +28,7 @@ export interface FamilySummary {
 export interface UserRecord {
   id: number;
   email: string;
-  passwordHash: string;
+  passwordHash: string | null;
   name: string;
   familyId: number | null;
   role: UserRole;

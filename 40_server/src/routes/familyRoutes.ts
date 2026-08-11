@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { AuthService, HttpError } from "../services/authService.js";
+import { PasskeyService } from "../services/passkeyService.js";
 import { requireAuth, type AuthedRequest } from "../middleware/requireAuth.js";
 
 function sendError(res: import("express").Response, err: unknown): void {
@@ -11,7 +12,11 @@ function sendError(res: import("express").Response, err: unknown): void {
   res.status(500).json({ error: "internal server error" });
 }
 
-export function createFamilyRouter(service: AuthService, jwtSecret: string): Router {
+export function createFamilyRouter(
+  service: AuthService,
+  passkeyService: PasskeyService | null,
+  jwtSecret: string,
+): Router {
   const router = Router();
   const auth = requireAuth(jwtSecret);
 
@@ -41,6 +46,17 @@ export function createFamilyRouter(service: AuthService, jwtSecret: string): Rou
       sendError(res, err);
     }
   });
+
+  if (passkeyService) {
+    router.post("/invite/create", auth, async (req: AuthedRequest, res) => {
+      try {
+        const invite = await passkeyService.createInviteToken(req.userId!);
+        res.status(201).json(invite);
+      } catch (err) {
+        sendError(res, err);
+      }
+    });
+  }
 
   return router;
 }

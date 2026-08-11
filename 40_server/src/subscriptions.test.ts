@@ -6,6 +6,9 @@ import { test } from "node:test";
 import { createApp } from "./app.js";
 import { MemoryAuthRepository } from "./domain/memoryAuthRepository.js";
 import { MemorySubscriptionRepository } from "./domain/memorySubscriptionRepository.js";
+import { MemoryInviteTokenRepository } from "./domain/memoryInviteTokenRepository.js";
+import { MemoryPasskeyRepository } from "./domain/memoryPasskeyRepository.js";
+import { ChallengeStore } from "./auth/challengeStore.js";
 import { TaskStore } from "./store.js";
 
 function tmpStore(): TaskStore {
@@ -27,6 +30,9 @@ function appWithSubs() {
   return createApp(tmpStore(), {
     authRepo: new MemoryAuthRepository(),
     subscriptionRepo: new MemorySubscriptionRepository(),
+    passkeyRepo: new MemoryPasskeyRepository(),
+    inviteTokenRepo: new MemoryInviteTokenRepository(),
+    challengeStore: new ChallengeStore(),
     jwtSecret: "test-secret",
   });
 }
@@ -140,6 +146,9 @@ test("family member sees shared subscriptions from owner", async () => {
     createApp(tmpStore(), {
       authRepo: repo,
       subscriptionRepo: new MemorySubscriptionRepository(),
+      passkeyRepo: new MemoryPasskeyRepository(),
+      inviteTokenRepo: new MemoryInviteTokenRepository(),
+      challengeStore: new ChallengeStore(),
       jwtSecret: "test-secret",
     }),
   );

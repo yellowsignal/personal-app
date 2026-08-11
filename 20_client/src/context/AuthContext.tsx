@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { authApi, type AuthResponse, type FamilySummary, type PublicUser } from "../api/auth";
+import { passkeyApi } from "../api/passkey";
 import { ApiError } from "../api/http";
 import { useCurrency } from "./CurrencyContext";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -28,6 +29,13 @@ interface AuthContextValue {
     name: string;
     inviteCode?: string;
     familyName?: string;
+  }) => Promise<void>;
+  passkeyLogin: () => Promise<void>;
+  passkeyRegister: (input: {
+    flow: "bootstrap" | "invite";
+    name: string;
+    familyName?: string;
+    inviteToken?: string;
   }) => Promise<void>;
   logout: () => void;
   refresh: () => Promise<void>;
@@ -130,6 +138,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       register: async (input) => {
         const session = await authApi.register({
+          ...input,
+          languagePref: lang,
+          currencyPref: currency,
+        });
+        applySession(session);
+      },
+      passkeyLogin: async () => {
+        const session = await passkeyApi.loginWithPasskey();
+        applySession(session);
+      },
+      passkeyRegister: async (input) => {
+        const session = await passkeyApi.registerWithPasskey({
           ...input,
           languagePref: lang,
           currencyPref: currency,

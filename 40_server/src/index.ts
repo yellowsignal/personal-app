@@ -7,6 +7,13 @@ import { MemoryAuthRepository } from "./domain/memoryAuthRepository.js";
 import { PrismaAuthRepository } from "./domain/prismaAuthRepository.js";
 import { MemorySubscriptionRepository } from "./domain/memorySubscriptionRepository.js";
 import { PrismaSubscriptionRepository } from "./domain/prismaSubscriptionRepository.js";
+import { MemoryPasskeyRepository } from "./domain/memoryPasskeyRepository.js";
+import { MemoryInviteTokenRepository } from "./domain/memoryInviteTokenRepository.js";
+import {
+  PrismaInviteTokenRepository,
+  PrismaPasskeyRepository,
+} from "./domain/prismaPasskeyRepository.js";
+import { ChallengeStore } from "./auth/challengeStore.js";
 import type { AuthRepository } from "./domain/authRepository.js";
 import type { SubscriptionRepository } from "./domain/subscriptionRepository.js";
 
@@ -25,12 +32,24 @@ const authRepo: AuthRepository = useMemoryAuth
 const subscriptionRepo: SubscriptionRepository = useMemoryAuth
   ? new MemorySubscriptionRepository()
   : new PrismaSubscriptionRepository(prisma);
-const app = createApp(store, { authRepo, subscriptionRepo, jwtSecret: JWT_SECRET });
+const passkeyRepo = useMemoryAuth ? new MemoryPasskeyRepository() : new PrismaPasskeyRepository(prisma);
+const inviteTokenRepo = useMemoryAuth
+  ? new MemoryInviteTokenRepository()
+  : new PrismaInviteTokenRepository(prisma);
+const challengeStore = new ChallengeStore();
+const app = createApp(store, {
+  authRepo,
+  subscriptionRepo,
+  passkeyRepo,
+  inviteTokenRepo,
+  challengeStore,
+  jwtSecret: JWT_SECRET,
+});
 
 app.listen(PORT, () => {
   console.log(`[server] personal-app API listening on http://localhost:${PORT}`);
   console.log(`[server] persisting tasks to ${DATA_FILE}`);
   console.log(
-    `[server] auth/family/subscriptions routes enabled (JWT, store=${useMemoryAuth ? "memory" : "prisma"})`,
+    `[server] auth/family/subscriptions/passkey routes enabled (JWT, store=${useMemoryAuth ? "memory" : "prisma"})`,
   );
 });

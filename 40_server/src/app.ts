@@ -3,15 +3,22 @@ import express, { type Express } from "express";
 import { TaskStore } from "./store.js";
 import type { AuthRepository } from "./domain/authRepository.js";
 import type { SubscriptionRepository } from "./domain/subscriptionRepository.js";
+import type { InviteTokenRepository, PasskeyRepository } from "./domain/passkeyTypes.js";
 import { AuthService } from "./services/authService.js";
 import { SubscriptionService } from "./services/subscriptionService.js";
+import { PasskeyService } from "./services/passkeyService.js";
+import { ChallengeStore } from "./auth/challengeStore.js";
 import { createAuthRouter } from "./routes/authRoutes.js";
 import { createFamilyRouter } from "./routes/familyRoutes.js";
 import { createSubscriptionRouter } from "./routes/subscriptionRoutes.js";
+import { createPasskeyRouter } from "./routes/passkeyRoutes.js";
 
 export interface AppDeps {
   authRepo?: AuthRepository;
   subscriptionRepo?: SubscriptionRepository;
+  passkeyRepo?: PasskeyRepository;
+  inviteTokenRepo?: InviteTokenRepository;
+  challengeStore?: ChallengeStore;
   jwtSecret?: string;
 }
 
@@ -59,11 +66,27 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
     const jwtSecret = deps.jwtSecret ?? process.env.JWT_SECRET ?? "dev-secret-change-me";
     const authService = new AuthService(deps.authRepo, jwtSecret);
     app.use("/api/auth", createAuthRouter(authService, jwtSecret));
-    app.use("/api/family", createFamilyRouter(authService, jwtSecret));
+
+    const passkeyService =
+      deps.passkeyRepo && deps.inviteTokenRepo && deps.challengeStore
+        ? new PasskeyService(
+            deps.authRepo,
+            deps.passkeyRepo,
+            deps.inviteTokenRepo,
+            deps.challengeStore,
+            jwtSecret,
+          )
+        : null;
+
+    app.use("/api/family", createFamilyRouter(authService, passkeyService, jwtSecret));
 
     if (deps.subscriptionRepo) {
       const subscriptionService = new SubscriptionService(deps.authRepo, deps.subscriptionRepo);
       app.use("/api/subscriptions", createSubscriptionRouter(subscriptionService, jwtSecret));
+    }
+
+    if (passkeyService) {
+      app.use("/api/auth/passkey", createPasskeyRouter(passkeyService, jwtSecret));
     }
   }
 

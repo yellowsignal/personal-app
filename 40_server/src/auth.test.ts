@@ -5,6 +5,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { createApp } from "./app.js";
 import { MemoryAuthRepository } from "./domain/memoryAuthRepository.js";
+import { MemoryInviteTokenRepository } from "./domain/memoryInviteTokenRepository.js";
+import { MemoryPasskeyRepository } from "./domain/memoryPasskeyRepository.js";
+import { ChallengeStore } from "./auth/challengeStore.js";
 import { TaskStore } from "./store.js";
 
 function tmpStore(): TaskStore {
@@ -25,6 +28,9 @@ async function listen(app: ReturnType<typeof createApp>) {
 function authApp() {
   return createApp(tmpStore(), {
     authRepo: new MemoryAuthRepository(),
+    passkeyRepo: new MemoryPasskeyRepository(),
+    inviteTokenRepo: new MemoryInviteTokenRepository(),
+    challengeStore: new ChallengeStore(),
     jwtSecret: "test-secret",
   });
 }
@@ -166,10 +172,11 @@ test("duplicate email is rejected", async () => {
       body: JSON.stringify(payload),
     });
     assert.equal(first.status, 201);
+    const owner = (await first.json()) as { family: { inviteCode: string } };
     const second = await fetch(`${base}/api/auth/register`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, inviteCode: owner.family.inviteCode }),
     });
     assert.equal(second.status, 409);
   } finally {

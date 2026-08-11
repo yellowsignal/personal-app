@@ -22,6 +22,7 @@ model Family {
   createdAt  DateTime @default(now()) @map("created_at")
 
   users            User[]
+  inviteTokens     InviteToken[]
   assets           Asset[]
   documents        Document[]
   subscriptions    Subscription[]
@@ -35,7 +36,7 @@ model Family {
 model User {
   id           Int      @id @default(autoincrement())
   email        String   @unique @db.VarChar(255)
-  passwordHash String   @map("password_hash") @db.VarChar(255)
+  passwordHash String?  @map("password_hash") @db.VarChar(255)
   name         String   @db.VarChar(100)
   familyId     Int?     @map("family_id")
   role         UserRole @default(MEMBER)
@@ -46,6 +47,9 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
 
   family           Family?         @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  passkeys         PasskeyCredential[]
+  inviteTokensCreated InviteToken[] @relation("InviteTokenCreatedBy")
+  inviteTokensUsed    InviteToken[] @relation("InviteTokenUsedBy")
   assets           Asset[]
   documents        Document[]
   subscriptions    Subscription[]
@@ -193,4 +197,39 @@ model CalendarEvent {
   @@index([category])
   @@index([sourceDocumentId])
   @@map("calendar_events")
+}
+
+model PasskeyCredential {
+  id         String   @id @db.VarChar(512)
+  userId     Int      @map("user_id")
+  publicKey  Bytes    @map("public_key")
+  counter    BigInt   @default(0)
+  deviceType String?  @map("device_type") @db.VarChar(32)
+  backedUp   Boolean  @default(false) @map("backed_up")
+  transports String?  @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("passkey_credentials")
+}
+
+model InviteToken {
+  id              Int       @id @default(autoincrement())
+  familyId        Int       @map("family_id")
+  tokenHash       String    @unique @map("token_hash") @db.VarChar(64)
+  expiresAt       DateTime  @map("expires_at")
+  usedAt          DateTime? @map("used_at")
+  usedByUserId    Int?      @map("used_by_user_id")
+  createdByUserId Int       @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  family    Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("InviteTokenCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  usedBy    User?  @relation("InviteTokenUsedBy", fields: [usedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("invite_tokens")
 }
