@@ -11,6 +11,8 @@ export interface SubscriptionRecord {
   billingInterval: BillingInterval;
   billingMonth: number | null;
   billingDate: number;
+  loginId: string | null;
+  loginPasswordCipher: string | null;
   cancelUrl: string | null;
   reason: string | null;
   isShared: boolean;
@@ -27,6 +29,8 @@ export interface PublicSubscription {
   billingInterval: BillingInterval;
   billingMonth: number | null;
   billingDate: number;
+  loginId: string | null;
+  hasPassword: boolean;
   cancelUrl: string | null;
   reason: string | null;
   isShared: boolean;
@@ -48,6 +52,8 @@ export function toPublicSubscription(
     billingInterval: record.billingInterval,
     billingMonth: record.billingMonth,
     billingDate: record.billingDate,
+    loginId: record.loginId,
+    hasPassword: Boolean(record.loginPasswordCipher),
     cancelUrl: record.cancelUrl,
     reason: record.reason,
     isShared: record.isShared,

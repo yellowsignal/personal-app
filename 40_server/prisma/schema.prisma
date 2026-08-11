@@ -126,6 +126,10 @@ model Subscription {
   billingMonth Int?   @map("billing_month")
   /// Day of month (1–31)
   billingDate Int     @map("billing_date")
+  /// Shared service login (e.g. Netflix email). Visible to viewers of this subscription.
+  loginId     String? @map("login_id") @db.VarChar(255)
+  /// AES-256-GCM ciphertext (base64url). Never returned from list/CRUD APIs.
+  loginPasswordCipher String? @map("login_password_cipher") @db.Text
   cancelUrl   String? @map("cancel_url") @db.Text
   reason      String? @db.Text
   isShared    Boolean @default(false) @map("is_shared")

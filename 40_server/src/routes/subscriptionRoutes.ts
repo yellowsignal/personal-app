@@ -63,5 +63,33 @@ export function createSubscriptionRouter(service: SubscriptionService, jwtSecret
     }
   });
 
+  router.post("/:id/credentials/reveal/options", auth, async (req: AuthedRequest, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        res.status(400).json({ error: "invalid id" });
+        return;
+      }
+      const options = await service.revealCredentialOptions(req.userId!, id);
+      res.json(options);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  router.post("/:id/credentials/reveal/verify", auth, async (req: AuthedRequest, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        res.status(400).json({ error: "invalid id" });
+        return;
+      }
+      const revealed = await service.revealCredentials(req.userId!, id, req.body ?? {});
+      res.json(revealed);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
   return router;
 }

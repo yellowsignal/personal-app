@@ -9,6 +9,8 @@ export interface CreateSubscriptionInput {
   billingInterval: BillingInterval;
   billingMonth: number | null;
   billingDate: number;
+  loginId: string | null;
+  loginPasswordCipher: string | null;
   cancelUrl: string | null;
   reason: string | null;
   isShared: boolean;
@@ -21,6 +23,8 @@ export interface UpdateSubscriptionInput {
   billingInterval?: BillingInterval;
   billingMonth?: number | null;
   billingDate?: number;
+  loginId?: string | null;
+  loginPasswordCipher?: string | null;
   cancelUrl?: string | null;
   reason?: string | null;
   isShared?: boolean;

@@ -1,12 +1,15 @@
+import { decryptSecret, encryptSecret } from "../auth/secretCrypto.js";
 import type { AuthRepository } from "../domain/authRepository.js";
 import type { SubscriptionRepository } from "../domain/subscriptionRepository.js";
 import {
   toPublicSubscription,
   type BillingInterval,
   type PublicSubscription,
+  type SubscriptionRecord,
   type ViewScope,
 } from "../domain/subscriptionTypes.js";
 import { HttpError } from "./authService.js";
+import type { PasskeyService } from "./passkeyService.js";
 
 const CURRENCIES = new Set(["KRW", "JPY", "USD"]);
 
@@ -87,10 +90,33 @@ function parseCurrency(value: unknown): string {
   return value;
 }
 
+function parseLoginId(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") throw new HttpError(400, "loginId must be a string");
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, 255) : null;
+}
+
+/** Create: omit/null → no password. Update: omit → keep; ""/null → clear; string → set. */
+function parseLoginPasswordCipher(
+  body: Record<string, unknown>,
+  mode: "create" | "update",
+): string | null | undefined {
+  if (!("loginPassword" in body)) {
+    return mode === "create" ? null : undefined;
+  }
+  const value = body.loginPassword;
+  if (value === null || value === "") return null;
+  if (typeof value !== "string") throw new HttpError(400, "loginPassword must be a string");
+  if (value.length > 512) throw new HttpError(400, "loginPassword is too long");
+  return encryptSecret(value);
+}
+
 export class SubscriptionService {
   constructor(
     private readonly authRepo: AuthRepository,
     private readonly subscriptionRepo: SubscriptionRepository,
+    private readonly passkeyService: PasskeyService | null = null,
   ) {}
 
   private async requireUser(userId: number) {
@@ -125,6 +151,14 @@ export class SubscriptionService {
     return out;
   }
 
+  /** Viewer can see this subscription (owner or shared family member). */
+  private canView(record: SubscriptionRecord, userId: number, familyId: number | null): boolean {
+    if (record.userId === userId) return true;
+    return Boolean(
+      record.isShared && familyId !== null && record.familyId !== null && record.familyId === familyId,
+    );
+  }
+
   async list(userId: number, scopeRaw: unknown): Promise<PublicSubscription[]> {
     const user = await this.requireUser(userId);
     const scope = parseScope(scopeRaw);
@@ -143,6 +177,8 @@ export class SubscriptionService {
       throw new HttpError(400, "join a family before sharing subscriptions", "NO_FAMILY");
     }
     const billing = parseBillingFields(body, true)!;
+    const loginId = "loginId" in body ? parseLoginId(body.loginId) : null;
+    const loginPasswordCipher = parseLoginPasswordCipher(body, "create") ?? null;
     const record = await this.subscriptionRepo.create({
       userId: user.id,
       familyId: user.familyId,
@@ -152,6 +188,8 @@ export class SubscriptionService {
       billingInterval: billing.billingInterval,
       billingMonth: billing.billingMonth,
       billingDate: billing.billingDate,
+      loginId,
+      loginPasswordCipher,
       cancelUrl: typeof body.cancelUrl === "string" && body.cancelUrl.trim() ? body.cancelUrl.trim() : null,
       reason: typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : null,
       isShared,
@@ -171,6 +209,7 @@ export class SubscriptionService {
       throw new HttpError(400, "join a family before sharing subscriptions", "NO_FAMILY");
     }
     const billing = parseBillingFields(body, false);
+    const loginPasswordCipher = parseLoginPasswordCipher(body, "update");
     const updated = await this.subscriptionRepo.update(id, {
       serviceName:
         typeof body.serviceName === "string" && body.serviceName.trim()
@@ -181,6 +220,8 @@ export class SubscriptionService {
       billingInterval: billing?.billingInterval,
       billingMonth: billing ? billing.billingMonth : undefined,
       billingDate: billing?.billingDate,
+      loginId: "loginId" in body ? parseLoginId(body.loginId) : undefined,
+      loginPasswordCipher,
       cancelUrl:
         body.cancelUrl === undefined
           ? undefined
@@ -206,5 +247,52 @@ export class SubscriptionService {
       throw new HttpError(403, "only the owner can delete this subscription", "FORBIDDEN");
     }
     await this.subscriptionRepo.remove(id);
+  }
+
+  async revealCredentialOptions(userId: number, id: number) {
+    if (!this.passkeyService) {
+      throw new HttpError(503, "passkey not configured", "PASSKEY_UNAVAILABLE");
+    }
+    const user = await this.requireUser(userId);
+    const existing = await this.subscriptionRepo.findById(id);
+    if (!existing) throw new HttpError(404, "subscription not found", "NOT_FOUND");
+    if (!this.canView(existing, user.id, user.familyId)) {
+      throw new HttpError(403, "forbidden", "FORBIDDEN");
+    }
+    if (!existing.loginPasswordCipher && !existing.loginId) {
+      throw new HttpError(404, "no credentials stored", "NO_CREDENTIALS");
+    }
+    return this.passkeyService.credentialRevealOptions(user.id, id);
+  }
+
+  async revealCredentials(
+    userId: number,
+    id: number,
+    body: Record<string, unknown>,
+  ): Promise<{ loginId: string | null; password: string | null }> {
+    if (!this.passkeyService) {
+      throw new HttpError(503, "passkey not configured", "PASSKEY_UNAVAILABLE");
+    }
+    const user = await this.requireUser(userId);
+    const existing = await this.subscriptionRepo.findById(id);
+    if (!existing) throw new HttpError(404, "subscription not found", "NOT_FOUND");
+    if (!this.canView(existing, user.id, user.familyId)) {
+      throw new HttpError(403, "forbidden", "FORBIDDEN");
+    }
+    if (!existing.loginPasswordCipher && !existing.loginId) {
+      throw new HttpError(404, "no credentials stored", "NO_CREDENTIALS");
+    }
+
+    await this.passkeyService.credentialRevealVerify(user.id, id, body);
+
+    let password: string | null = null;
+    if (existing.loginPasswordCipher) {
+      try {
+        password = decryptSecret(existing.loginPasswordCipher);
+      } catch {
+        throw new HttpError(500, "failed to decrypt password", "DECRYPT_FAILED");
+      }
+    }
+    return { loginId: existing.loginId, password };
   }
 }

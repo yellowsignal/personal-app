@@ -276,7 +276,7 @@ export class PasskeyService {
       rpID,
       userVerification: "required",
     });
-    this.challenges.putAuthentication(options.challenge);
+    this.challenges.putAuthentication(options.challenge, { purpose: "login" });
     return options;
   }
 
@@ -284,7 +284,8 @@ export class PasskeyService {
     const response = body.response as AuthenticationResponseJSON | undefined;
     const challenge = typeof body.challenge === "string" ? body.challenge : null;
     if (!response || !challenge) throw new HttpError(400, "response and challenge are required");
-    if (!this.challenges.takeAuthentication(challenge)) {
+    const pending = this.challenges.takeAuthentication(challenge);
+    if (!pending || pending.purpose !== "login") {
       throw new HttpError(400, "login session expired", "CHALLENGE_EXPIRED");
     }
 
@@ -318,5 +319,106 @@ export class PasskeyService {
 
     const family = user.familyId ? await this.familySummary(user.familyId) : null;
     return this.session(toPublicUser(user), family);
+  }
+
+  async credentialRevealOptions(userId: number, subscriptionId: number) {
+    if (process.env.PASSKEY_REVEAL_TEST_BYPASS === "1") {
+      const challenge = randomBytes(32).toString("base64url");
+      this.challenges.putAuthentication(challenge, {
+        purpose: "reveal-credentials",
+        userId,
+        subscriptionId,
+      });
+      const { rpID } = this.webauthn();
+      return {
+        challenge,
+        timeout: 60_000,
+        rpId: rpID,
+        allowCredentials: [],
+        userVerification: "required" as const,
+      };
+    }
+
+    const creds = await this.passkeyRepo.listByUserId(userId);
+    if (creds.length === 0) {
+      throw new HttpError(400, "link a passkey (Face ID) before viewing passwords", "PASSKEY_REQUIRED");
+    }
+    const { rpID } = this.webauthn();
+    const options = await generateAuthenticationOptions({
+      rpID,
+      userVerification: "required",
+      allowCredentials: creds.map((c) => ({
+        id: c.id,
+        transports: (c.transports ?? undefined) as AuthenticatorTransportFuture[] | undefined,
+      })),
+    });
+    this.challenges.putAuthentication(options.challenge, {
+      purpose: "reveal-credentials",
+      userId,
+      subscriptionId,
+    });
+    return options;
+  }
+
+  /** Verifies Passkey step-up for credential reveal. Does not mint a new session JWT. */
+  async credentialRevealVerify(
+    userId: number,
+    subscriptionId: number,
+    body: Record<string, unknown>,
+  ): Promise<void> {
+    const challenge = typeof body.challenge === "string" ? body.challenge : null;
+    if (!challenge) throw new HttpError(400, "response and challenge are required");
+
+    if (process.env.PASSKEY_REVEAL_TEST_BYPASS === "1" && body.bypass === true) {
+      const pending = this.challenges.takeAuthentication(challenge);
+      if (
+        !pending ||
+        pending.purpose !== "reveal-credentials" ||
+        pending.userId !== userId ||
+        pending.subscriptionId !== subscriptionId
+      ) {
+        throw new HttpError(400, "reveal session expired", "CHALLENGE_EXPIRED");
+      }
+      return;
+    }
+
+    const response = body.response as AuthenticationResponseJSON | undefined;
+    if (!response) throw new HttpError(400, "response and challenge are required");
+
+    const pending = this.challenges.takeAuthentication(challenge);
+    if (
+      !pending ||
+      pending.purpose !== "reveal-credentials" ||
+      pending.userId !== userId ||
+      pending.subscriptionId !== subscriptionId
+    ) {
+      throw new HttpError(400, "reveal session expired", "CHALLENGE_EXPIRED");
+    }
+
+    const stored = await this.passkeyRepo.findByCredentialId(response.id);
+    if (!stored || stored.userId !== userId) {
+      throw new HttpError(401, "passkey not registered", "PASSKEY_NOT_FOUND");
+    }
+
+    const { rpID, origin } = this.webauthn();
+    const verification = await verifyAuthenticationResponse({
+      response,
+      expectedChallenge: challenge,
+      expectedOrigin: origin,
+      expectedRPID: rpID,
+      credential: {
+        id: stored.id,
+        publicKey: stored.publicKey as Uint8Array<ArrayBuffer>,
+        counter: stored.counter,
+        transports: (stored.transports ?? undefined) as AuthenticatorTransportFuture[] | undefined,
+      },
+      requireUserVerification: true,
+    });
+
+    if (!verification.verified) {
+      throw new HttpError(401, "passkey verification failed", "PASSKEY_INVALID");
+    }
+
+    await this.passkeyRepo.updateCounter(stored.id, verification.authenticationInfo.newCounter);
   }
 }

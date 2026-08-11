@@ -16,8 +16,13 @@ export interface PendingRegistration {
   expiresAt: number;
 }
 
+export type AuthenticationPurpose = "login" | "reveal-credentials";
+
 export interface PendingAuthentication {
   expiresAt: number;
+  purpose: AuthenticationPurpose;
+  userId?: number;
+  subscriptionId?: number;
 }
 
 export class ChallengeStore {
@@ -35,13 +40,17 @@ export class ChallengeStore {
     return item;
   }
 
-  putAuthentication(challenge: string): void {
-    this.authentications.set(challenge, { expiresAt: Date.now() + TTL_MS });
+  putAuthentication(
+    challenge: string,
+    data: Omit<PendingAuthentication, "expiresAt"> = { purpose: "login" },
+  ): void {
+    this.authentications.set(challenge, { ...data, expiresAt: Date.now() + TTL_MS });
   }
 
-  takeAuthentication(challenge: string): boolean {
+  takeAuthentication(challenge: string): PendingAuthentication | null {
     const item = this.authentications.get(challenge);
     this.authentications.delete(challenge);
-    return Boolean(item && item.expiresAt >= Date.now());
+    if (!item || item.expiresAt < Date.now()) return null;
+    return item;
   }
 }

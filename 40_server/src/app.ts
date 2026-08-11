@@ -81,7 +81,11 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
     app.use("/api/family", createFamilyRouter(authService, passkeyService, jwtSecret));
 
     if (deps.subscriptionRepo) {
-      const subscriptionService = new SubscriptionService(deps.authRepo, deps.subscriptionRepo);
+      const subscriptionService = new SubscriptionService(
+        deps.authRepo,
+        deps.subscriptionRepo,
+        passkeyService,
+      );
       app.use("/api/subscriptions", createSubscriptionRouter(subscriptionService, jwtSecret));
     }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ExternalLink, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Copy, Eye, EyeOff, ExternalLink, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
@@ -16,6 +16,7 @@ import {
 } from "../api/subscriptions";
 import { ApiError } from "../api/http";
 import { formatMoney } from "../utils/formatMoney";
+import { isPasskeySupported } from "../api/passkey";
 
 const CURRENCY_SYMBOL = { KRW: "₩", JPY: "¥", USD: "$" };
 const COLOR_PALETTE = ["#E50914", "#5B5BF6", "#34C759", "#8E8E93", "#FF6B81", "#FFB199"];
@@ -48,6 +49,8 @@ function emptyForm(currency: SubscriptionCurrency): CreateSubscriptionInput {
     currency,
     billingInterval: "MONTHLY",
     billingAnchorDate: todayIsoDate(),
+    loginId: "",
+    loginPassword: "",
     reason: "",
     cancelUrl: "",
     isShared: false,
@@ -61,6 +64,8 @@ function toForm(item: PublicSubscription): CreateSubscriptionInput {
     currency: item.currency,
     billingInterval: item.billingInterval ?? "MONTHLY",
     billingAnchorDate: anchorFromSubscription(item),
+    loginId: item.loginId ?? "",
+    loginPassword: "",
     reason: item.reason ?? "",
     cancelUrl: item.cancelUrl ?? "",
     isShared: item.isShared,
@@ -81,6 +86,9 @@ export default function SubscriptionsPage() {
   const [form, setForm] = useState<CreateSubscriptionInput>(() => emptyForm(currency));
   const [submitting, setSubmitting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<PublicSubscription | null>(null);
+  const [revealed, setRevealed] = useState<Record<number, string>>({});
+  const [revealBusyId, setRevealBusyId] = useState<number | null>(null);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -146,12 +154,20 @@ export default function SubscriptionsPage() {
     if (!token || !form.serviceName.trim()) return;
     setSubmitting(true);
     setError(null);
-    const payload = {
+    const payload: CreateSubscriptionInput = {
       ...form,
       serviceName: form.serviceName.trim(),
       reason: form.reason?.trim() || undefined,
       cancelUrl: form.cancelUrl?.trim() || undefined,
+      loginId: form.loginId?.trim() || undefined,
     };
+    if (editing) {
+      if (!form.loginPassword) {
+        delete payload.loginPassword;
+      }
+    } else if (!form.loginPassword) {
+      delete payload.loginPassword;
+    }
     try {
       if (editing) {
         await subscriptionsApi.update(token, editing.id, payload);
@@ -164,6 +180,47 @@ export default function SubscriptionsPage() {
       setError(err instanceof ApiError ? err.message : t("subscriptions.saveError"));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleReveal(item: PublicSubscription) {
+    if (!token) return;
+    if (revealed[item.id] !== undefined) {
+      setRevealed((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      return;
+    }
+    if (!isPasskeySupported()) {
+      setError(t("subscriptions.passkeyRequired"));
+      return;
+    }
+    setRevealBusyId(item.id);
+    setError(null);
+    try {
+      const result = await subscriptionsApi.revealCredentials(token, item.id);
+      setRevealed((prev) => ({ ...prev, [item.id]: result.password ?? "" }));
+    } catch (err) {
+      const code = err instanceof ApiError ? err.code : null;
+      if (code === "PASSKEY_REQUIRED") {
+        setError(t("subscriptions.passkeyRequired"));
+      } else {
+        setError(err instanceof ApiError ? err.message : t("subscriptions.revealError"));
+      }
+    } finally {
+      setRevealBusyId(null);
+    }
+  }
+
+  async function handleCopyPassword(id: number, password: string) {
+    try {
+      await navigator.clipboard.writeText(password);
+      setCopiedId(id);
+      window.setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1500);
+    } catch {
+      /* ignore */
     }
   }
 
@@ -323,6 +380,51 @@ export default function SubscriptionsPage() {
                       </a>
                     )}
                   </div>
+
+                  {(s.loginId || s.hasPassword) && (
+                    <div className="mt-3 rounded-xl bg-neutral-50 px-3 py-2.5">
+                      <p className="text-[11px] font-semibold text-neutral-500">
+                        {t("subscriptions.credentialsSection")}
+                      </p>
+                      {s.loginId && (
+                        <p className="mt-1 break-all text-sm text-neutral-800">{s.loginId}</p>
+                      )}
+                      {s.hasPassword && (
+                        <div className="mt-1.5 flex items-center gap-2">
+                          <p className="min-w-0 flex-1 break-all font-mono text-sm text-neutral-800">
+                            {revealed[s.id] !== undefined
+                              ? revealed[s.id] || "—"
+                              : t("subscriptions.passwordHidden")}
+                          </p>
+                          <button
+                            type="button"
+                            disabled={revealBusyId === s.id}
+                            onClick={() => void handleReveal(s)}
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-white disabled:opacity-50"
+                            aria-label={
+                              revealed[s.id] !== undefined
+                                ? t("subscriptions.hidePassword")
+                                : t("subscriptions.revealPassword")
+                            }
+                          >
+                            {revealed[s.id] !== undefined ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                          {revealed[s.id] !== undefined && revealed[s.id] && (
+                            <button
+                              type="button"
+                              onClick={() => void handleCopyPassword(s.id, revealed[s.id]!)}
+                              className="flex h-8 items-center gap-1 rounded-full px-2 text-[11px] font-semibold text-neutral-500 hover:bg-white"
+                            >
+                              <Copy size={14} />
+                              {copiedId === s.id
+                                ? t("subscriptions.copied")
+                                : t("subscriptions.copyPassword")}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -453,6 +555,34 @@ export default function SubscriptionsPage() {
                 className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
               />
             </label>
+
+            <div className="mt-4 rounded-xl border border-dashed border-neutral-200 p-3">
+              <p className="text-xs font-semibold text-neutral-700">
+                {t("subscriptions.credentialsSection")}
+              </p>
+              <p className="mt-1 text-[11px] text-neutral-400">{t("subscriptions.credentialsHint")}</p>
+              <label className="mt-3 block text-xs font-semibold text-neutral-500">
+                {t("subscriptions.fieldLoginId")}
+                <input
+                  autoComplete="off"
+                  value={form.loginId ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, loginId: e.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
+                />
+              </label>
+              <label className="mt-3 block text-xs font-semibold text-neutral-500">
+                {editing
+                  ? t("subscriptions.fieldLoginPasswordEdit")
+                  : t("subscriptions.fieldLoginPassword")}
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={form.loginPassword ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, loginPassword: e.target.value }))}
+                  className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
+                />
+              </label>
+            </div>
 
             {family && (
               <label className="mt-4 flex items-center gap-2 text-sm text-neutral-700">

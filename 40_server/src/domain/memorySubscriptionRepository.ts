@@ -41,6 +41,8 @@ export class MemorySubscriptionRepository implements SubscriptionRepository {
       billingInterval: input.billingInterval,
       billingMonth: input.billingMonth,
       billingDate: input.billingDate,
+      loginId: input.loginId,
+      loginPasswordCipher: input.loginPasswordCipher,
       cancelUrl: input.cancelUrl,
       reason: input.reason,
       isShared: input.isShared,
@@ -59,6 +61,11 @@ export class MemorySubscriptionRepository implements SubscriptionRepository {
       cancelUrl: input.cancelUrl === undefined ? existing.cancelUrl : input.cancelUrl,
       reason: input.reason === undefined ? existing.reason : input.reason,
       billingMonth: input.billingMonth === undefined ? existing.billingMonth : input.billingMonth,
+      loginId: input.loginId === undefined ? existing.loginId : input.loginId,
+      loginPasswordCipher:
+        input.loginPasswordCipher === undefined
+          ? existing.loginPasswordCipher
+          : input.loginPasswordCipher,
     };
     this.items.set(id, updated);
     return { ...updated };

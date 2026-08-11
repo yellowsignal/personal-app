@@ -308,3 +308,163 @@ test("subscription routes require auth", async () => {
     server.close();
   }
 });
+
+test("subscription credentials encrypt password and reveal via passkey step-up", async () => {
+  process.env.PASSKEY_REVEAL_TEST_BYPASS = "1";
+  process.env.JWT_SECRET = "test-secret";
+  const { server, base } = await listen(appWithSubs());
+  try {
+    const owner = await registerOwner(base);
+    const ownerFamily = (await fetch(`${base}/api/family`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    }).then((r) => r.json())) as { inviteCode: string };
+
+    const created = await fetch(`${base}/api/subscriptions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        serviceName: "Netflix",
+        cost: 17000,
+        currency: "KRW",
+        billingInterval: "MONTHLY",
+        billingAnchorDate: "2026-01-05",
+        loginId: "family@netflix.example",
+        loginPassword: "secret-netflix-pw",
+        isShared: true,
+      }),
+    });
+    assert.equal(created.status, 201);
+    const body = (await created.json()) as {
+      id: number;
+      loginId: string | null;
+      hasPassword: boolean;
+      loginPassword?: string;
+      loginPasswordCipher?: string;
+    };
+    assert.equal(body.loginId, "family@netflix.example");
+    assert.equal(body.hasPassword, true);
+    assert.equal(body.loginPassword, undefined);
+    assert.equal(body.loginPasswordCipher, undefined);
+
+    const memberReg = await fetch(`${base}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "member-cred@example.com",
+        password: "password123",
+        name: "MemberCred",
+        inviteCode: ownerFamily.inviteCode,
+      }),
+    });
+    const member = (await memberReg.json()) as { token: string };
+
+    const list = await fetch(`${base}/api/subscriptions`, {
+      headers: { authorization: `Bearer ${member.token}` },
+    });
+    const items = (await list.json()) as Array<{
+      id: number;
+      loginId: string | null;
+      hasPassword: boolean;
+      loginPassword?: string;
+    }>;
+    assert.equal(items.length, 1);
+    assert.equal(items[0].loginId, "family@netflix.example");
+    assert.equal(items[0].hasPassword, true);
+    assert.equal(items[0].loginPassword, undefined);
+
+    const optionsRes = await fetch(
+      `${base}/api/subscriptions/${body.id}/credentials/reveal/options`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${member.token}`,
+          "content-type": "application/json",
+        },
+        body: "{}",
+      },
+    );
+    assert.equal(optionsRes.status, 200);
+    const options = (await optionsRes.json()) as { challenge: string };
+
+    const verifyRes = await fetch(
+      `${base}/api/subscriptions/${body.id}/credentials/reveal/verify`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${member.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ challenge: options.challenge, bypass: true }),
+      },
+    );
+    assert.equal(verifyRes.status, 200);
+    const revealed = (await verifyRes.json()) as { loginId: string | null; password: string | null };
+    assert.equal(revealed.loginId, "family@netflix.example");
+    assert.equal(revealed.password, "secret-netflix-pw");
+  } finally {
+    delete process.env.PASSKEY_REVEAL_TEST_BYPASS;
+    server.close();
+  }
+});
+
+test("family member cannot reveal credentials on private (unshared) subscription", async () => {
+  process.env.PASSKEY_REVEAL_TEST_BYPASS = "1";
+  process.env.JWT_SECRET = "test-secret";
+  const { server, base } = await listen(appWithSubs());
+  try {
+    const owner = await registerOwner(base);
+    const fam = (await fetch(`${base}/api/family`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    }).then((r) => r.json())) as { inviteCode: string };
+
+    const created = await fetch(`${base}/api/subscriptions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        serviceName: "Private VPN",
+        cost: 1000,
+        currency: "KRW",
+        billingInterval: "MONTHLY",
+        billingAnchorDate: "2026-01-01",
+        loginId: "me@vpn",
+        loginPassword: "private",
+        isShared: false,
+      }),
+    });
+    const sub = (await created.json()) as { id: number };
+
+    const memberReg = await fetch(`${base}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "member-private@example.com",
+        password: "password123",
+        name: "MemberPrivate",
+        inviteCode: fam.inviteCode,
+      }),
+    });
+    const member = (await memberReg.json()) as { token: string };
+
+    const optionsRes = await fetch(
+      `${base}/api/subscriptions/${sub.id}/credentials/reveal/options`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${member.token}`,
+          "content-type": "application/json",
+        },
+        body: "{}",
+      },
+    );
+    assert.equal(optionsRes.status, 403);
+  } finally {
+    delete process.env.PASSKEY_REVEAL_TEST_BYPASS;
+    server.close();
+  }
+});
