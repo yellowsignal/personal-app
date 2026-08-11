@@ -5,8 +5,8 @@ coverage/
 *.tsbuildinfo
 
 # Local data
-data/*.json
-!data/.gitkeep
+30_data/*.json
+!30_data/.gitkeep
 
 # Logs
 *.log

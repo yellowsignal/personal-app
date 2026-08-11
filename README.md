@@ -1,10 +1,12 @@
-# personal-app
+# personal-app (MyFamily Hub)
 
-A small full-stack starter app used to bootstrap the project and its Cloud Agent
-development environment.
+PWA 기반 개인·가족 통합 관리 앱을 위한 monorepo입니다.
+현재는 프론트 목업 UI와 Express 스타터 API가 함께 있습니다.
 
-- **client/** — React 18 + Vite + TypeScript single-page app (task list UI).
-- **server/** — Express + TypeScript REST API with a dependency-free JSON store.
+- **20_client/** — React 18 + Vite + TypeScript + Tailwind (목업 UI, ko/ja i18n)
+- **40_server/** — Express + TypeScript REST API (스타터 태스크 API + OCI infra 초안)
+- **30_data/** — 로컬 JSON 영속 데이터
+- **10_docs/** — 기획서·프롬프트·로드맵
 
 The two packages are wired together with npm workspaces. The Vite dev server
 proxies `/api` requests to the API, so the frontend and backend run as one app
@@ -22,8 +24,8 @@ npm install      # install all workspace dependencies
 npm run dev      # start the API (:3001) and the web app (:5173) together
 ```
 
-Then open http://localhost:5173 and add a task. It is persisted through the API
-to `data/tasks.json`.
+Then open http://localhost:5173. The mockup UI is available immediately; the
+starter task API persists to `30_data/tasks.json`.
 
 ## Useful commands
 

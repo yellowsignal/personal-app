@@ -2,19 +2,19 @@
   "name": "personal-app",
   "private": true,
   "version": "0.1.0",
-  "description": "A personal full-stack starter app (React + Vite client, Express + TypeScript API).",
+  "description": "MyFamily Hub — React + Vite client, Express + TypeScript API.",
   "workspaces": [
-    "server",
-    "client"
+    "20_client",
+    "40_server"
   ],
   "scripts": {
     "dev": "npm-run-all --parallel dev:server dev:client",
-    "dev:server": "npm run dev --workspace server",
-    "dev:client": "npm run dev --workspace client",
-    "build": "npm run build --workspace server && npm run build --workspace client",
-    "lint": "npm run lint --workspace server && npm run lint --workspace client",
-    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace client",
-    "test": "npm run test --workspace server"
+    "dev:server": "npm run dev --workspace @personal-app/server",
+    "dev:client": "npm run dev --workspace @personal-app/client",
+    "build": "npm run build --workspace @personal-app/server && npm run build --workspace @personal-app/client",
+    "lint": "npm run lint --workspace @personal-app/server && npm run lint --workspace @personal-app/client",
+    "typecheck": "npm run typecheck --workspace @personal-app/server && npm run typecheck --workspace @personal-app/client",
+    "test": "npm run test --workspace @personal-app/server"
   },
   "engines": {
     "node": ">=20"

@@ -6,7 +6,7 @@ import { TaskStore } from "./store.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const PORT = Number(process.env.PORT ?? 3001);
-const DATA_FILE = process.env.DATA_FILE ?? resolve(__dirname, "../../data/tasks.json");
+const DATA_FILE = process.env.DATA_FILE ?? resolve(__dirname, "../../30_data/tasks.json");
 
 const store = new TaskStore(DATA_FILE);
 const app = createApp(store);
