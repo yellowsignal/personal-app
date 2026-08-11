@@ -4,7 +4,7 @@ import type {
   SubscriptionRepository,
   UpdateSubscriptionInput,
 } from "./subscriptionRepository.js";
-import type { SubscriptionRecord } from "./subscriptionTypes.js";
+import type { BillingInterval, SubscriptionRecord } from "./subscriptionTypes.js";
 
 function map(row: PrismaSubscription): SubscriptionRecord {
   return {
@@ -14,6 +14,8 @@ function map(row: PrismaSubscription): SubscriptionRecord {
     serviceName: row.serviceName,
     cost: Number(row.cost),
     currency: row.currency,
+    billingInterval: row.billingInterval as BillingInterval,
+    billingMonth: row.billingMonth,
     billingDate: row.billingDate,
     cancelUrl: row.cancelUrl,
     reason: row.reason,
@@ -34,13 +36,10 @@ export class PrismaSubscriptionRepository implements SubscriptionRepository {
     const rows = await this.db.subscription.findMany({
       where: familyId
         ? {
-            OR: [
-              { userId },
-              { familyId, isShared: true },
-            ],
+            OR: [{ userId }, { familyId, isShared: true }],
           }
         : { userId },
-      orderBy: { billingDate: "asc" },
+      orderBy: [{ billingMonth: "asc" }, { billingDate: "asc" }],
     });
     return rows.map(map);
   }
@@ -53,6 +52,8 @@ export class PrismaSubscriptionRepository implements SubscriptionRepository {
         serviceName: input.serviceName,
         cost: input.cost,
         currency: input.currency,
+        billingInterval: input.billingInterval,
+        billingMonth: input.billingMonth,
         billingDate: input.billingDate,
         cancelUrl: input.cancelUrl,
         reason: input.reason,
@@ -69,6 +70,8 @@ export class PrismaSubscriptionRepository implements SubscriptionRepository {
         serviceName: input.serviceName,
         cost: input.cost,
         currency: input.currency,
+        billingInterval: input.billingInterval,
+        billingMonth: input.billingMonth,
         billingDate: input.billingDate,
         cancelUrl: input.cancelUrl,
         reason: input.reason,

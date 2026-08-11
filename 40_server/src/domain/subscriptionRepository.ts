@@ -1,4 +1,4 @@
-import type { SubscriptionRecord } from "./subscriptionTypes.js";
+import type { BillingInterval, SubscriptionRecord } from "./subscriptionTypes.js";
 
 export interface CreateSubscriptionInput {
   userId: number;
@@ -6,6 +6,8 @@ export interface CreateSubscriptionInput {
   serviceName: string;
   cost: number;
   currency: string;
+  billingInterval: BillingInterval;
+  billingMonth: number | null;
   billingDate: number;
   cancelUrl: string | null;
   reason: string | null;
@@ -16,6 +18,8 @@ export interface UpdateSubscriptionInput {
   serviceName?: string;
   cost?: number;
   currency?: string;
+  billingInterval?: BillingInterval;
+  billingMonth?: number | null;
   billingDate?: number;
   cancelUrl?: string | null;
   reason?: string | null;

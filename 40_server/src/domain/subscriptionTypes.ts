@@ -1,4 +1,5 @@
 export type ViewScope = "all" | "personal" | "family";
+export type BillingInterval = "MONTHLY" | "YEARLY";
 
 export interface SubscriptionRecord {
   id: number;
@@ -7,6 +8,8 @@ export interface SubscriptionRecord {
   serviceName: string;
   cost: number;
   currency: string;
+  billingInterval: BillingInterval;
+  billingMonth: number | null;
   billingDate: number;
   cancelUrl: string | null;
   reason: string | null;
@@ -21,6 +24,8 @@ export interface PublicSubscription {
   serviceName: string;
   cost: number;
   currency: string;
+  billingInterval: BillingInterval;
+  billingMonth: number | null;
   billingDate: number;
   cancelUrl: string | null;
   reason: string | null;
@@ -40,6 +45,8 @@ export function toPublicSubscription(
     serviceName: record.serviceName,
     cost: record.cost,
     currency: record.currency,
+    billingInterval: record.billingInterval,
+    billingMonth: record.billingMonth,
     billingDate: record.billingDate,
     cancelUrl: record.cancelUrl,
     reason: record.reason,

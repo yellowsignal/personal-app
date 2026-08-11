@@ -22,7 +22,12 @@ export class MemorySubscriptionRepository implements SubscriptionRepository {
           (familyId !== null && s.familyId === familyId && s.isShared),
       )
       .map((s) => ({ ...s }))
-      .sort((a, b) => a.billingDate - b.billingDate);
+      .sort((a, b) => {
+        const am = a.billingMonth ?? 0;
+        const bm = b.billingMonth ?? 0;
+        if (am !== bm) return am - bm;
+        return a.billingDate - b.billingDate;
+      });
   }
 
   async create(input: CreateSubscriptionInput): Promise<SubscriptionRecord> {
@@ -33,6 +38,8 @@ export class MemorySubscriptionRepository implements SubscriptionRepository {
       serviceName: input.serviceName,
       cost: input.cost,
       currency: input.currency,
+      billingInterval: input.billingInterval,
+      billingMonth: input.billingMonth,
       billingDate: input.billingDate,
       cancelUrl: input.cancelUrl,
       reason: input.reason,
@@ -51,6 +58,7 @@ export class MemorySubscriptionRepository implements SubscriptionRepository {
       ...input,
       cancelUrl: input.cancelUrl === undefined ? existing.cancelUrl : input.cancelUrl,
       reason: input.reason === undefined ? existing.reason : input.reason,
+      billingMonth: input.billingMonth === undefined ? existing.billingMonth : input.billingMonth,
     };
     this.items.set(id, updated);
     return { ...updated };

@@ -9,6 +9,7 @@ import { useCurrency } from "../context/CurrencyContext";
 import { useAuth } from "../context/AuthContext";
 import {
   subscriptionsApi,
+  type BillingInterval,
   type CreateSubscriptionInput,
   type PublicSubscription,
   type SubscriptionCurrency,
@@ -25,11 +26,27 @@ function serviceColor(name: string): string {
   return COLOR_PALETTE[Math.abs(hash) % COLOR_PALETTE.length];
 }
 
+function todayIsoDate(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function anchorFromSubscription(item: PublicSubscription): string {
+  const year = new Date().getFullYear();
+  const month = item.billingInterval === "YEARLY" ? (item.billingMonth ?? 1) : new Date().getMonth() + 1;
+  const day = item.billingDate;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 const EMPTY_FORM: CreateSubscriptionInput = {
   serviceName: "",
   cost: 0,
   currency: "KRW",
-  billingDate: 1,
+  billingInterval: "MONTHLY",
+  billingAnchorDate: todayIsoDate(),
   reason: "",
   cancelUrl: "",
   isShared: false,
@@ -40,7 +57,8 @@ function toForm(item: PublicSubscription): CreateSubscriptionInput {
     serviceName: item.serviceName,
     cost: item.cost,
     currency: item.currency,
-    billingDate: item.billingDate,
+    billingInterval: item.billingInterval ?? "MONTHLY",
+    billingAnchorDate: anchorFromSubscription(item),
     reason: item.reason ?? "",
     cancelUrl: item.cancelUrl ?? "",
     isShared: item.isShared,
@@ -92,14 +110,18 @@ export default function SubscriptionsPage() {
   }, [items, scope, user]);
 
   const monthlyTotalBase = useMemo(
-    () => visible.reduce((sum, s) => sum + s.cost * exchangeRates[s.currency], 0),
+    () =>
+      visible.reduce((sum, s) => {
+        const monthlyCost = s.billingInterval === "YEARLY" ? s.cost / 12 : s.cost;
+        return sum + monthlyCost * exchangeRates[s.currency];
+      }, 0),
     [visible],
   );
   const monthlyTotalDisplay = monthlyTotalBase / exchangeRates[currency];
 
   function openCreate() {
     setEditing(null);
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, billingAnchorDate: todayIsoDate() });
     setMenuId(null);
     setShowForm(true);
   }
@@ -274,11 +296,18 @@ export default function SubscriptionsPage() {
                         {CURRENCY_SYMBOL[s.currency]}
                         {formatMoney(s.cost, s.currency)}
                         <span className="ml-1 text-xs font-medium text-neutral-400">
-                          {t("subscriptions.perMonth")}
+                          {s.billingInterval === "YEARLY"
+                            ? t("subscriptions.perYear")
+                            : t("subscriptions.perMonth")}
                         </span>
                       </p>
                       <p className="text-[11px] text-neutral-400">
-                        {t("subscriptions.billingDay", { d: s.billingDate })}
+                        {s.billingInterval === "YEARLY"
+                          ? t("subscriptions.billingYearly", {
+                              m: s.billingMonth ?? 1,
+                              d: s.billingDate,
+                            })
+                          : t("subscriptions.billingMonthly", { d: s.billingDate })}
                       </p>
                     </div>
                     {s.cancelUrl && s.cancelUrl !== "#" && (
@@ -330,7 +359,9 @@ export default function SubscriptionsPage() {
 
             <div className="mt-3 grid grid-cols-2 gap-3">
               <label className="block text-xs font-semibold text-neutral-500">
-                {t("subscriptions.fieldCost")}
+                {form.billingInterval === "YEARLY"
+                  ? t("subscriptions.fieldCostYearly")
+                  : t("subscriptions.fieldCostMonthly")}
                 <input
                   required
                   type="number"
@@ -359,19 +390,47 @@ export default function SubscriptionsPage() {
               </label>
             </div>
 
+            <div className="mt-3">
+              <p className="text-xs font-semibold text-neutral-500">{t("subscriptions.fieldInterval")}</p>
+              <div className="mt-1 grid grid-cols-2 gap-1 rounded-xl bg-neutral-100 p-1">
+                {([
+                  ["MONTHLY", "subscriptions.intervalMonthly"],
+                  ["YEARLY", "subscriptions.intervalYearly"],
+                ] as const).map(([value, key]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() =>
+                      setForm((f) => ({ ...f, billingInterval: value as BillingInterval }))
+                    }
+                    className={`rounded-lg py-2 text-sm font-semibold ${
+                      form.billingInterval === value
+                        ? "bg-white text-indigo-600 shadow-sm"
+                        : "text-neutral-500"
+                    }`}
+                  >
+                    {t(key)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <label className="mt-3 block text-xs font-semibold text-neutral-500">
-              {t("subscriptions.fieldBillingDay")}
+              {form.billingInterval === "YEARLY"
+                ? t("subscriptions.fieldBillingDateYearly")
+                : t("subscriptions.fieldBillingDateMonthly")}
               <input
                 required
-                type="number"
-                min={1}
-                max={31}
-                value={form.billingDate}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, billingDate: Number(e.target.value) || 1 }))
-                }
+                type="date"
+                value={form.billingAnchorDate}
+                onChange={(e) => setForm((f) => ({ ...f, billingAnchorDate: e.target.value }))}
                 className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
               />
+              <span className="mt-1 block text-[11px] font-normal text-neutral-400">
+                {form.billingInterval === "YEARLY"
+                  ? t("subscriptions.billingDateHintYearly")
+                  : t("subscriptions.billingDateHintMonthly")}
+              </span>
             </label>
 
             <label className="mt-3 block text-xs font-semibold text-neutral-500">

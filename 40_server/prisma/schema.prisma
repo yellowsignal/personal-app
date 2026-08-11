@@ -15,6 +15,11 @@ enum UserRole {
   MEMBER
 }
 
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
 model Family {
   id         Int      @id @default(autoincrement())
   familyName String   @map("family_name") @db.VarChar(100)
@@ -115,6 +120,10 @@ model Subscription {
   serviceName String  @map("service_name") @db.VarChar(100)
   cost        Decimal @db.Decimal(10, 2)
   currency    String  @db.VarChar(10)
+  /// MONTHLY = day-of-month; YEARLY = month + day
+  billingInterval BillingInterval @default(MONTHLY) @map("billing_interval")
+  /// Month of year (1–12). Required when billingInterval is YEARLY.
+  billingMonth Int?   @map("billing_month")
   /// Day of month (1–31)
   billingDate Int     @map("billing_date")
   cancelUrl   String? @map("cancel_url") @db.Text
@@ -128,6 +137,7 @@ model Subscription {
   @@index([userId])
   @@index([familyId])
   @@index([billingDate])
+  @@index([billingInterval])
   @@map("subscriptions")
 }
 

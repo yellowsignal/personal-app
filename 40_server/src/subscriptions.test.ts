@@ -68,15 +68,27 @@ test("subscription CRUD and scope filtering", async () => {
         cost: 20,
         currency: "USD",
         billingDate: 12,
+        billingInterval: "MONTHLY",
+        billingAnchorDate: "2026-03-12",
         reason: "개발용",
         cancelUrl: "https://cursor.com/settings",
         isShared: false,
       }),
     });
     assert.equal(personal.status, 201);
-    const personalBody = (await personal.json()) as { id: number; isShared: boolean; ownerName: string };
+    const personalBody = (await personal.json()) as {
+      id: number;
+      isShared: boolean;
+      ownerName: string;
+      billingInterval: string;
+      billingMonth: number | null;
+      billingDate: number;
+    };
     assert.equal(personalBody.isShared, false);
     assert.equal(personalBody.ownerName, "민호");
+    assert.equal(personalBody.billingInterval, "MONTHLY");
+    assert.equal(personalBody.billingMonth, null);
+    assert.equal(personalBody.billingDate, 12);
 
     const shared = await fetch(`${base}/api/subscriptions`, {
       method: "POST",
@@ -89,6 +101,8 @@ test("subscription CRUD and scope filtering", async () => {
         cost: 17000,
         currency: "KRW",
         billingDate: 5,
+        billingInterval: "MONTHLY",
+        billingAnchorDate: "2026-01-05",
         isShared: true,
       }),
     });
@@ -162,7 +176,7 @@ test("family member sees shared subscriptions from owner", async () => {
       headers: { authorization: `Bearer ${owner.token}` },
     }).then((r) => r.json())) as { inviteCode: string };
 
-    await fetch(`${base}/api/subscriptions`, {
+    const yearlyRes = await fetch(`${base}/api/subscriptions`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -172,10 +186,20 @@ test("family member sees shared subscriptions from owner", async () => {
         serviceName: "iCloud+",
         cost: 3300,
         currency: "KRW",
-        billingDate: 15,
+        billingInterval: "YEARLY",
+        billingAnchorDate: "2026-04-15",
         isShared: true,
       }),
     });
+    assert.equal(yearlyRes.status, 201);
+    const yearlyBody = (await yearlyRes.json()) as {
+      billingInterval: string;
+      billingMonth: number | null;
+      billingDate: number;
+    };
+    assert.equal(yearlyBody.billingInterval, "YEARLY");
+    assert.equal(yearlyBody.billingMonth, 4);
+    assert.equal(yearlyBody.billingDate, 15);
 
     await fetch(`${base}/api/subscriptions`, {
       method: "POST",
@@ -188,6 +212,8 @@ test("family member sees shared subscriptions from owner", async () => {
         cost: 1000,
         currency: "KRW",
         billingDate: 1,
+        billingInterval: "MONTHLY",
+        billingAnchorDate: "2026-01-01",
         isShared: false,
       }),
     });
@@ -234,6 +260,8 @@ test("only owner can update or delete a subscription", async () => {
         cost: 1000,
         currency: "KRW",
         billingDate: 10,
+        billingInterval: "MONTHLY",
+        billingAnchorDate: "2026-02-10",
         isShared: true,
       }),
     });

@@ -2,6 +2,7 @@ import type { AuthRepository } from "../domain/authRepository.js";
 import type { SubscriptionRepository } from "../domain/subscriptionRepository.js";
 import {
   toPublicSubscription,
+  type BillingInterval,
   type PublicSubscription,
   type ViewScope,
 } from "../domain/subscriptionTypes.js";
@@ -26,6 +27,57 @@ function parseBillingDate(value: unknown): number {
     throw new HttpError(400, "billingDate must be between 1 and 31");
   }
   return n;
+}
+
+function parseBillingMonth(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > 12) {
+    throw new HttpError(400, "billingMonth must be between 1 and 12");
+  }
+  return n;
+}
+
+function parseBillingInterval(value: unknown): BillingInterval {
+  if (value === "YEARLY" || value === "year" || value === "yearly") return "YEARLY";
+  if (value === "MONTHLY" || value === "month" || value === "monthly" || value === undefined || value === null) {
+    return "MONTHLY";
+  }
+  throw new HttpError(400, "billingInterval must be MONTHLY or YEARLY");
+}
+
+function parseBillingFields(body: Record<string, unknown>, required: boolean) {
+  const hasAny =
+    body.billingInterval !== undefined ||
+    body.billingDate !== undefined ||
+    body.billingMonth !== undefined ||
+    body.billingAnchorDate !== undefined;
+
+  if (!required && !hasAny) {
+    return null;
+  }
+
+  // Prefer ISO date from mobile date picker: "2026-08-05"
+  if (typeof body.billingAnchorDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(body.billingAnchorDate)) {
+    const [, mm, dd] = body.billingAnchorDate.slice(0, 10).split("-").map(Number);
+    if (!Number.isInteger(mm) || mm < 1 || mm > 12 || !Number.isInteger(dd) || dd < 1 || dd > 31) {
+      throw new HttpError(400, "billingAnchorDate must be a valid YYYY-MM-DD date");
+    }
+    const interval = parseBillingInterval(body.billingInterval);
+    return {
+      billingInterval: interval,
+      billingMonth: interval === "YEARLY" ? mm : null,
+      billingDate: dd,
+    };
+  }
+
+  const interval = parseBillingInterval(body.billingInterval);
+  const billingDate = parseBillingDate(body.billingDate);
+  const billingMonth =
+    interval === "YEARLY" ? parseBillingMonth(body.billingMonth) : null;
+  if (interval === "YEARLY" && (body.billingMonth === undefined || body.billingMonth === null)) {
+    throw new HttpError(400, "billingMonth is required for YEARLY billing");
+  }
+  return { billingInterval: interval, billingMonth, billingDate };
 }
 
 function parseCurrency(value: unknown): string {
@@ -90,13 +142,16 @@ export class SubscriptionService {
     if (isShared && !user.familyId) {
       throw new HttpError(400, "join a family before sharing subscriptions", "NO_FAMILY");
     }
+    const billing = parseBillingFields(body, true)!;
     const record = await this.subscriptionRepo.create({
       userId: user.id,
       familyId: user.familyId,
       serviceName: body.serviceName.trim(),
       cost: parseCost(body.cost),
       currency: parseCurrency(body.currency),
-      billingDate: parseBillingDate(body.billingDate),
+      billingInterval: billing.billingInterval,
+      billingMonth: billing.billingMonth,
+      billingDate: billing.billingDate,
       cancelUrl: typeof body.cancelUrl === "string" && body.cancelUrl.trim() ? body.cancelUrl.trim() : null,
       reason: typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : null,
       isShared,
@@ -115,6 +170,7 @@ export class SubscriptionService {
     if (isShared && !user.familyId) {
       throw new HttpError(400, "join a family before sharing subscriptions", "NO_FAMILY");
     }
+    const billing = parseBillingFields(body, false);
     const updated = await this.subscriptionRepo.update(id, {
       serviceName:
         typeof body.serviceName === "string" && body.serviceName.trim()
@@ -122,7 +178,9 @@ export class SubscriptionService {
           : undefined,
       cost: body.cost === undefined ? undefined : parseCost(body.cost),
       currency: body.currency === undefined ? undefined : parseCurrency(body.currency),
-      billingDate: body.billingDate === undefined ? undefined : parseBillingDate(body.billingDate),
+      billingInterval: billing?.billingInterval,
+      billingMonth: billing ? billing.billingMonth : undefined,
+      billingDate: billing?.billingDate,
       cancelUrl:
         body.cancelUrl === undefined
           ? undefined

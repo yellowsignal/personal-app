@@ -2,6 +2,7 @@ import { apiFetch } from "./http";
 import type { ViewScope } from "../components/ScopeToggle";
 
 export type SubscriptionCurrency = "KRW" | "JPY" | "USD";
+export type BillingInterval = "MONTHLY" | "YEARLY";
 
 export interface PublicSubscription {
   id: number;
@@ -10,6 +11,8 @@ export interface PublicSubscription {
   serviceName: string;
   cost: number;
   currency: SubscriptionCurrency;
+  billingInterval: BillingInterval;
+  billingMonth: number | null;
   billingDate: number;
   cancelUrl: string | null;
   reason: string | null;
@@ -22,7 +25,9 @@ export interface CreateSubscriptionInput {
   serviceName: string;
   cost: number;
   currency: SubscriptionCurrency;
-  billingDate: number;
+  billingInterval: BillingInterval;
+  /** ISO date yyyy-mm-dd from iOS date picker */
+  billingAnchorDate: string;
   cancelUrl?: string;
   reason?: string;
   isShared?: boolean;
