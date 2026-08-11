@@ -2,19 +2,23 @@ import cors from "cors";
 import express, { type Express } from "express";
 import { TaskStore } from "./store.js";
 import type { AuthRepository } from "./domain/authRepository.js";
+import type { AssetRepository } from "./domain/assetRepository.js";
 import type { SubscriptionRepository } from "./domain/subscriptionRepository.js";
 import type { InviteTokenRepository, PasskeyRepository } from "./domain/passkeyTypes.js";
 import { AuthService } from "./services/authService.js";
+import { AssetService } from "./services/assetService.js";
 import { SubscriptionService } from "./services/subscriptionService.js";
 import { PasskeyService } from "./services/passkeyService.js";
 import { ChallengeStore } from "./auth/challengeStore.js";
 import { createAuthRouter } from "./routes/authRoutes.js";
 import { createFamilyRouter } from "./routes/familyRoutes.js";
+import { createAssetRouter } from "./routes/assetRoutes.js";
 import { createSubscriptionRouter } from "./routes/subscriptionRoutes.js";
 import { createPasskeyRouter } from "./routes/passkeyRoutes.js";
 
 export interface AppDeps {
   authRepo?: AuthRepository;
+  assetRepo?: AssetRepository;
   subscriptionRepo?: SubscriptionRepository;
   passkeyRepo?: PasskeyRepository;
   inviteTokenRepo?: InviteTokenRepository;
@@ -79,6 +83,11 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
         : null;
 
     app.use("/api/family", createFamilyRouter(authService, passkeyService, jwtSecret));
+
+    if (deps.assetRepo) {
+      const assetService = new AssetService(deps.authRepo, deps.assetRepo);
+      app.use("/api/assets", createAssetRouter(assetService, jwtSecret));
+    }
 
     if (deps.subscriptionRepo) {
       const subscriptionService = new SubscriptionService(

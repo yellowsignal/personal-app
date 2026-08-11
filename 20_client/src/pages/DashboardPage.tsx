@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bell, ChevronRight, Images, Settings } from "lucide-react";
 import TopBar from "../components/TopBar";
@@ -7,7 +7,6 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../context/CurrencyContext";
 import { useAuth } from "../context/AuthContext";
 import {
-  assets,
   calendarEvents,
   categoryColor,
   currentUser,
@@ -18,22 +17,32 @@ import {
   subscriptions,
   type Currency,
 } from "../mocks/data";
+import { assetsApi, type PublicAsset } from "../api/assets";
 import { formatMoney } from "../utils/formatMoney";
 
 const CURRENCIES: Currency[] = ["KRW", "JPY", "USD"];
 const CURRENCY_SYMBOL: Record<Currency, string> = { KRW: "₩", JPY: "¥", USD: "$" };
 
-function scoped<T extends { isShared: boolean }>(items: T[], scope: ViewScope) {
-  if (scope === "personal") return items.filter((i) => !i.isShared);
-  if (scope === "family") return items.filter((i) => i.isShared);
-  return items;
-}
-
 export default function DashboardPage() {
   const { lang, t } = useLanguage();
   const { currency: displayCurrency, setCurrency: setDisplayCurrency } = useCurrency();
-  const { user, family } = useAuth();
+  const { token, user, family } = useAuth();
   const [scope, setScope] = useState<ViewScope>("all");
+  const [assets, setAssets] = useState<PublicAsset[]>([]);
+
+  const loadAssets = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await assetsApi.list(token, "all");
+      setAssets(data);
+    } catch {
+      setAssets([]);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void loadAssets();
+  }, [loadAssets]);
 
   const displayName = user?.name || currentUser.name[lang];
   const displayFamily = family?.familyName || familyInfo.familyName[lang];
@@ -49,7 +58,15 @@ export default function DashboardPage() {
       color: m.avatarColor,
     }));
 
-  const visibleAssets = scoped(assets, scope);
+  const visibleAssets = useMemo(() => {
+    if (scope === "personal") {
+      if (!user) return [];
+      return assets.filter((a) => a.userId === user.id);
+    }
+    if (scope === "family") return assets.filter((a) => a.isShared);
+    return assets;
+  }, [assets, scope, user]);
+
   const totalKRW = useMemo(
     () => visibleAssets.reduce((sum, a) => sum + a.amount * exchangeRates[a.currency], 0),
     [visibleAssets],
