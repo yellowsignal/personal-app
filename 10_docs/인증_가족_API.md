@@ -38,12 +38,29 @@ Express + JWT. DB는 Prisma(`AuthRepository`)로 붙이고, 테스트는 메모�
 Authorization: Bearer <token>
 ```
 
-## 로컬 실행 전제
+## 로컬 실행
+
+Postgres 없이 UI 연동 확인 (메모리 저장소):
+
+```bash
+MEMORY_AUTH=1 npm run dev:server
+npm run dev:client
+```
+
+실 DB:
 
 ```bash
 cd 40_server
 docker compose -f docker-compose.dev.yml up -d
 cp .env.example .env
 npm run db:migrate
-npm run dev
+npm run dev   # MEMORY_AUTH 없이 Prisma 사용
 ```
+
+## 클라이언트 연동
+
+- `20_client` 로그인/가입 → `/api/auth/*`
+- JWT는 `localStorage` (`myfamilyhub_token`)
+- 보호 라우트: 미로그인 시 `/login`
+- 설정 화면: 실사용자/가족/초대코드 · 로그아웃
+- 자산 등 나머지 화면은 아직 mock 데이터
