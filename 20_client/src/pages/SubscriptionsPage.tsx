@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ExternalLink, Plus, X } from "lucide-react";
+import { ExternalLink, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
@@ -34,17 +34,32 @@ const EMPTY_FORM: CreateSubscriptionInput = {
   isShared: false,
 };
 
+function toForm(item: PublicSubscription): CreateSubscriptionInput {
+  return {
+    serviceName: item.serviceName,
+    cost: item.cost,
+    currency: item.currency,
+    billingDate: item.billingDate,
+    reason: item.reason ?? "",
+    cancelUrl: item.cancelUrl ?? "",
+    isShared: item.isShared,
+  };
+}
+
 export default function SubscriptionsPage() {
   const { t } = useLanguage();
   const { currency } = useCurrency();
-  const { token, family } = useAuth();
+  const { token, user, family } = useAuth();
   const [scope, setScope] = useState<ViewScope>("all");
   const [items, setItems] = useState<PublicSubscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [menuId, setMenuId] = useState<number | null>(null);
+  const [editing, setEditing] = useState<PublicSubscription | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<CreateSubscriptionInput>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<PublicSubscription | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -70,23 +85,62 @@ export default function SubscriptionsPage() {
   );
   const monthlyTotalDisplay = monthlyTotalBase / exchangeRates[currency];
 
-  async function handleCreate(e: React.FormEvent) {
+  function openCreate() {
+    setEditing(null);
+    setForm(EMPTY_FORM);
+    setMenuId(null);
+    setShowForm(true);
+  }
+
+  function openEdit(item: PublicSubscription) {
+    setEditing(item);
+    setForm(toForm(item));
+    setMenuId(null);
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    setShowForm(false);
+    setEditing(null);
+    setForm(EMPTY_FORM);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!token || !form.serviceName.trim()) return;
     setSubmitting(true);
     setError(null);
+    const payload = {
+      ...form,
+      serviceName: form.serviceName.trim(),
+      reason: form.reason?.trim() || undefined,
+      cancelUrl: form.cancelUrl?.trim() || undefined,
+    };
     try {
-      await subscriptionsApi.create(token, {
-        ...form,
-        serviceName: form.serviceName.trim(),
-        reason: form.reason?.trim() || undefined,
-        cancelUrl: form.cancelUrl?.trim() || undefined,
-      });
-      setShowForm(false);
-      setForm(EMPTY_FORM);
+      if (editing) {
+        await subscriptionsApi.update(token, editing.id, payload);
+      } else {
+        await subscriptionsApi.create(token, payload);
+      }
+      closeForm();
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("subscriptions.saveError"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!token || !confirmDelete) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await subscriptionsApi.remove(token, confirmDelete.id);
+      setConfirmDelete(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("subscriptions.deleteError"));
     } finally {
       setSubmitting(false);
     }
@@ -100,7 +154,7 @@ export default function SubscriptionsPage() {
         right={
           <button
             type="button"
-            onClick={() => setShowForm(true)}
+            onClick={openCreate}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-white"
             aria-label={t("subscriptions.add")}
           >
@@ -109,7 +163,7 @@ export default function SubscriptionsPage() {
         }
       />
 
-      <div className="mx-auto max-w-md px-4 pt-4">
+      <div className="mx-auto max-w-md px-4 pt-4 pb-8">
         <ScopeToggle value={scope} onChange={setScope} />
 
         <div className="mt-4 rounded-2xl bg-neutral-900 p-4 text-white">
@@ -135,53 +189,98 @@ export default function SubscriptionsPage() {
           <p className="mt-6 text-center text-sm text-neutral-400">{t("subscriptions.empty")}</p>
         ) : (
           <div className="mt-4 flex flex-col gap-3">
-            {items.map((s) => (
-              <div key={s.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
-                <div className="flex items-start gap-3">
-                  <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white"
-                    style={{ backgroundColor: serviceColor(s.serviceName) }}
-                  >
-                    {s.serviceName.slice(0, 1)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-bold text-neutral-900">{s.serviceName}</p>
-                      <SharedBadge isShared={s.isShared} />
-                    </div>
-                    {s.reason && (
-                      <p className="mt-0.5 text-xs text-neutral-400">{s.reason}</p>
-                    )}
-                    <p className="mt-0.5 text-[10px] text-neutral-300">{s.ownerName}</p>
-                  </div>
-                </div>
-
-                <div className="mt-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-base font-bold text-neutral-900">
-                      {CURRENCY_SYMBOL[s.currency]}
-                      {s.cost.toLocaleString()}
-                      <span className="ml-1 text-xs font-medium text-neutral-400">
-                        {t("subscriptions.perMonth")}
-                      </span>
-                    </p>
-                    <p className="text-[11px] text-neutral-400">
-                      {t("subscriptions.billingDay", { d: s.billingDate })}
-                    </p>
-                  </div>
-                  {s.cancelUrl && s.cancelUrl !== "#" && (
-                    <a
-                      href={s.cancelUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1.5 text-[11px] font-semibold text-neutral-500"
+            {items.map((s) => {
+              const canManage = user?.id === s.userId;
+              return (
+                <div key={s.id} className="relative rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white"
+                      style={{ backgroundColor: serviceColor(s.serviceName) }}
                     >
-                      {t("subscriptions.cancel")} <ExternalLink size={12} />
-                    </a>
+                      {s.serviceName.slice(0, 1)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="min-w-0 flex-1 truncate text-sm font-bold text-neutral-900">
+                          {s.serviceName}
+                        </p>
+                        <SharedBadge isShared={s.isShared} />
+                        {canManage && (
+                          <button
+                            type="button"
+                            aria-label={t("subscriptions.more")}
+                            onClick={() => setMenuId((id) => (id === s.id ? null : s.id))}
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-100"
+                          >
+                            <MoreHorizontal size={18} />
+                          </button>
+                        )}
+                      </div>
+                      {s.reason && (
+                        <p className="mt-0.5 text-xs text-neutral-400">{s.reason}</p>
+                      )}
+                      <p className="mt-0.5 text-[10px] text-neutral-300">{s.ownerName}</p>
+                    </div>
+                  </div>
+
+                  {menuId === s.id && canManage && (
+                    <>
+                      <button
+                        type="button"
+                        className="fixed inset-0 z-40"
+                        aria-label="close menu"
+                        onClick={() => setMenuId(null)}
+                      />
+                      <div className="absolute right-3 top-12 z-50 min-w-[140px] overflow-hidden rounded-xl bg-white py-1 shadow-lg ring-1 ring-black/10">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(s)}
+                          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
+                        >
+                          <Pencil size={14} /> {t("subscriptions.edit")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMenuId(null);
+                            setConfirmDelete(s);
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-rose-600 hover:bg-rose-50"
+                        >
+                          <Trash2 size={14} /> {t("subscriptions.delete")}
+                        </button>
+                      </div>
+                    </>
                   )}
+
+                  <div className="mt-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-base font-bold text-neutral-900">
+                        {CURRENCY_SYMBOL[s.currency]}
+                        {s.cost.toLocaleString()}
+                        <span className="ml-1 text-xs font-medium text-neutral-400">
+                          {t("subscriptions.perMonth")}
+                        </span>
+                      </p>
+                      <p className="text-[11px] text-neutral-400">
+                        {t("subscriptions.billingDay", { d: s.billingDate })}
+                      </p>
+                    </div>
+                    {s.cancelUrl && s.cancelUrl !== "#" && (
+                      <a
+                        href={s.cancelUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1.5 text-[11px] font-semibold text-neutral-500"
+                      >
+                        {t("subscriptions.cancel")} <ExternalLink size={12} />
+                      </a>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -189,14 +288,16 @@ export default function SubscriptionsPage() {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
           <form
-            onSubmit={handleCreate}
-            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
+            onSubmit={handleSubmit}
+            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-bold text-neutral-900">{t("subscriptions.add")}</h2>
+              <h2 className="text-base font-bold text-neutral-900">
+                {editing ? t("subscriptions.edit") : t("subscriptions.add")}
+              </h2>
               <button
                 type="button"
-                onClick={() => setShowForm(false)}
+                onClick={closeForm}
                 className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100"
               >
                 <X size={18} />
@@ -297,6 +398,34 @@ export default function SubscriptionsPage() {
               {submitting ? t("subscriptions.saving") : t("subscriptions.save")}
             </button>
           </form>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+            <h2 className="text-base font-bold text-neutral-900">{t("subscriptions.delete")}</h2>
+            <p className="mt-2 text-sm text-neutral-500">
+              {t("subscriptions.deleteConfirm", { name: confirmDelete.serviceName })}
+            </p>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-semibold text-neutral-600"
+              >
+                {t("subscriptions.cancelAction")}
+              </button>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => void handleDelete()}
+                className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {t("subscriptions.delete")}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -1,0 +1,25 @@
+{
+  "name": "MyFamily Hub",
+  "short_name": "MyFamily",
+  "description": "가족 자산·구독·일정 통합",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2f2f7",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
