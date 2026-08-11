@@ -4,7 +4,7 @@
   "terminals": [
     {
       "name": "api",
-      "command": "npm run dev:server"
+      "command": "MEMORY_AUTH=1 npm run dev:server"
     },
     {
       "name": "web",

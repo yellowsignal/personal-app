@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "npm-run-all --parallel dev:server dev:client",
-    "dev:server": "npm run dev --workspace @personal-app/server",
+    "dev:server": "MEMORY_AUTH=1 npm run dev --workspace @personal-app/server",
     "dev:client": "npm run dev --workspace @personal-app/client",
     "build": "npm run build --workspace @personal-app/server && npm run build --workspace @personal-app/client",
     "lint": "npm run lint --workspace @personal-app/server && npm run lint --workspace @personal-app/client",

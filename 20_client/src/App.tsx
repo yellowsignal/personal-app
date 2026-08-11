@@ -1,4 +1,5 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
+import RequireAuth from "./components/RequireAuth";
 import AppLayout from "./layouts/AppLayout";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -13,15 +14,18 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route element={<AppLayout />}>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/assets" element={<AssetsPage />} />
-        <Route path="/documents" element={<DocumentsPage />} />
-        <Route path="/subscriptions" element={<SubscriptionsPage />} />
-        <Route path="/calendar" element={<CalendarPage />} />
-        <Route path="/photos" element={<PhotosPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+      <Route element={<RequireAuth />}>
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/assets" element={<AssetsPage />} />
+          <Route path="/documents" element={<DocumentsPage />} />
+          <Route path="/subscriptions" element={<SubscriptionsPage />} />
+          <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/photos" element={<PhotosPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Route>
       </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

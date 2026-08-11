@@ -5,6 +5,7 @@ import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../context/CurrencyContext";
+import { useAuth } from "../context/AuthContext";
 import {
   assets,
   calendarEvents,
@@ -30,7 +31,22 @@ function scoped<T extends { isShared: boolean }>(items: T[], scope: ViewScope) {
 export default function DashboardPage() {
   const { lang, t } = useLanguage();
   const { currency: displayCurrency, setCurrency: setDisplayCurrency } = useCurrency();
+  const { user, family } = useAuth();
   const [scope, setScope] = useState<ViewScope>("all");
+
+  const displayName = user?.name || currentUser.name[lang];
+  const displayFamily = family?.familyName || familyInfo.familyName[lang];
+  const memberChips =
+    family?.members.map((m, idx) => ({
+      id: String(m.id),
+      initial: m.name.trim().charAt(0).toUpperCase() || "?",
+      color: ["#5B5BF6", "#FF6B81", "#34C759", "#FF9F0A", "#AF52DE"][idx % 5]!,
+    })) ??
+    familyMembers.map((m) => ({
+      id: m.id,
+      initial: m.initial[lang],
+      color: m.avatarColor,
+    }));
 
   const visibleAssets = scoped(assets, scope);
   const totalKRW = useMemo(
@@ -51,17 +67,17 @@ export default function DashboardPage() {
   return (
     <div className="pb-4">
       <TopBar
-        title={t("dashboard.greeting", { name: currentUser.name[lang] })}
-        subtitle={t("dashboard.familySubtitle", { family: familyInfo.familyName[lang] })}
+        title={t("dashboard.greeting", { name: displayName })}
+        subtitle={t("dashboard.familySubtitle", { family: displayFamily })}
         right={
           <div className="flex -space-x-2">
-            {familyMembers.map((m) => (
+            {memberChips.map((m) => (
               <div
                 key={m.id}
                 className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white text-xs font-bold text-white"
-                style={{ backgroundColor: m.avatarColor }}
+                style={{ backgroundColor: m.color }}
               >
-                {m.initial[lang]}
+                {m.initial}
               </div>
             ))}
           </div>
