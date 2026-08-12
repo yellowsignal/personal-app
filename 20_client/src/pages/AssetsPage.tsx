@@ -21,6 +21,15 @@ const CURRENCY_SYMBOL = { KRW: "₩", JPY: "¥", USD: "$" };
 const ASSET_TYPES: AssetType[] = ["deposit", "stock", "cash", "realestate"];
 const MARKETS: StockMarket[] = ["KR", "JP", "US"];
 
+// 종목의 시장은 사용자가 마지막으로 선택한 값을 기억해 두었다가 다음 입력 시 기본값으로 사용합니다.
+const LAST_MARKET_STORAGE_KEY = "myfamilyhub_last_stock_market";
+
+function readLastMarket(): StockMarket {
+  if (typeof window === "undefined") return "KR";
+  const stored = window.localStorage.getItem(LAST_MARKET_STORAGE_KEY);
+  return stored === "KR" || stored === "JP" || stored === "US" ? stored : "KR";
+}
+
 type FormState = {
   type: AssetType;
   label: string;
@@ -33,13 +42,13 @@ type FormState = {
   isShared: boolean;
 };
 
-function emptyForm(currency: AssetCurrency): FormState {
+function emptyForm(currency: AssetCurrency, lastMarket: StockMarket): FormState {
   return {
     type: "deposit",
     label: "",
     currency,
     amount: 0,
-    stockMarket: "JP",
+    stockMarket: lastMarket,
     stockCode: "",
     quantity: "",
     buyPrice: "",
@@ -47,13 +56,13 @@ function emptyForm(currency: AssetCurrency): FormState {
   };
 }
 
-function toForm(item: PublicAsset): FormState {
+function toForm(item: PublicAsset, lastMarket: StockMarket): FormState {
   return {
     type: item.type,
     label: item.label,
     currency: item.currency,
     amount: item.amount,
-    stockMarket: item.stockMarket ?? "JP",
+    stockMarket: item.stockMarket ?? lastMarket,
     stockCode: item.stockCode ?? "",
     quantity: item.quantity != null ? String(item.quantity) : "",
     buyPrice: item.buyPrice != null ? String(item.buyPrice) : "",
@@ -72,7 +81,8 @@ export default function AssetsPage() {
   const [menuId, setMenuId] = useState<number | null>(null);
   const [editing, setEditing] = useState<PublicAsset | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<FormState>(() => emptyForm(currency));
+  const [lastMarket, setLastMarket] = useState<StockMarket>(readLastMarket);
+  const [form, setForm] = useState<FormState>(() => emptyForm(currency, readLastMarket()));
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<PublicAsset | null>(null);
@@ -106,14 +116,14 @@ export default function AssetsPage() {
 
   function openCreate() {
     setEditing(null);
-    setForm(emptyForm(currency));
+    setForm(emptyForm(currency, lastMarket));
     setMenuId(null);
     setShowForm(true);
   }
 
   function openEdit(item: PublicAsset) {
     setEditing(item);
-    setForm(toForm(item));
+    setForm(toForm(item, lastMarket));
     setMenuId(null);
     setShowForm(true);
   }
@@ -121,7 +131,7 @@ export default function AssetsPage() {
   function closeForm() {
     setShowForm(false);
     setEditing(null);
-    setForm(emptyForm(currency));
+    setForm(emptyForm(currency, lastMarket));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -136,11 +146,13 @@ export default function AssetsPage() {
         type: "stock",
         label: form.label.trim(),
         stockMarket: form.stockMarket,
-        stockCode: form.stockCode.trim(),
+        stockCode: form.stockCode.trim().toUpperCase(),
         quantity: Number(form.quantity),
         buyPrice: Number(form.buyPrice),
         isShared: form.isShared,
       };
+      setLastMarket(form.stockMarket);
+      window.localStorage.setItem(LAST_MARKET_STORAGE_KEY, form.stockMarket);
     } else {
       payload = {
         type: form.type,
@@ -446,7 +458,9 @@ export default function AssetsPage() {
                   <input
                     required
                     value={form.stockCode}
-                    onChange={(e) => setForm((f) => ({ ...f, stockCode: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, stockCode: e.target.value.toUpperCase() }))
+                    }
                     placeholder={
                       form.stockMarket === "KR"
                         ? "005930"
@@ -454,7 +468,7 @@ export default function AssetsPage() {
                           ? "7203"
                           : "AAPL"
                     }
-                    className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
+                    className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base uppercase"
                   />
                   <span className="mt-1 block text-[11px] font-normal text-neutral-400">
                     {t("assets.stockCodeHint")}
