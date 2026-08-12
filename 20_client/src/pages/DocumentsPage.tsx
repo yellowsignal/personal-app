@@ -18,7 +18,7 @@ import { isPasskeySupported } from "../api/passkey";
 import { imageFileToPdfBlob } from "../utils/imageToPdf";
 import { mergePdfBlobs } from "../utils/pdfMerge";
 import { runOcrOnFiles } from "../utils/documentOcr";
-import { parseDocumentOcrText } from "../utils/documentOcrParse";
+import { parseDocumentOcrText } from "@personal-app/document-ocr-parse";
 
 interface FieldDraft {
   key: string;

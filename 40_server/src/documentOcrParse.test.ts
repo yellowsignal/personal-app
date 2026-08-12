@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseDocumentOcrText } from "../../20_client/src/utils/documentOcrParse.ts";
+import { parseDocumentOcrText } from "./documentOcrParse.js";
 
 test("parseDocumentOcrText extracts 保険証 fields", () => {
   const result = parseDocumentOcrText(`

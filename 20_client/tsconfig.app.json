@@ -15,7 +15,11 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@personal-app/document-ocr-parse": ["../40_server/src/documentOcrParse.ts"]
+    }
   },
   "include": ["src"]
 }
