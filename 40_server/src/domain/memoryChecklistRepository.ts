@@ -3,6 +3,7 @@ import type {
   CreateChecklistInput,
   CreateChecklistItemInput,
   UpdateChecklistInput,
+  UpdateChecklistItemInput,
 } from "./checklistRepository.js";
 import type { ChecklistItemRecord, ChecklistRecord } from "./checklistTypes.js";
 
@@ -72,7 +73,12 @@ export class MemoryChecklistRepository implements ChecklistRepository {
     return [...this.items.values()]
       .filter((i) => i.checklistId === checklistId)
       .map((i) => ({ ...i }))
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+      .sort((a, b) => {
+        const aDone = a.completedAt ? 1 : 0;
+        const bDone = b.completedAt ? 1 : 0;
+        if (aDone !== bDone) return aDone - bDone;
+        return a.sortOrder - b.sortOrder || a.id - b.id;
+      });
   }
 
   async findItemById(id: number): Promise<ChecklistItemRecord | null> {
@@ -87,14 +93,25 @@ export class MemoryChecklistRepository implements ChecklistRepository {
       parentId: input.parentId,
       title: input.title,
       sortOrder: input.sortOrder,
+      completedAt: null,
       createdAt: new Date(),
     };
     this.items.set(record.id, record);
-    const list = this.lists.get(input.checklistId);
-    if (list) {
-      this.lists.set(input.checklistId, { ...list, updatedAt: new Date() });
-    }
+    this.touchList(input.checklistId);
     return { ...record };
+  }
+
+  async updateItem(id: number, input: UpdateChecklistItemInput): Promise<ChecklistItemRecord> {
+    const existing = this.items.get(id);
+    if (!existing) throw Object.assign(new Error("item not found"), { code: "NOT_FOUND" });
+    const updated: ChecklistItemRecord = {
+      ...existing,
+      title: input.title === undefined ? existing.title : input.title,
+      completedAt: input.completedAt === undefined ? existing.completedAt : input.completedAt,
+    };
+    this.items.set(id, updated);
+    this.touchList(existing.checklistId);
+    return { ...updated };
   }
 
   async removeItem(id: number): Promise<boolean> {
@@ -114,10 +131,27 @@ export class MemoryChecklistRepository implements ChecklistRepository {
     };
     walk(id);
     for (const itemId of toDelete) this.items.delete(itemId);
+    this.touchList(checklistId);
+    return true;
+  }
+
+  async purgeCompletedBefore(cutoff: Date): Promise<number> {
+    const expired = [...this.items.values()].filter(
+      (i) => i.completedAt !== null && i.completedAt.getTime() <= cutoff.getTime(),
+    );
+    let removed = 0;
+    for (const item of expired) {
+      if (!this.items.has(item.id)) continue;
+      await this.removeItemSubtree(item.id);
+      removed += 1;
+    }
+    return removed;
+  }
+
+  private touchList(checklistId: number): void {
     const list = this.lists.get(checklistId);
     if (list) {
       this.lists.set(checklistId, { ...list, updatedAt: new Date() });
     }
-    return true;
   }
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { ArrowLeft, ListChecks, Plus, Share2, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, ListChecks, Pencil, Plus, Share2, Trash2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
@@ -29,7 +29,12 @@ function buildTree(items: PublicChecklistItem[]): TreeNode[] {
     }
   }
   const sortRec = (nodes: TreeNode[]) => {
-    nodes.sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    nodes.sort((a, b) => {
+      const aDone = a.completedAt ? 1 : 0;
+      const bDone = b.completedAt ? 1 : 0;
+      if (aDone !== bDone) return aDone - bDone;
+      return a.sortOrder - b.sortOrder || a.id - b.id;
+    });
     for (const n of nodes) sortRec(n.children);
   };
   sortRec(roots);
@@ -50,6 +55,8 @@ export default function ChecklistsPage() {
   const [newShared, setNewShared] = useState(false);
   const [itemDraft, setItemDraft] = useState("");
   const [parentForAdd, setParentForAdd] = useState<PublicChecklistItem | null>(null);
+  const [editingItem, setEditingItem] = useState<PublicChecklistItem | null>(null);
+  const [editDraft, setEditDraft] = useState("");
   const [busy, setBusy] = useState(false);
 
   const loadLists = useCallback(async () => {
@@ -131,15 +138,56 @@ export default function ChecklistsPage() {
     }
   }
 
+  async function handleToggleComplete(item: PublicChecklistItem) {
+    if (!token || !activeId || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await checklistsApi.updateItem(token, activeId, item.id, {
+        completed: !item.completedAt,
+      });
+      await loadDetail(activeId);
+      await loadLists();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("checklists.errorSave"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleDeleteItem(item: PublicChecklistItem) {
     if (!token || !activeId || busy) return;
+    if (!window.confirm(t("checklists.confirmDeleteItem"))) return;
     setBusy(true);
     setError(null);
     try {
       await checklistsApi.removeItem(token, activeId, item.id);
       if (parentForAdd?.id === item.id) setParentForAdd(null);
+      if (editingItem?.id === item.id) {
+        setEditingItem(null);
+        setEditDraft("");
+      }
       await loadDetail(activeId);
       await loadLists();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("checklists.errorSave"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!token || !activeId || !editingItem || !editDraft.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await checklistsApi.updateItem(token, activeId, editingItem.id, {
+        title: editDraft.trim(),
+      });
+      setEditingItem(null);
+      setEditDraft("");
+      await loadDetail(activeId);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("checklists.errorSave"));
     } finally {
@@ -164,33 +212,67 @@ export default function ChecklistsPage() {
   }
 
   function renderNode(node: TreeNode, depth: number) {
+    const done = Boolean(node.completedAt);
     return (
       <li key={node.id}>
         <div
-          className="group flex items-stretch gap-1"
+          className="group flex items-stretch gap-0.5"
           style={{ paddingLeft: `${depth * 16}px` }}
         >
           <button
             type="button"
+            onClick={() => void handleToggleComplete(node)}
+            disabled={busy}
+            className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-3 text-left transition active:bg-neutral-50"
+            aria-label={done ? t("checklists.markIncomplete") : t("checklists.markComplete")}
+          >
+            <span
+              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${
+                done
+                  ? "border-teal-500 bg-teal-500 text-white"
+                  : "border-neutral-300 bg-white text-transparent"
+              }`}
+            >
+              <Check size={12} strokeWidth={3} />
+            </span>
+            <span
+              className={`min-w-0 flex-1 text-sm font-medium ${
+                done ? "text-neutral-400 line-through" : "text-neutral-800"
+              }`}
+            >
+              {node.title}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setEditingItem(node);
+              setEditDraft(node.title);
+            }}
+            disabled={busy}
+            className="flex h-11 w-9 shrink-0 items-center justify-center rounded-xl text-neutral-400 active:bg-neutral-100"
+            aria-label={t("checklists.editItem")}
+          >
+            <Pencil size={15} />
+          </button>
+          <button
+            type="button"
             onClick={() => void handleDeleteItem(node)}
             disabled={busy}
-            className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-3 text-left transition active:bg-rose-50"
-            aria-label={t("checklists.tapToRemove")}
+            className="flex h-11 w-9 shrink-0 items-center justify-center rounded-xl text-rose-400 active:bg-rose-50"
+            aria-label={t("checklists.deleteItem")}
           >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 border-neutral-300 bg-white text-transparent group-active:border-rose-400 group-active:bg-rose-50">
-              ✓
-            </span>
-            <span className="min-w-0 flex-1 text-sm font-medium text-neutral-800">{node.title}</span>
+            <Trash2 size={15} />
           </button>
           <button
             type="button"
             onClick={() => setParentForAdd(node)}
             disabled={busy}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-indigo-500 active:bg-indigo-50"
+            className="flex h-11 w-9 shrink-0 items-center justify-center rounded-xl text-indigo-500 active:bg-indigo-50"
             aria-label={t("checklists.addChild")}
             title={t("checklists.addChild")}
           >
-            <Plus size={18} />
+            <Plus size={16} />
           </button>
         </div>
         {node.children.length > 0 && (
@@ -225,6 +307,7 @@ export default function ChecklistsPage() {
                   setDetail(null);
                   setParentForAdd(null);
                   setItemDraft("");
+                  setEditingItem(null);
                 }}
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-neutral-600"
                 aria-label={t("checklists.back")}
@@ -267,10 +350,12 @@ export default function ChecklistsPage() {
             <div className="mx-auto max-w-md">
               {parentForAdd && (
                 <div className="mb-2 flex items-center justify-between rounded-lg bg-indigo-50 px-3 py-1.5 text-xs text-indigo-700">
-                  <span>
-                    {t("checklists.addingUnder", { title: parentForAdd.title })}
-                  </span>
-                  <button type="button" onClick={() => setParentForAdd(null)} aria-label={t("checklists.clearParent")}>
+                  <span>{t("checklists.addingUnder", { title: parentForAdd.title })}</span>
+                  <button
+                    type="button"
+                    onClick={() => setParentForAdd(null)}
+                    aria-label={t("checklists.clearParent")}
+                  >
                     <X size={14} />
                   </button>
                 </div>
@@ -296,6 +381,42 @@ export default function ChecklistsPage() {
             </div>
           </form>
         </div>
+
+        {editingItem && (
+          <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/40 sm:items-center">
+            <form
+              onSubmit={(e) => void handleSaveEdit(e)}
+              className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-base font-bold text-neutral-900">{t("checklists.editItem")}</h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingItem(null);
+                    setEditDraft("");
+                  }}
+                  aria-label={t("checklists.cancel")}
+                >
+                  <X size={20} className="text-neutral-400" />
+                </button>
+              </div>
+              <input
+                value={editDraft}
+                onChange={(e) => setEditDraft(e.target.value)}
+                className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+                autoFocus
+              />
+              <button
+                type="submit"
+                disabled={busy || !editDraft.trim()}
+                className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white disabled:opacity-40"
+              >
+                {t("checklists.save")}
+              </button>
+            </form>
+          </div>
+        )}
       </div>
     );
   }

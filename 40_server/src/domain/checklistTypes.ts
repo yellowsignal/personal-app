@@ -1,5 +1,8 @@
 export type ViewScope = "all" | "personal" | "family";
 
+/** Completed items older than this are removed on list/get. */
+export const CHECKLIST_COMPLETED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
 export interface ChecklistRecord {
   id: number;
   userId: number;
@@ -16,6 +19,7 @@ export interface ChecklistItemRecord {
   parentId: number | null;
   title: string;
   sortOrder: number;
+  completedAt: Date | null;
   createdAt: Date;
 }
 
@@ -25,6 +29,7 @@ export interface PublicChecklistItem {
   parentId: number | null;
   title: string;
   sortOrder: number;
+  completedAt: string | null;
   createdAt: string;
 }
 
@@ -51,6 +56,7 @@ export function toPublicItem(record: ChecklistItemRecord): PublicChecklistItem {
     parentId: record.parentId,
     title: record.title,
     sortOrder: record.sortOrder,
+    completedAt: record.completedAt ? record.completedAt.toISOString() : null,
     createdAt: record.createdAt.toISOString(),
   };
 }

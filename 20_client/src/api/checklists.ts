@@ -19,6 +19,7 @@ export interface PublicChecklistItem {
   parentId: number | null;
   title: string;
   sortOrder: number;
+  completedAt: string | null;
   createdAt: string;
 }
 
@@ -29,6 +30,11 @@ export interface PublicChecklistDetail extends PublicChecklist {
 export interface CreateChecklistInput {
   title: string;
   isShared?: boolean;
+}
+
+export interface UpdateChecklistItemInput {
+  title?: string;
+  completed?: boolean;
 }
 
 export const checklistsApi = {
@@ -63,6 +69,14 @@ export const checklistsApi = {
   addItem(token: string, checklistId: number, body: { title: string; parentId?: number | null }) {
     return apiFetch<PublicChecklistItem>(`/api/checklists/${checklistId}/items`, {
       method: "POST",
+      token,
+      body: JSON.stringify(body),
+    });
+  },
+
+  updateItem(token: string, checklistId: number, itemId: number, body: UpdateChecklistItemInput) {
+    return apiFetch<PublicChecklistItem>(`/api/checklists/${checklistId}/items/${itemId}`, {
+      method: "PATCH",
       token,
       body: JSON.stringify(body),
     });

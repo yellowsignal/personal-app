@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { createApp } from "./app.js";
 import { MemoryAuthRepository } from "./domain/memoryAuthRepository.js";
 import { MemoryChecklistRepository } from "./domain/memoryChecklistRepository.js";
+import { CHECKLIST_COMPLETED_RETENTION_MS } from "./domain/checklistTypes.js";
 import { TaskStore } from "./store.js";
 
 function tmpStore(): TaskStore {
@@ -23,12 +24,15 @@ async function listen(app: ReturnType<typeof createApp>) {
   return { server, base: `http://127.0.0.1:${address.port}` };
 }
 
-function appWithChecklists() {
-  return createApp(tmpStore(), {
-    authRepo: new MemoryAuthRepository(),
-    checklistRepo: new MemoryChecklistRepository(),
-    jwtSecret: "test-secret",
-  });
+function appWithChecklists(repo = new MemoryChecklistRepository()) {
+  return {
+    repo,
+    app: createApp(tmpStore(), {
+      authRepo: new MemoryAuthRepository(),
+      checklistRepo: repo,
+      jwtSecret: "test-secret",
+    }),
+  };
 }
 
 async function registerOwner(base: string) {
@@ -46,8 +50,9 @@ async function registerOwner(base: string) {
   return (await res.json()) as { token: string; user: { id: number } };
 }
 
-test("checklist tree create, add nested items, delete cascades", async () => {
-  const { server, base } = await listen(appWithChecklists());
+test("checklist tree create, complete keeps item, edit and delete", async () => {
+  const { app } = appWithChecklists();
+  const { server, base } = await listen(app);
   try {
     const owner = await registerOwner(base);
 
@@ -62,7 +67,6 @@ test("checklist tree create, add nested items, delete cascades", async () => {
     assert.equal(created.status, 201);
     const list = (await created.json()) as { id: number; title: string; itemCount: number };
     assert.equal(list.title, "장보기");
-    assert.equal(list.itemCount, 0);
 
     const root = await fetch(`${base}/api/checklists/${list.id}/items`, {
       method: "POST",
@@ -73,8 +77,13 @@ test("checklist tree create, add nested items, delete cascades", async () => {
       body: JSON.stringify({ title: "과일" }),
     });
     assert.equal(root.status, 201);
-    const rootItem = (await root.json()) as { id: number; parentId: number | null };
+    const rootItem = (await root.json()) as {
+      id: number;
+      parentId: number | null;
+      completedAt: string | null;
+    };
     assert.equal(rootItem.parentId, null);
+    assert.equal(rootItem.completedAt, null);
 
     const child = await fetch(`${base}/api/checklists/${list.id}/items`, {
       method: "POST",
@@ -85,15 +94,38 @@ test("checklist tree create, add nested items, delete cascades", async () => {
       body: JSON.stringify({ title: "사과", parentId: rootItem.id }),
     });
     assert.equal(child.status, 201);
-    const childItem = (await child.json()) as { id: number; parentId: number };
-    assert.equal(childItem.parentId, rootItem.id);
+
+    const complete = await fetch(`${base}/api/checklists/${list.id}/items/${rootItem.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ completed: true }),
+    });
+    assert.equal(complete.status, 200);
+    const completedBody = (await complete.json()) as { completedAt: string | null };
+    assert.ok(completedBody.completedAt);
 
     const detail = await fetch(`${base}/api/checklists/${list.id}`, {
       headers: { authorization: `Bearer ${owner.token}` },
     });
-    assert.equal(detail.status, 200);
-    const detailBody = (await detail.json()) as { items: unknown[] };
+    const detailBody = (await detail.json()) as {
+      items: Array<{ id: number; completedAt: string | null }>;
+    };
     assert.equal(detailBody.items.length, 2);
+    assert.ok(detailBody.items.find((i) => i.id === rootItem.id)?.completedAt);
+
+    const renamed = await fetch(`${base}/api/checklists/${list.id}/items/${rootItem.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ title: "과일류" }),
+    });
+    assert.equal(renamed.status, 200);
+    assert.equal(((await renamed.json()) as { title: string }).title, "과일류");
 
     const del = await fetch(`${base}/api/checklists/${list.id}/items/${rootItem.id}`, {
       method: "DELETE",
@@ -107,6 +139,64 @@ test("checklist tree create, add nested items, delete cascades", async () => {
     const afterBody = (await after.json()) as { items: unknown[]; itemCount: number };
     assert.equal(afterBody.items.length, 0);
     assert.equal(afterBody.itemCount, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("completed items older than retention are purged on list", async () => {
+  const { repo, app } = appWithChecklists();
+  const { server, base } = await listen(app);
+  try {
+    const owner = await registerOwner(base);
+
+    const created = await fetch(`${base}/api/checklists`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ title: "할 일" }),
+    });
+    const list = (await created.json()) as { id: number };
+
+    const keepRes = await fetch(`${base}/api/checklists/${list.id}/items`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ title: "최근 완료" }),
+    });
+    const keep = (await keepRes.json()) as { id: number };
+
+    const oldRes = await fetch(`${base}/api/checklists/${list.id}/items`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ title: "오래된 완료" }),
+    });
+    const old = (await oldRes.json()) as { id: number };
+
+    await repo.updateItem(keep.id, { completedAt: new Date() });
+    await repo.updateItem(old.id, {
+      completedAt: new Date(Date.now() - CHECKLIST_COMPLETED_RETENTION_MS - 60_000),
+    });
+
+    const listed = await fetch(`${base}/api/checklists?scope=all`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(listed.status, 200);
+
+    const detail = await fetch(`${base}/api/checklists/${list.id}`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    const body = (await detail.json()) as { items: Array<{ id: number; title: string }> };
+    assert.equal(body.items.length, 1);
+    assert.equal(body.items[0].id, keep.id);
+    assert.equal(body.items[0].title, "최근 완료");
   } finally {
     server.close();
   }

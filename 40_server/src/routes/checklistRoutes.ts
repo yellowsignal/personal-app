@@ -91,6 +91,21 @@ export function createChecklistRouter(service: ChecklistService, jwtSecret: stri
     }
   });
 
+  router.patch("/:id/items/:itemId", auth, async (req: AuthedRequest, res) => {
+    try {
+      const id = Number(req.params.id);
+      const itemId = Number(req.params.itemId);
+      if (!Number.isFinite(id) || !Number.isFinite(itemId)) {
+        res.status(400).json({ error: "invalid id" });
+        return;
+      }
+      const item = await service.updateItem(req.userId!, id, itemId, req.body ?? {});
+      res.json(item);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
   router.delete("/:id/items/:itemId", auth, async (req: AuthedRequest, res) => {
     try {
       const id = Number(req.params.id);

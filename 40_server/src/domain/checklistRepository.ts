@@ -20,6 +20,11 @@ export interface CreateChecklistItemInput {
   sortOrder: number;
 }
 
+export interface UpdateChecklistItemInput {
+  title?: string;
+  completedAt?: Date | null;
+}
+
 export interface ChecklistRepository {
   findById(id: number): Promise<ChecklistRecord | null>;
   listForUser(userId: number, familyId: number | null): Promise<ChecklistRecord[]>;
@@ -31,7 +36,10 @@ export interface ChecklistRepository {
   listItems(checklistId: number): Promise<ChecklistItemRecord[]>;
   findItemById(id: number): Promise<ChecklistItemRecord | null>;
   createItem(input: CreateChecklistItemInput): Promise<ChecklistItemRecord>;
+  updateItem(id: number, input: UpdateChecklistItemInput): Promise<ChecklistItemRecord>;
   removeItem(id: number): Promise<boolean>;
   /** Remove item and all descendants (for memory store / when DB cascade unavailable). */
   removeItemSubtree(id: number): Promise<boolean>;
+  /** Delete completed items with completedAt <= cutoff. Returns number of root deletes attempted. */
+  purgeCompletedBefore(cutoff: Date): Promise<number>;
 }

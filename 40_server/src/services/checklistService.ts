@@ -1,6 +1,7 @@
 import type { AuthRepository } from "../domain/authRepository.js";
 import type { ChecklistRepository } from "../domain/checklistRepository.js";
 import {
+  CHECKLIST_COMPLETED_RETENTION_MS,
   toPublicChecklist,
   toPublicItem,
   type PublicChecklist,
@@ -45,7 +46,7 @@ export class ChecklistService {
     );
   }
 
-  /** Owner, or family member on a shared list (tap-to-clear shopping style). */
+  /** Owner, or family member on a shared list. */
   private canModifyItems(
     record: { userId: number; familyId: number | null; isShared: boolean },
     userId: number,
@@ -61,6 +62,12 @@ export class ChecklistService {
     if (scope === "personal") return items.filter((c) => Number(c.userId) === Number(userId));
     if (scope === "family") return items.filter((c) => c.isShared);
     return items;
+  }
+
+  /** Drop completed items older than retention window (lazy cleanup, no cron). */
+  private async purgeExpiredCompleted(): Promise<void> {
+    const cutoff = new Date(Date.now() - CHECKLIST_COMPLETED_RETENTION_MS);
+    await this.checklistRepo.purgeCompletedBefore(cutoff);
   }
 
   private async withMeta(
@@ -83,6 +90,7 @@ export class ChecklistService {
 
   async list(userId: number, scopeRaw: unknown): Promise<PublicChecklist[]> {
     const user = await this.requireUser(userId);
+    await this.purgeExpiredCompleted();
     const scope = parseScope(scopeRaw);
     const records = await this.checklistRepo.listForUser(userId, user.familyId);
     const withMeta = await this.withMeta(records);
@@ -91,6 +99,7 @@ export class ChecklistService {
 
   async get(userId: number, id: number): Promise<PublicChecklistDetail> {
     const user = await this.requireUser(userId);
+    await this.purgeExpiredCompleted();
     const existing = await this.checklistRepo.findById(id);
     if (!existing) throw new HttpError(404, "checklist not found", "NOT_FOUND");
     if (!this.canView(existing, user.id, user.familyId)) {
@@ -186,6 +195,44 @@ export class ChecklistService {
       sortOrder,
     });
     return toPublicItem(item);
+  }
+
+  async updateItem(
+    userId: number,
+    checklistId: number,
+    itemId: number,
+    body: Record<string, unknown>,
+  ): Promise<PublicChecklistItem> {
+    const user = await this.requireUser(userId);
+    const list = await this.checklistRepo.findById(checklistId);
+    if (!list) throw new HttpError(404, "checklist not found", "NOT_FOUND");
+    if (!this.canModifyItems(list, user.id, user.familyId)) {
+      throw new HttpError(403, "forbidden", "FORBIDDEN");
+    }
+    const item = await this.checklistRepo.findItemById(itemId);
+    if (!item || item.checklistId !== checklistId) {
+      throw new HttpError(404, "item not found", "NOT_FOUND");
+    }
+
+    let title: string | undefined;
+    if ("title" in body) {
+      title = parseTitle(body.title, 300);
+    }
+
+    let completedAt: Date | null | undefined;
+    if ("completed" in body) {
+      if (typeof body.completed !== "boolean") {
+        throw new HttpError(400, "completed must be a boolean");
+      }
+      completedAt = body.completed ? new Date() : null;
+    }
+
+    if (title === undefined && completedAt === undefined) {
+      throw new HttpError(400, "title or completed is required");
+    }
+
+    const updated = await this.checklistRepo.updateItem(itemId, { title, completedAt });
+    return toPublicItem(updated);
   }
 
   async removeItem(userId: number, checklistId: number, itemId: number): Promise<void> {

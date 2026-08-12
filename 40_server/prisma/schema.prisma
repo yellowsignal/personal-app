@@ -244,12 +244,14 @@ model Checklist {
 }
 
 model ChecklistItem {
-  id          Int      @id @default(autoincrement())
-  checklistId Int      @map("checklist_id")
-  parentId    Int?     @map("parent_id")
-  title       String   @db.VarChar(300)
-  sortOrder   Int      @default(0) @map("sort_order")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id          Int       @id @default(autoincrement())
+  checklistId Int       @map("checklist_id")
+  parentId    Int?      @map("parent_id")
+  title       String    @db.VarChar(300)
+  sortOrder   Int       @default(0) @map("sort_order")
+  /// Set when checked off; kept in list until auto-purged (~30 days).
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
 
   checklist Checklist       @relation(fields: [checklistId], references: [id], onDelete: Cascade)
   parent    ChecklistItem?  @relation("ChecklistItemTree", fields: [parentId], references: [id], onDelete: Cascade)
@@ -257,6 +259,7 @@ model ChecklistItem {
 
   @@index([checklistId])
   @@index([parentId])
+  @@index([completedAt])
   @@map("checklist_items")
 }
 

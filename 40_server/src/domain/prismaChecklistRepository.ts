@@ -8,6 +8,7 @@ import type {
   CreateChecklistInput,
   CreateChecklistItemInput,
   UpdateChecklistInput,
+  UpdateChecklistItemInput,
 } from "./checklistRepository.js";
 import type { ChecklistItemRecord, ChecklistRecord } from "./checklistTypes.js";
 
@@ -30,6 +31,7 @@ function mapItem(row: PrismaChecklistItem): ChecklistItemRecord {
     parentId: row.parentId,
     title: row.title,
     sortOrder: row.sortOrder,
+    completedAt: row.completedAt,
     createdAt: row.createdAt,
   };
 }
@@ -94,7 +96,15 @@ export class PrismaChecklistRepository implements ChecklistRepository {
       where: { checklistId },
       orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
     });
-    return rows.map(mapItem);
+    // Incomplete first, then completed
+    return rows
+      .map(mapItem)
+      .sort((a, b) => {
+        const aDone = a.completedAt ? 1 : 0;
+        const bDone = b.completedAt ? 1 : 0;
+        if (aDone !== bDone) return aDone - bDone;
+        return a.sortOrder - b.sortOrder || a.id - b.id;
+      });
   }
 
   async findItemById(id: number): Promise<ChecklistItemRecord | null> {
@@ -111,10 +121,19 @@ export class PrismaChecklistRepository implements ChecklistRepository {
         sortOrder: input.sortOrder,
       },
     });
-    await this.db.checklist.update({
-      where: { id: input.checklistId },
-      data: { updatedAt: new Date() },
+    await this.touchList(input.checklistId);
+    return mapItem(row);
+  }
+
+  async updateItem(id: number, input: UpdateChecklistItemInput): Promise<ChecklistItemRecord> {
+    const row = await this.db.checklistItem.update({
+      where: { id },
+      data: {
+        title: input.title,
+        completedAt: input.completedAt,
+      },
     });
+    await this.touchList(row.checklistId);
     return mapItem(row);
   }
 
@@ -125,12 +144,31 @@ export class PrismaChecklistRepository implements ChecklistRepository {
   async removeItemSubtree(id: number): Promise<boolean> {
     const existing = await this.db.checklistItem.findUnique({ where: { id } });
     if (!existing) return false;
-    // DB ON DELETE CASCADE removes descendants when parent is deleted.
     await this.db.checklistItem.delete({ where: { id } });
+    await this.touchList(existing.checklistId);
+    return true;
+  }
+
+  async purgeCompletedBefore(cutoff: Date): Promise<number> {
+    const expired = await this.db.checklistItem.findMany({
+      where: { completedAt: { lte: cutoff } },
+      select: { id: true },
+      orderBy: { id: "desc" },
+    });
+    let removed = 0;
+    for (const { id } of expired) {
+      const stillThere = await this.db.checklistItem.findUnique({ where: { id }, select: { id: true } });
+      if (!stillThere) continue;
+      await this.removeItemSubtree(id);
+      removed += 1;
+    }
+    return removed;
+  }
+
+  private async touchList(checklistId: number): Promise<void> {
     await this.db.checklist.update({
-      where: { id: existing.checklistId },
+      where: { id: checklistId },
       data: { updatedAt: new Date() },
     });
-    return true;
   }
 }
