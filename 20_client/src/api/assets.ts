@@ -93,4 +93,40 @@ export const assetsApi = {
       body: "{}",
     });
   },
+
+  listTransactions(token: string, assetId: number) {
+    return apiFetch<PublicTransaction[]>(`/api/assets/${assetId}/transactions`, { token });
+  },
+
+  importStatement(token: string, assetId: number, csvText: string) {
+    return apiFetch<ImportStatementResult>(`/api/assets/${assetId}/import-statement`, {
+      method: "POST",
+      token,
+      headers: { "content-type": "text/csv" },
+      body: csvText,
+    });
+  },
 };
+
+export type TransactionCategory = "credit" | "debit";
+
+export interface PublicTransaction {
+  id: number;
+  userId: number;
+  assetId: number | null;
+  category: TransactionCategory;
+  amount: number;
+  currency: AssetCurrency;
+  date: string;
+  description: string | null;
+  balanceAfter: number | null;
+  isShared: boolean;
+  ownerName: string;
+}
+
+export interface ImportStatementResult {
+  imported: number;
+  skipped: number;
+  transactions: PublicTransaction[];
+  asset: PublicAsset;
+}

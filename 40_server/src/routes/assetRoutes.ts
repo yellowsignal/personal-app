@@ -1,7 +1,14 @@
 import { Router } from "express";
+import express from "express";
 import { requireAuth, type AuthedRequest } from "../middleware/requireAuth.js";
 import { HttpError } from "../services/authService.js";
 import { AssetService } from "../services/assetService.js";
+import type { TransactionService } from "../services/transactionService.js";
+
+const csvBodyParser = express.text({
+  type: ["text/csv", "text/plain", "application/csv", "application/vnd.ms-excel"],
+  limit: "2mb",
+});
 
 function sendError(res: import("express").Response, err: unknown): void {
   if (err instanceof HttpError) {
@@ -12,7 +19,11 @@ function sendError(res: import("express").Response, err: unknown): void {
   res.status(500).json({ error: "internal server error" });
 }
 
-export function createAssetRouter(service: AssetService, jwtSecret: string): Router {
+export function createAssetRouter(
+  service: AssetService,
+  jwtSecret: string,
+  transactionService?: TransactionService,
+): Router {
   const router = Router();
   const auth = requireAuth(jwtSecret);
 
@@ -85,6 +96,41 @@ export function createAssetRouter(service: AssetService, jwtSecret: string): Rou
       sendError(res, err);
     }
   });
+
+  if (transactionService) {
+    router.get("/:id/transactions", auth, async (req: AuthedRequest, res) => {
+      try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id)) {
+          res.status(400).json({ error: "invalid id" });
+          return;
+        }
+        const items = await transactionService.listForAsset(req.userId!, id);
+        res.json(items);
+      } catch (err) {
+        sendError(res, err);
+      }
+    });
+
+    router.post("/:id/import-statement", auth, csvBodyParser, async (req: AuthedRequest, res) => {
+      try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id)) {
+          res.status(400).json({ error: "invalid id" });
+          return;
+        }
+        const csvText = typeof req.body === "string" ? req.body : "";
+        if (!csvText.trim()) {
+          res.status(400).json({ error: "CSV body is required" });
+          return;
+        }
+        const result = await transactionService.importStatement(req.userId!, id, csvText);
+        res.status(201).json(result);
+      } catch (err) {
+        sendError(res, err);
+      }
+    });
+  }
 
   return router;
 }

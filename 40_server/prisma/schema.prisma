@@ -93,8 +93,9 @@ model Asset {
   updatedAt  DateTime @updatedAt @map("updated_at")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  family Family? @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family       Family?       @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  transactions Transaction[]
 
   @@index([userId])
   @@index([familyId])
@@ -160,22 +161,27 @@ model Subscription {
 }
 
 model Transaction {
-  id          Int      @id @default(autoincrement())
-  userId      Int      @map("user_id")
-  familyId    Int?     @map("family_id")
-  category    String   @db.VarChar(50)
-  amount      Decimal  @db.Decimal(15, 2)
-  currency    String   @db.VarChar(10)
-  date        DateTime @db.Date
-  description String?  @db.Text
-  isShared    Boolean  @default(false) @map("is_shared")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  familyId     Int?     @map("family_id")
+  assetId      Int?     @map("asset_id")
+  /// credit = deposit/income, debit = withdrawal/expense
+  category     String   @db.VarChar(50)
+  amount       Decimal  @db.Decimal(15, 2)
+  currency     String   @db.VarChar(10)
+  date         DateTime @db.Date
+  description  String?  @db.Text
+  balanceAfter Decimal? @map("balance_after") @db.Decimal(15, 2)
+  isShared     Boolean  @default(false) @map("is_shared")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   family Family? @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  asset  Asset?  @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([familyId])
+  @@index([assetId])
   @@index([date])
   @@map("transactions")
 }

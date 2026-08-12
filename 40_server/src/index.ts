@@ -26,6 +26,9 @@ import type { AssetRepository } from "./domain/assetRepository.js";
 import type { SubscriptionRepository } from "./domain/subscriptionRepository.js";
 import type { ChecklistRepository } from "./domain/checklistRepository.js";
 import type { DocumentRepository } from "./domain/documentRepository.js";
+import { MemoryTransactionRepository } from "./domain/memoryTransactionRepository.js";
+import { PrismaTransactionRepository } from "./domain/prismaTransactionRepository.js";
+import type { TransactionRepository } from "./domain/transactionRepository.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -51,6 +54,9 @@ const checklistRepo: ChecklistRepository = useMemoryAuth
 const documentRepo: DocumentRepository = useMemoryAuth
   ? new MemoryDocumentRepository()
   : new PrismaDocumentRepository(prisma);
+const transactionRepo: TransactionRepository = useMemoryAuth
+  ? new MemoryTransactionRepository()
+  : new PrismaTransactionRepository(prisma);
 const passkeyRepo = useMemoryAuth ? new MemoryPasskeyRepository() : new PrismaPasskeyRepository(prisma);
 const inviteTokenRepo = useMemoryAuth
   ? new MemoryInviteTokenRepository()
@@ -60,6 +66,7 @@ const documentScanStore = new DocumentScanStore(defaultDocumentScanDir());
 const app = createApp(store, {
   authRepo,
   assetRepo,
+  transactionRepo,
   subscriptionRepo,
   checklistRepo,
   documentRepo,

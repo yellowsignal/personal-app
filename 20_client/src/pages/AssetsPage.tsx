@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { MoreHorizontal, Pencil, Plus, RefreshCw, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FileText, MoreHorizontal, Pencil, Plus, RefreshCw, Trash2, TrendingDown, TrendingUp, Upload, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
@@ -14,6 +14,7 @@ import {
   type CreateAssetInput,
   type DepositBank,
   type PublicAsset,
+  type PublicTransaction,
   type StockMarket,
 } from "../api/assets";
 import { ApiError } from "../api/http";
@@ -106,6 +107,12 @@ export default function AssetsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<PublicAsset | null>(null);
+  const [statementAsset, setStatementAsset] = useState<PublicAsset | null>(null);
+  const [transactions, setTransactions] = useState<PublicTransaction[]>([]);
+  const [statementLoading, setStatementLoading] = useState(false);
+  const [importBusyId, setImportBusyId] = useState<number | null>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const importTargetIdRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -257,6 +264,57 @@ export default function AssetsPage() {
     }
   }
 
+  async function openStatement(asset: PublicAsset) {
+    if (!token) return;
+    setStatementAsset(asset);
+    setStatementLoading(true);
+    setError(null);
+    try {
+      const rows = await assetsApi.listTransactions(token, asset.id);
+      setTransactions(rows);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("assets.statementLoadError"));
+      setTransactions([]);
+    } finally {
+      setStatementLoading(false);
+    }
+  }
+
+  function closeStatement() {
+    setStatementAsset(null);
+    setTransactions([]);
+  }
+
+  function startCsvImport(assetId: number) {
+    importTargetIdRef.current = assetId;
+    csvInputRef.current?.click();
+  }
+
+  async function handleCsvSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    const assetId = importTargetIdRef.current;
+    importTargetIdRef.current = null;
+    if (!token || !file || assetId == null) return;
+
+    setImportBusyId(assetId);
+    setError(null);
+    try {
+      const csvText = await file.text();
+      const result = await assetsApi.importStatement(token, assetId, csvText);
+      setItems((prev) => prev.map((a) => (a.id === assetId ? result.asset : a)));
+      if (statementAsset?.id === assetId) {
+        const rows = await assetsApi.listTransactions(token, assetId);
+        setTransactions(rows);
+        setStatementAsset(result.asset);
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("assets.importError"));
+    } finally {
+      setImportBusyId(null);
+    }
+  }
+
   return (
     <div>
       <TopBar
@@ -287,6 +345,14 @@ export default function AssetsPage() {
 
       <div className="mx-auto max-w-md px-4 pt-4 pb-8">
         <ScopeToggle value={scope} onChange={setScope} />
+
+        <input
+          ref={csvInputRef}
+          type="file"
+          accept=".csv,text/csv,text/plain"
+          className="hidden"
+          onChange={(e) => void handleCsvSelected(e)}
+        />
 
         <div className="mt-4 rounded-2xl bg-neutral-900 p-4 text-white">
           <p className="text-xs text-neutral-400">{t("assets.total", { currency })}</p>
@@ -431,6 +497,30 @@ export default function AssetsPage() {
                             : t("assets.noQuote")}
                         </span>
                       </div>
+                    </div>
+                  )}
+
+                  {a.type === "deposit" && (
+                    <div className="mt-3 flex gap-2 border-t border-neutral-100 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => void openStatement(a)}
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-neutral-200 py-2.5 text-xs font-semibold text-neutral-700"
+                      >
+                        <FileText size={14} />
+                        {t("assets.viewStatement")}
+                      </button>
+                      {canManage && (
+                        <button
+                          type="button"
+                          disabled={importBusyId === a.id}
+                          onClick={() => startCsvImport(a.id)}
+                          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+                        >
+                          <Upload size={14} />
+                          {importBusyId === a.id ? t("assets.importing") : t("assets.importCsv")}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -651,6 +741,96 @@ export default function AssetsPage() {
               {submitting ? t("assets.saving") : t("assets.save")}
             </button>
           </form>
+        </div>
+      )}
+
+      {statementAsset && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
+          <div className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-2xl bg-white shadow-xl sm:rounded-2xl">
+            <div className="flex items-start justify-between gap-2 border-b border-neutral-100 p-5">
+              <div className="min-w-0">
+                <h2 className="text-base font-bold text-neutral-900">{t("assets.statementTitle")}</h2>
+                <p className="mt-0.5 truncate text-sm text-neutral-500">{statementAsset.label}</p>
+                {statementAsset.bankCode && (
+                  <p className="mt-0.5 text-[11px] text-indigo-500">
+                    {t(`depositBank.${statementAsset.bankCode}`)}
+                  </p>
+                )}
+              </div>
+              <button type="button" onClick={closeStatement} className="rounded-full p-2">
+                <X size={18} className="text-neutral-400" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              {statementLoading ? (
+                <p className="py-8 text-center text-sm text-neutral-400">{t("assets.statementLoading")}</p>
+              ) : transactions.length === 0 ? (
+                <div className="py-8 text-center">
+                  <p className="text-sm text-neutral-500">{t("assets.statementEmpty")}</p>
+                  {user?.id === statementAsset.userId && (
+                    <button
+                      type="button"
+                      onClick={() => startCsvImport(statementAsset.id)}
+                      disabled={importBusyId === statementAsset.id}
+                      className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      <Upload size={14} />
+                      {t("assets.importCsv")}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {transactions.map((tx) => (
+                    <div
+                      key={tx.id}
+                      className="rounded-xl border border-neutral-100 bg-neutral-50/80 px-3 py-2.5"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-medium text-neutral-400">{tx.date}</p>
+                          <p className="mt-0.5 text-sm text-neutral-800">
+                            {tx.description || t("assets.noDescription")}
+                          </p>
+                        </div>
+                        <p
+                          className={`shrink-0 text-sm font-bold ${
+                            tx.category === "credit" ? "text-emerald-600" : "text-rose-600"
+                          }`}
+                        >
+                          {tx.category === "credit" ? "+" : "-"}
+                          {CURRENCY_SYMBOL[tx.currency]}
+                          {formatMoney(tx.amount, tx.currency)}
+                        </p>
+                      </div>
+                      {tx.balanceAfter != null && (
+                        <p className="mt-1 text-[10px] text-neutral-400">
+                          {t("assets.balanceAfter", {
+                            v: `${CURRENCY_SYMBOL[tx.currency]}${formatMoney(tx.balanceAfter, tx.currency)}`,
+                          })}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {user?.id === statementAsset.userId && transactions.length > 0 && (
+              <div className="border-t border-neutral-100 p-4">
+                <button
+                  type="button"
+                  onClick={() => startCsvImport(statementAsset.id)}
+                  disabled={importBusyId === statementAsset.id}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 py-2.5 text-xs font-semibold text-indigo-600 disabled:opacity-50"
+                >
+                  <Upload size={14} />
+                  {importBusyId === statementAsset.id ? t("assets.importing") : t("assets.importMoreCsv")}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

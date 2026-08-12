@@ -22,10 +22,13 @@ import { createChecklistRouter } from "./routes/checklistRoutes.js";
 import { createDocumentRouter } from "./routes/documentRoutes.js";
 import { createPasskeyRouter } from "./routes/passkeyRoutes.js";
 import type { DocumentScanStore } from "./storage/documentScanStore.js";
+import type { TransactionRepository } from "./domain/transactionRepository.js";
+import { TransactionService } from "./services/transactionService.js";
 
 export interface AppDeps {
   authRepo?: AuthRepository;
   assetRepo?: AssetRepository;
+  transactionRepo?: TransactionRepository;
   subscriptionRepo?: SubscriptionRepository;
   checklistRepo?: ChecklistRepository;
   documentRepo?: DocumentRepository;
@@ -96,7 +99,11 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
 
     if (deps.assetRepo) {
       const assetService = new AssetService(deps.authRepo, deps.assetRepo);
-      app.use("/api/assets", createAssetRouter(assetService, jwtSecret));
+      const transactionService =
+        deps.transactionRepo
+          ? new TransactionService(deps.authRepo, deps.assetRepo, deps.transactionRepo)
+          : undefined;
+      app.use("/api/assets", createAssetRouter(assetService, jwtSecret, transactionService));
     }
 
     if (deps.subscriptionRepo) {
