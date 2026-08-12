@@ -94,8 +94,10 @@ test("checklist tree create, complete keeps item, edit and delete", async () => 
       body: JSON.stringify({ title: "사과", parentId: rootItem.id }),
     });
     assert.equal(child.status, 201);
+    const childBody = (await child.json()) as { id: number };
+    const childItemId = childBody.id;
 
-    const complete = await fetch(`${base}/api/checklists/${list.id}/items/${rootItem.id}`, {
+    const tryCompleteRoot = await fetch(`${base}/api/checklists/${list.id}/items/${rootItem.id}`, {
       method: "PATCH",
       headers: {
         "content-type": "application/json",
@@ -103,8 +105,28 @@ test("checklist tree create, complete keeps item, edit and delete", async () => 
       },
       body: JSON.stringify({ completed: true }),
     });
-    assert.equal(complete.status, 200);
-    const completedBody = (await complete.json()) as { completedAt: string | null };
+    assert.equal(tryCompleteRoot.status, 400);
+
+    const completeChild = await fetch(`${base}/api/checklists/${list.id}/items/${childItemId}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ completed: true }),
+    });
+    assert.equal(completeChild.status, 200);
+
+    const completeRoot = await fetch(`${base}/api/checklists/${list.id}/items/${rootItem.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ completed: true }),
+    });
+    assert.equal(completeRoot.status, 200);
+    const completedBody = (await completeRoot.json()) as { completedAt: string | null };
     assert.ok(completedBody.completedAt);
 
     const detail = await fetch(`${base}/api/checklists/${list.id}`, {

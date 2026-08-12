@@ -156,18 +156,38 @@ export default function ChecklistsPage() {
     }
   }
 
-  async function handleToggleComplete(item: PublicChecklistItem) {
+  async function handleToggleComplete(node: TreeNode) {
     if (!token || !activeId || busy) return;
+
+    const willComplete = !node.completedAt;
+    if (willComplete) {
+      const hasIncompleteDescendant = (n: TreeNode): boolean => {
+        for (const c of n.children) {
+          if (!c.completedAt) return true;
+          if (hasIncompleteDescendant(c)) return true;
+        }
+        return false;
+      };
+      if (hasIncompleteDescendant(node)) {
+        setError(t("checklists.errorChildrenMustComplete"));
+        return;
+      }
+    }
+
     setBusy(true);
     setError(null);
     try {
-      await checklistsApi.updateItem(token, activeId, item.id, {
-        completed: !item.completedAt,
+      await checklistsApi.updateItem(token, activeId, node.id, {
+        completed: !node.completedAt,
       });
       await loadDetail(activeId);
       await loadLists();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("checklists.errorSave"));
+      if (err instanceof ApiError && err.code === "CHILD_INCOMPLETE") {
+        setError(t("checklists.errorChildrenMustComplete"));
+      } else {
+        setError(err instanceof ApiError ? err.message : t("checklists.errorSave"));
+      }
     } finally {
       setBusy(false);
     }

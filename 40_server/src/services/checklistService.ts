@@ -7,6 +7,7 @@ import {
   type PublicChecklist,
   type PublicChecklistDetail,
   type PublicChecklistItem,
+  type ChecklistItemRecord,
   type ViewScope,
 } from "../domain/checklistTypes.js";
 import { HttpError } from "./authService.js";
@@ -229,6 +230,32 @@ export class ChecklistService {
 
     if (title === undefined && completedAt === undefined) {
       throw new HttpError(400, "title or completed is required");
+    }
+
+    if (completedAt !== undefined && completedAt !== null) {
+      // Rule: an item can be marked completed only if all of its descendants are completed.
+      const allItems = await this.checklistRepo.listItems(checklistId);
+      const idMap = new Map<number, ChecklistItemRecord>();
+      const childrenByParent = new Map<number | null, number[]>();
+
+      for (const it of allItems) {
+        idMap.set(it.id, it);
+        const key = it.parentId ?? null;
+        const arr = childrenByParent.get(key);
+        if (arr) arr.push(it.id);
+        else childrenByParent.set(key, [it.id]);
+      }
+
+      const queue: number[] = [...(childrenByParent.get(itemId) ?? [])];
+      while (queue.length > 0) {
+        const currentId = queue.shift()!;
+        const current = idMap.get(currentId);
+        if (!current) continue;
+        if (!current.completedAt) {
+          throw new HttpError(400, "child items must be completed first", "CHILD_INCOMPLETE");
+        }
+        queue.push(...(childrenByParent.get(currentId) ?? []));
+      }
     }
 
     const updated = await this.checklistRepo.updateItem(itemId, { title, completedAt });
