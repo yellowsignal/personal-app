@@ -84,7 +84,8 @@ export class ChecklistService {
         nameCache.set(record.userId, ownerName);
       }
       const itemCount = await this.checklistRepo.countItems(record.id);
-      out.push(toPublicChecklist(record, ownerName, itemCount));
+      const completedCount = await this.checklistRepo.countCompletedItems(record.id);
+      out.push(toPublicChecklist(record, ownerName, itemCount, completedCount));
     }
     return out;
   }
@@ -109,7 +110,12 @@ export class ChecklistService {
     const owner = await this.authRepo.findUserById(existing.userId);
     const items = await this.checklistRepo.listItems(id);
     return {
-      ...toPublicChecklist(existing, owner?.name ?? "Unknown", items.length),
+      ...toPublicChecklist(
+        existing,
+        owner?.name ?? "Unknown",
+        items.length,
+        items.filter((i) => i.completedAt !== null).length,
+      ),
       items: items.map(toPublicItem),
     };
   }
@@ -127,7 +133,7 @@ export class ChecklistService {
       title,
       isShared,
     });
-    return toPublicChecklist(record, user.name, 0);
+    return toPublicChecklist(record, user.name, 0, 0);
   }
 
   async update(userId: number, id: number, body: Record<string, unknown>): Promise<PublicChecklist> {
@@ -150,7 +156,8 @@ export class ChecklistService {
       familyId: user.familyId,
     });
     const itemCount = await this.checklistRepo.countItems(id);
-    return toPublicChecklist(updated, user.name, itemCount);
+    const completedCount = await this.checklistRepo.countCompletedItems(id);
+    return toPublicChecklist(updated, user.name, itemCount, completedCount);
   }
 
   async remove(userId: number, id: number): Promise<void> {

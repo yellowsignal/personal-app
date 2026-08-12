@@ -11,6 +11,7 @@ export interface PublicChecklist {
   createdAt: string;
   ownerName: string;
   itemCount: number;
+  completedCount: number;
 }
 
 export interface PublicChecklistItem {

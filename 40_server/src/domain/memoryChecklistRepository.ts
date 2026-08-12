@@ -33,6 +33,12 @@ export class MemoryChecklistRepository implements ChecklistRepository {
     return [...this.items.values()].filter((i) => i.checklistId === checklistId).length;
   }
 
+  async countCompletedItems(checklistId: number): Promise<number> {
+    return [...this.items.values()].filter(
+      (i) => i.checklistId === checklistId && i.completedAt !== null,
+    ).length;
+  }
+
   async create(input: CreateChecklistInput): Promise<ChecklistRecord> {
     const now = new Date();
     const record: ChecklistRecord = {

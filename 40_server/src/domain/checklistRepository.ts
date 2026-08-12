@@ -29,6 +29,7 @@ export interface ChecklistRepository {
   findById(id: number): Promise<ChecklistRecord | null>;
   listForUser(userId: number, familyId: number | null): Promise<ChecklistRecord[]>;
   countItems(checklistId: number): Promise<number>;
+  countCompletedItems(checklistId: number): Promise<number>;
   create(input: CreateChecklistInput): Promise<ChecklistRecord>;
   update(id: number, input: UpdateChecklistInput): Promise<ChecklistRecord>;
   remove(id: number): Promise<boolean>;

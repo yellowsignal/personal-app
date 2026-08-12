@@ -58,6 +58,12 @@ export class PrismaChecklistRepository implements ChecklistRepository {
     return this.db.checklistItem.count({ where: { checklistId } });
   }
 
+  async countCompletedItems(checklistId: number): Promise<number> {
+    return this.db.checklistItem.count({
+      where: { checklistId, completedAt: { not: null } },
+    });
+  }
+
   async create(input: CreateChecklistInput): Promise<ChecklistRecord> {
     const row = await this.db.checklist.create({
       data: {

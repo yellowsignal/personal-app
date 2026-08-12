@@ -524,7 +524,8 @@ export default function ChecklistsPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold text-neutral-900">{list.title}</p>
                     <p className="mt-0.5 text-[11px] text-neutral-400">
-                      {list.ownerName} · {t("checklists.itemCount", { n: list.itemCount })}
+                      {list.ownerName} · {t("checklists.itemCount", { n: list.itemCount })} ·{" "}
+                      {t("checklists.completedCount", { n: list.completedCount })}
                     </p>
                   </div>
                   <SharedBadge isShared={list.isShared} />

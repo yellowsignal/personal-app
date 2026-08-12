@@ -43,6 +43,7 @@ export interface PublicChecklist {
   createdAt: string;
   ownerName: string;
   itemCount: number;
+  completedCount: number;
 }
 
 export interface PublicChecklistDetail extends PublicChecklist {
@@ -65,6 +66,7 @@ export function toPublicChecklist(
   record: ChecklistRecord,
   ownerName: string,
   itemCount: number,
+  completedCount: number,
 ): PublicChecklist {
   return {
     id: record.id,
@@ -76,5 +78,6 @@ export function toPublicChecklist(
     createdAt: record.createdAt.toISOString(),
     ownerName,
     itemCount,
+    completedCount,
   };
 }
