@@ -58,6 +58,8 @@ export default function ChecklistsPage() {
   const [editingItem, setEditingItem] = useState<PublicChecklistItem | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  // UX: completed "root-only" subtrees are collapsed by default.
+  const [showCompletedRoots, setShowCompletedRoots] = useState(false);
 
   const loadLists = useCallback(async () => {
     if (!token) return;
@@ -82,6 +84,7 @@ export default function ChecklistsPage() {
         const data = await checklistsApi.get(token, id);
         setDetail(data);
         setActiveId(id);
+        setShowCompletedRoots(false);
       } catch (err) {
         setError(err instanceof ApiError ? err.message : t("checklists.errorLoad"));
       }
@@ -94,6 +97,21 @@ export default function ChecklistsPage() {
   }, [loadLists]);
 
   const tree = useMemo(() => (detail ? buildTree(detail.items) : []), [detail]);
+
+  const allCompleted = useCallback((node: TreeNode): boolean => {
+    if (!node.completedAt) return false;
+    return node.children.every(allCompleted);
+  }, []);
+
+  const { visibleRoots, completedRootCount } = useMemo(() => {
+    const completedRoots = tree.filter((n) => allCompleted(n));
+    if (showCompletedRoots) {
+      return { visibleRoots: tree, completedRootCount: completedRoots.length };
+    }
+    const completedRootIds = new Set(completedRoots.map((n) => n.id));
+    const incompleteRoots = tree.filter((n) => !completedRootIds.has(n.id));
+    return { visibleRoots: incompleteRoots, completedRootCount: completedRoots.length };
+  }, [tree, allCompleted, showCompletedRoots]);
 
   async function handleCreateList(e: FormEvent) {
     e.preventDefault();
@@ -339,7 +357,19 @@ export default function ChecklistsPage() {
             </div>
           ) : (
             <ul className="rounded-2xl bg-white py-1 shadow-sm ring-1 ring-black/5">
-              {tree.map((n) => renderNode(n, 0))}
+              {visibleRoots.map((n) => renderNode(n, 0))}
+
+              {!showCompletedRoots && completedRootCount > 0 && (
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setShowCompletedRoots(true)}
+                    className="mt-1 flex w-full items-center justify-center gap-2 px-4 py-3 text-sm font-semibold text-indigo-600 active:bg-indigo-50"
+                  >
+                    {t("checklists.showCompletedRoots", { n: completedRootCount })}
+                  </button>
+                </li>
+              )}
             </ul>
           )}
 
