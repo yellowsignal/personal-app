@@ -459,7 +459,7 @@ export const dict: Record<Lang, Record<string, string>> = {
     "documents.revealError": "機密情報を取得できませんでした",
     "documents.copy": "コピー",
     "documents.copied": "コピーしました",
-    "documents.scanHint": "在留カードなど — 表裏を撮影してPDF保存、1枚または2枚で印刷・共有できます。",
+    "documents.scanHint": "在留カード・保険証など — 撮影で番号・期限を自動入力し、PDFも保存します。",
     "documents.captureScanBoth": "表裏撮影 → PDF保存",
     "documents.captureFront": "表面を撮影",
     "documents.captureBack": "裏面を撮影",
