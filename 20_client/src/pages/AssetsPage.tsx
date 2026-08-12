@@ -16,6 +16,7 @@ import {
 } from "../api/assets";
 import { ApiError } from "../api/http";
 import { formatMoney } from "../utils/formatMoney";
+import { exchangeRates } from "../mocks/data";
 
 const CURRENCY_SYMBOL = { KRW: "₩", JPY: "¥", USD: "$" };
 const ASSET_TYPES: AssetType[] = ["deposit", "stock", "cash", "realestate"];
@@ -113,6 +114,12 @@ export default function AssetsPage() {
     if (scope === "family") return items.filter((a) => a.isShared);
     return items;
   }, [items, scope, user]);
+
+  const totalBase = useMemo(
+    () => visible.reduce((sum, a) => sum + a.amount * exchangeRates[a.currency], 0),
+    [visible],
+  );
+  const totalDisplay = totalBase / exchangeRates[currency];
 
   function openCreate() {
     setEditing(null);
@@ -251,6 +258,17 @@ export default function AssetsPage() {
 
       <div className="mx-auto max-w-md px-4 pt-4 pb-8">
         <ScopeToggle value={scope} onChange={setScope} />
+
+        <div className="mt-4 rounded-2xl bg-neutral-900 p-4 text-white">
+          <p className="text-xs text-neutral-400">{t("assets.total", { currency })}</p>
+          <p className="mt-1 text-2xl font-bold">
+            {CURRENCY_SYMBOL[currency]}
+            {formatMoney(totalDisplay, currency)}
+          </p>
+          <p className="mt-1 text-[11px] text-neutral-400">
+            {t("assets.countNote", { n: visible.length })}
+          </p>
+        </div>
 
         {error && (
           <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>

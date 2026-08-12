@@ -74,6 +74,8 @@ export const dict: Record<Lang, Record<string, string>> = {
 
     "assets.title": "자산",
     "assets.subtitle": "예금 · 주식 · 현금 통합 조회",
+    "assets.total": "총자산 ({currency} 환산)",
+    "assets.countNote": "자산 {n}건",
     "assets.buyPrice": "매수가 {v}",
     "assets.currentPrice": "현재가 {v}",
     "assets.loading": "불러오는 중…",
@@ -260,6 +262,8 @@ export const dict: Record<Lang, Record<string, string>> = {
 
     "assets.title": "資産",
     "assets.subtitle": "預金・株式・現金を統合照会",
+    "assets.total": "総資産（{currency}換算）",
+    "assets.countNote": "資産{n}件",
     "assets.buyPrice": "取得価格 {v}",
     "assets.currentPrice": "現在価格 {v}",
     "assets.loading": "読み込み中…",
