@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { parseScanMarker } from "../storage/documentScanStore.js";
 
 /** Stored in DB (fields_json column). Secret values are AES-GCM encrypted. */
 export interface StoredDocumentField {
@@ -47,6 +48,7 @@ export interface PublicDocument {
   hasSecrets: boolean;
   /** Card/photo scan stored as PDF on server */
   hasScan: boolean;
+  hasScanBack: boolean;
 }
 
 export function newFieldId(): string {
@@ -111,6 +113,7 @@ export function toPublicDocumentFields(stored: StoredDocumentField[]): PublicDoc
 export function toPublicDocument(record: DocumentRecord, ownerName: string): PublicDocument {
   const stored = parseStoredFields(record);
   const fields = toPublicDocumentFields(stored);
+  const scan = parseScanMarker(record.imageUrl);
   return {
     id: record.id,
     userId: record.userId,
@@ -123,7 +126,8 @@ export function toPublicDocument(record: DocumentRecord, ownerName: string): Pub
     createdAt: record.createdAt.toISOString(),
     ownerName,
     hasSecrets: fields.some((f) => f.isSecret && f.hasValue),
-    hasScan: record.imageUrl === "scan",
+    hasScan: scan.hasScan,
+    hasScanBack: scan.hasScanBack,
   };
 }
 

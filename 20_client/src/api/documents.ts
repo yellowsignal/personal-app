@@ -27,7 +27,10 @@ export interface PublicDocument {
   ownerName: string;
   hasSecrets: boolean;
   hasScan: boolean;
+  hasScanBack: boolean;
 }
+
+export type ScanSide = "front" | "back";
 
 export interface DocumentFieldInput {
   id?: string;
@@ -97,8 +100,8 @@ export const documentsApi = {
     );
   },
 
-  async uploadScan(token: string, id: number, pdf: Blob): Promise<PublicDocument> {
-    const res = await fetch(`/api/documents/${id}/scan`, {
+  async uploadScanSide(token: string, id: number, side: ScanSide, pdf: Blob): Promise<PublicDocument> {
+    const res = await fetch(`/api/documents/${id}/scan/${side}`, {
       method: "PUT",
       headers: {
         authorization: `Bearer ${token}`,
@@ -106,15 +109,19 @@ export const documentsApi = {
       },
       body: pdf,
     });
-    const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+    const data = (await res.json().catch(() => ({}))) as PublicDocument & { error?: string; code?: string };
     if (!res.ok) {
       throw new ApiError(data.error ?? `request failed (${res.status})`, res.status, data.code);
     }
-    return data as PublicDocument;
+    return data;
   },
 
-  async downloadScan(token: string, id: number): Promise<Blob> {
-    const res = await fetch(`/api/documents/${id}/scan`, {
+  async uploadScan(token: string, id: number, pdf: Blob): Promise<PublicDocument> {
+    return this.uploadScanSide(token, id, "front", pdf);
+  },
+
+  async downloadScanSide(token: string, id: number, side: ScanSide): Promise<Blob> {
+    const res = await fetch(`/api/documents/${id}/scan/${side}`, {
       headers: { authorization: `Bearer ${token}` },
     });
     if (!res.ok) {
@@ -122,6 +129,10 @@ export const documentsApi = {
       throw new ApiError(data.error ?? `request failed (${res.status})`, res.status, data.code);
     }
     return res.blob();
+  },
+
+  async downloadScan(token: string, id: number): Promise<Blob> {
+    return this.downloadScanSide(token, id, "front");
   },
 
   async removeScan(token: string, id: number): Promise<PublicDocument> {

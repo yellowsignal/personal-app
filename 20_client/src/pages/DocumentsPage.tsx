@@ -11,10 +11,12 @@ import {
   type CreateDocumentInput,
   type DocumentFieldInput,
   type PublicDocument,
+  type ScanSide,
 } from "../api/documents";
 import { ApiError } from "../api/http";
 import { isPasskeySupported } from "../api/passkey";
 import { imageFileToPdfBlob } from "../utils/imageToPdf";
+import { mergePdfBlobs } from "../utils/pdfMerge";
 
 interface FieldDraft {
   key: string;
@@ -22,6 +24,15 @@ interface FieldDraft {
   label: string;
   value: string;
   isSecret: boolean;
+}
+
+type ScanWizardTarget = { kind: "document"; docId: number } | { kind: "create" };
+
+interface ScanWizardState {
+  target: ScanWizardTarget;
+  step: "front" | "back" | "review";
+  frontFile: File | null;
+  backFile: File | null;
 }
 
 function emptyField(): FieldDraft {
@@ -57,9 +68,12 @@ export default function DocumentsPage() {
   const [revealBusyId, setRevealBusyId] = useState<number | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [scanBusyId, setScanBusyId] = useState<number | null>(null);
-  const [createScanFile, setCreateScanFile] = useState<File | null>(null);
+  const [createScanFront, setCreateScanFront] = useState<File | null>(null);
+  const [createScanBack, setCreateScanBack] = useState<File | null>(null);
+  const [scanWizard, setScanWizard] = useState<ScanWizardState | null>(null);
+  const [exportDoc, setExportDoc] = useState<PublicDocument | null>(null);
   const scanInputRef = useRef<HTMLInputElement>(null);
-  const scanTargetIdRef = useRef<number | null>(null);
+  const scanCaptureSideRef = useRef<ScanSide>("front");
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -98,7 +112,8 @@ export default function DocumentsPage() {
     setExpiryDate(todayIsoDate());
     setHasExpiry(true);
     setIsShared(false);
-    setCreateScanFile(null);
+    setCreateScanFront(null);
+    setCreateScanBack(null);
     setShowCreate(true);
   }
 
@@ -164,13 +179,17 @@ export default function DocumentsPage() {
     }
   }
 
-  async function uploadScanForDocument(documentId: number, file: File) {
+  async function uploadScansForDocument(documentId: number, front: File, back: File | null) {
     if (!token) return;
     setScanBusyId(documentId);
     setError(null);
     try {
-      const pdf = await imageFileToPdfBlob(file);
-      await documentsApi.uploadScan(token, documentId, pdf);
+      const frontPdf = await imageFileToPdfBlob(front);
+      await documentsApi.uploadScanSide(token, documentId, "front", frontPdf);
+      if (back) {
+        const backPdf = await imageFileToPdfBlob(back);
+        await documentsApi.uploadScanSide(token, documentId, "back", backPdf);
+      }
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("documents.scanUploadError"));
@@ -179,49 +198,104 @@ export default function DocumentsPage() {
     }
   }
 
-  function triggerScan(documentId: number) {
-    scanTargetIdRef.current = documentId;
+  function openScanWizard(target: ScanWizardTarget) {
+    setScanWizard({ target, step: "front", frontFile: null, backFile: null });
+  }
+
+  function closeScanWizard() {
+    setScanWizard(null);
+  }
+
+  function startScanCapture(side: ScanSide) {
+    scanCaptureSideRef.current = side;
     scanInputRef.current?.click();
   }
 
   async function handleScanInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file) return;
-    const targetId = scanTargetIdRef.current;
-    scanTargetIdRef.current = null;
-    if (targetId === null) return;
-    if (targetId === -1) {
-      setCreateScanFile(file);
+    if (!file || !scanWizard) return;
+    const side = scanCaptureSideRef.current;
+
+    if (side === "front") {
+      setScanWizard((w) => (w ? { ...w, frontFile: file, step: "back" } : w));
       return;
     }
-    await uploadScanForDocument(targetId, file);
+    setScanWizard((w) => (w ? { ...w, backFile: file, step: "review" } : w));
   }
 
-  async function handleOpenPdf(doc: PublicDocument) {
+  async function confirmScanWizard() {
+    if (!scanWizard?.frontFile) return;
+    if (scanWizard.target.kind === "create") {
+      setCreateScanFront(scanWizard.frontFile);
+      setCreateScanBack(scanWizard.backFile);
+      closeScanWizard();
+      return;
+    }
+    await uploadScansForDocument(scanWizard.target.docId, scanWizard.frontFile, scanWizard.backFile);
+    closeScanWizard();
+  }
+
+  async function sharePdfFiles(files: File[], title: string) {
+    if (navigator.share && navigator.canShare?.({ files })) {
+      await navigator.share({ files, title });
+      return;
+    }
+    const blob = files[0]!;
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
+  async function exportCombinedPdf(doc: PublicDocument) {
     if (!token) return;
     setScanBusyId(doc.id);
     setError(null);
     try {
-      const blob = await documentsApi.downloadScan(token, doc.id);
-      const file = new File([blob], `${doc.typeLabel}.pdf`, { type: "application/pdf" });
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: doc.typeLabel });
-        return;
+      const front = await documentsApi.downloadScanSide(token, doc.id, "front");
+      let blob: Blob;
+      if (doc.hasScanBack) {
+        const back = await documentsApi.downloadScanSide(token, doc.id, "back");
+        blob = await mergePdfBlobs([front, back]);
+      } else {
+        blob = front;
       }
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      const file = new File([blob], `${doc.typeLabel}.pdf`, { type: "application/pdf" });
+      await sharePdfFiles([file], doc.typeLabel);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("documents.scanOpenError"));
     } finally {
       setScanBusyId(null);
+      setExportDoc(null);
     }
   }
 
-  function triggerCreateScan() {
-    scanTargetIdRef.current = -1;
-    scanInputRef.current?.click();
+  async function exportSeparatePdfs(doc: PublicDocument) {
+    if (!token) return;
+    setScanBusyId(doc.id);
+    setError(null);
+    try {
+      const front = await documentsApi.downloadScanSide(token, doc.id, "front");
+      const files = [new File([front], `${doc.typeLabel}_앞.pdf`, { type: "application/pdf" })];
+      if (doc.hasScanBack) {
+        const back = await documentsApi.downloadScanSide(token, doc.id, "back");
+        files.push(new File([back], `${doc.typeLabel}_뒤.pdf`, { type: "application/pdf" }));
+      }
+      await sharePdfFiles(files, doc.typeLabel);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("documents.scanOpenError"));
+    } finally {
+      setScanBusyId(null);
+      setExportDoc(null);
+    }
+  }
+
+  function openExportOptions(doc: PublicDocument) {
+    if (doc.hasScanBack) {
+      setExportDoc(doc);
+    } else {
+      void exportCombinedPdf(doc);
+    }
   }
 
   async function handleCopy(value: string, copyKey: string) {
@@ -266,9 +340,8 @@ export default function DocumentsPage() {
         isShared,
       };
       const created = await documentsApi.create(token, payload);
-      if (createScanFile) {
-        const pdf = await imageFileToPdfBlob(createScanFile);
-        await documentsApi.uploadScan(token, created.id, pdf);
+      if (createScanFront) {
+        await uploadScansForDocument(created.id, createScanFront, createScanBack);
       }
       closeCreate();
       await load();
@@ -335,6 +408,11 @@ export default function DocumentsPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-[11px] font-semibold text-neutral-400">{d.ownerName}</p>
                       <p className="mt-0.5 text-sm font-bold text-neutral-900">{d.typeLabel}</p>
+                      {d.hasScan && (
+                        <p className="mt-0.5 text-[10px] font-medium text-indigo-500">
+                          {d.hasScanBack ? t("documents.scanBothSaved") : t("documents.scanFrontSaved")}
+                        </p>
+                      )}
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                       {d.hasSecrets && (
@@ -407,7 +485,7 @@ export default function DocumentsPage() {
                       <>
                         <button
                           type="button"
-                          onClick={() => void handleOpenPdf(d)}
+                          onClick={() => openExportOptions(d)}
                           disabled={scanBusyId === d.id}
                           className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
                         >
@@ -416,7 +494,7 @@ export default function DocumentsPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => triggerScan(d.id)}
+                          onClick={() => openScanWizard({ kind: "document", docId: d.id })}
                           disabled={scanBusyId === d.id}
                           className="flex items-center justify-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2.5 text-xs font-semibold text-neutral-600"
                         >
@@ -427,12 +505,12 @@ export default function DocumentsPage() {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => triggerScan(d.id)}
+                        onClick={() => openScanWizard({ kind: "document", docId: d.id })}
                         disabled={scanBusyId === d.id}
                         className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/40 py-2.5 text-xs font-semibold text-indigo-600 disabled:opacity-50"
                       >
                         <Camera size={14} />
-                        {scanBusyId === d.id ? t("documents.scanUploading") : t("documents.captureScan")}
+                        {scanBusyId === d.id ? t("documents.scanUploading") : t("documents.captureScanBoth")}
                       </button>
                     )}
                   </div>
@@ -557,11 +635,15 @@ export default function DocumentsPage() {
               <p className="mt-1 text-[11px] text-neutral-400">{t("documents.cardScanHint")}</p>
               <button
                 type="button"
-                onClick={triggerCreateScan}
+                onClick={() => openScanWizard({ kind: "create" })}
                 className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-indigo-300 bg-white py-2.5 text-xs font-semibold text-indigo-600"
               >
                 <Camera size={14} />
-                {createScanFile ? t("documents.scanSelected") : t("documents.captureScan")}
+                {createScanFront
+                  ? createScanBack
+                    ? t("documents.scanBothSelected")
+                    : t("documents.scanFrontSelected")
+                  : t("documents.captureScanBoth")}
               </button>
             </div>
 
@@ -573,6 +655,126 @@ export default function DocumentsPage() {
               {t("documents.save")}
             </button>
           </form>
+        </div>
+      )}
+
+      {scanWizard && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">
+          <div className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-bold text-neutral-900">{t("documents.scanWizardTitle")}</h2>
+              <button type="button" onClick={closeScanWizard} className="rounded-full p-2">
+                <X size={18} className="text-neutral-400" />
+              </button>
+            </div>
+
+            {scanWizard.step === "front" && (
+              <>
+                <p className="text-sm text-neutral-600">{t("documents.scanStepFront")}</p>
+                <button
+                  type="button"
+                  onClick={() => startScanCapture("front")}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white"
+                >
+                  <Camera size={16} />
+                  {t("documents.captureFront")}
+                </button>
+              </>
+            )}
+
+            {scanWizard.step === "back" && scanWizard.frontFile && (
+              <>
+                <p className="text-sm text-neutral-600">{t("documents.scanStepBack")}</p>
+                <img
+                  src={URL.createObjectURL(scanWizard.frontFile)}
+                  alt=""
+                  className="mt-3 max-h-28 w-full rounded-lg object-contain bg-neutral-100"
+                />
+                <button
+                  type="button"
+                  onClick={() => startScanCapture("back")}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white"
+                >
+                  <Camera size={16} />
+                  {t("documents.captureBack")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScanWizard((w) => (w ? { ...w, step: "review", backFile: null } : w))}
+                  className="mt-2 w-full py-2 text-xs font-semibold text-neutral-500"
+                >
+                  {t("documents.skipBack")}
+                </button>
+              </>
+            )}
+
+            {scanWizard.step === "review" && scanWizard.frontFile && (
+              <>
+                <p className="text-sm text-neutral-600">{t("documents.scanStepReview")}</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="mb-1 text-[10px] font-semibold text-neutral-400">{t("documents.scanFrontLabel")}</p>
+                    <img
+                      src={URL.createObjectURL(scanWizard.frontFile)}
+                      alt=""
+                      className="h-24 w-full rounded-lg object-contain bg-neutral-100"
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[10px] font-semibold text-neutral-400">{t("documents.scanBackLabel")}</p>
+                    {scanWizard.backFile ? (
+                      <img
+                        src={URL.createObjectURL(scanWizard.backFile)}
+                        alt=""
+                        className="h-24 w-full rounded-lg object-contain bg-neutral-100"
+                      />
+                    ) : (
+                      <div className="flex h-24 items-center justify-center rounded-lg bg-neutral-100 text-[10px] text-neutral-400">
+                        {t("documents.scanNoBack")}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void confirmScanWizard()}
+                  className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white"
+                >
+                  {t("documents.scanSave")}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {exportDoc && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">
+          <div className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-bold text-neutral-900">{t("documents.exportPdfTitle")}</h2>
+              <button type="button" onClick={() => setExportDoc(null)} className="rounded-full p-2">
+                <X size={18} className="text-neutral-400" />
+              </button>
+            </div>
+            <p className="text-sm text-neutral-600">{t("documents.exportPdfHint")}</p>
+            <button
+              type="button"
+              onClick={() => void exportCombinedPdf(exportDoc)}
+              disabled={scanBusyId === exportDoc.id}
+              className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {t("documents.exportCombined")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void exportSeparatePdfs(exportDoc)}
+              disabled={scanBusyId === exportDoc.id}
+              className="mt-2 w-full rounded-xl border border-neutral-200 py-3 text-sm font-semibold text-neutral-700 disabled:opacity-50"
+            >
+              {t("documents.exportSeparate")}
+            </button>
+          </div>
         </div>
       )}
     </div>

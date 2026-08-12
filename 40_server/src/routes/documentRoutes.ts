@@ -110,6 +110,23 @@ export function createDocumentRouter(service: DocumentService, jwtSecret: string
     }
   });
 
+  router.put("/:id/scan/:side", auth, pdfBodyParser, async (req: AuthedRequest, res) => {
+    try {
+      const id = Number(req.params.id);
+      const side = req.params.side;
+      if (!Number.isFinite(id) || (side !== "front" && side !== "back")) {
+        res.status(400).json({ error: "invalid id or side" });
+        return;
+      }
+      const body = req.body;
+      const pdf = Buffer.isBuffer(body) ? body : Buffer.from(body ?? []);
+      const updated = await service.uploadScanSide(req.userId!, id, side, pdf);
+      res.json(updated);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
   router.put("/:id/scan", auth, pdfBodyParser, async (req: AuthedRequest, res) => {
     try {
       const id = Number(req.params.id);
@@ -119,8 +136,25 @@ export function createDocumentRouter(service: DocumentService, jwtSecret: string
       }
       const body = req.body;
       const pdf = Buffer.isBuffer(body) ? body : Buffer.from(body ?? []);
-      const updated = await service.uploadScan(req.userId!, id, pdf);
+      const updated = await service.uploadScanSide(req.userId!, id, "front", pdf);
       res.json(updated);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  router.get("/:id/scan/:side", auth, async (req: AuthedRequest, res) => {
+    try {
+      const id = Number(req.params.id);
+      const side = req.params.side;
+      if (!Number.isFinite(id) || (side !== "front" && side !== "back")) {
+        res.status(400).json({ error: "invalid id or side" });
+        return;
+      }
+      const { buffer, filename } = await service.getScanSide(req.userId!, id, side);
+      res.setHeader("content-type", "application/pdf");
+      res.setHeader("content-disposition", `inline; filename="${encodeURIComponent(filename)}"`);
+      res.send(buffer);
     } catch (err) {
       sendError(res, err);
     }

@@ -212,7 +212,7 @@ test("document multi-field (保険証) stores secrets masked and reveals via pas
   }
 });
 
-test("document card scan stores PDF and returns on download", async () => {
+test("document card scan stores front and back PDFs", async () => {
   const scanStore = tmpScanStore();
   const app = createApp(tmpStore(), {
     authRepo: new MemoryAuthRepository(),
@@ -240,29 +240,50 @@ test("document card scan stores PDF and returns on download", async () => {
       }),
     });
     assert.equal(createRes.status, 201);
-    const created = (await createRes.json()) as { id: number; hasScan: boolean };
+    const created = (await createRes.json()) as { id: number; hasScan: boolean; hasScanBack: boolean };
     assert.equal(created.hasScan, false);
 
-    const pdf = Buffer.from("%PDF-1.4 test card scan\n%%EOF\n");
-    const uploadRes = await fetch(`${base}/api/documents/${created.id}/scan`, {
+    const frontPdf = Buffer.from("%PDF-1.4 front\n%%EOF\n");
+    const backPdf = Buffer.from("%PDF-1.4 back\n%%EOF\n");
+
+    const frontRes = await fetch(`${base}/api/documents/${created.id}/scan/front`, {
       method: "PUT",
       headers: {
         authorization: `Bearer ${owner.token}`,
         "content-type": "application/pdf",
       },
-      body: pdf,
+      body: frontPdf,
     });
-    assert.equal(uploadRes.status, 200);
-    const uploaded = (await uploadRes.json()) as { hasScan: boolean };
-    assert.equal(uploaded.hasScan, true);
+    assert.equal(frontRes.status, 200);
+    const afterFront = (await frontRes.json()) as { hasScan: boolean; hasScanBack: boolean };
+    assert.equal(afterFront.hasScan, true);
+    assert.equal(afterFront.hasScanBack, false);
 
-    const downloadRes = await fetch(`${base}/api/documents/${created.id}/scan`, {
+    const backRes = await fetch(`${base}/api/documents/${created.id}/scan/back`, {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+        "content-type": "application/pdf",
+      },
+      body: backPdf,
+    });
+    assert.equal(backRes.status, 200);
+    const afterBack = (await backRes.json()) as { hasScan: boolean; hasScanBack: boolean };
+    assert.equal(afterBack.hasScanBack, true);
+
+    const frontDl = await fetch(`${base}/api/documents/${created.id}/scan/front`, {
       headers: { authorization: `Bearer ${owner.token}` },
     });
-    assert.equal(downloadRes.status, 200);
-    assert.match(downloadRes.headers.get("content-type") ?? "", /application\/pdf/);
-    const downloaded = Buffer.from(await downloadRes.arrayBuffer());
-    assert.ok(downloaded.subarray(0, 4).equals(Buffer.from("%PDF")));
+    assert.equal(frontDl.status, 200);
+    const frontBody = Buffer.from(await frontDl.arrayBuffer());
+    assert.ok(frontBody.includes(Buffer.from("front")));
+
+    const backDl = await fetch(`${base}/api/documents/${created.id}/scan/back`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(backDl.status, 200);
+    const backBody = Buffer.from(await backDl.arrayBuffer());
+    assert.ok(backBody.includes(Buffer.from("back")));
   } finally {
     server.close();
   }

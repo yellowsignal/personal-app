@@ -1,5 +1,3 @@
-import { jsPDF } from "jspdf";
-
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -18,12 +16,11 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/** Fit a card photo onto A4 and return a PDF blob for storage/printing. */
-export async function imageFileToPdfBlob(file: File): Promise<Blob> {
+async function addImagePage(pdf: import("jspdf").jsPDF, file: File, isFirst: boolean): Promise<void> {
   const dataUrl = await readFileAsDataUrl(file);
   await loadImage(dataUrl);
+  if (!isFirst) pdf.addPage();
 
-  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
   const margin = 8;
@@ -36,8 +33,25 @@ export async function imageFileToPdfBlob(file: File): Promise<Blob> {
   const h = props.height * ratio;
   const x = (pageW - w) / 2;
   const y = (pageH - h) / 2;
-
   const format = file.type.includes("png") ? "PNG" : "JPEG";
   pdf.addImage(dataUrl, format, x, y, w, h);
+}
+
+/** Fit a card photo onto A4 and return a single-page PDF blob. */
+export async function imageFileToPdfBlob(file: File): Promise<Blob> {
+  const { jsPDF } = await import("jspdf");
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  await addImagePage(pdf, file, true);
+  return pdf.output("blob");
+}
+
+/** Front + back on separate pages in one PDF. */
+export async function imageFilesToCombinedPdfBlob(files: File[]): Promise<Blob> {
+  if (files.length === 0) throw new Error("no images");
+  const { jsPDF } = await import("jspdf");
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  for (let i = 0; i < files.length; i++) {
+    await addImagePage(pdf, files[i]!, i === 0);
+  }
   return pdf.output("blob");
 }

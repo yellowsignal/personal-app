@@ -11,7 +11,8 @@ import {
 import { HttpError } from "./authService.js";
 import type { PasskeyService } from "./passkeyService.js";
 import type { ViewScope } from "../domain/subscriptionTypes.js";
-import type { DocumentScanStore } from "../storage/documentScanStore.js";
+import type { DocumentScanStore, ScanSide } from "../storage/documentScanStore.js";
+import { scanMarkerFromSides } from "../storage/documentScanStore.js";
 
 const MAX_SCAN_BYTES = 8 * 1024 * 1024;
 
@@ -285,7 +286,12 @@ export class DocumentService {
     }
   }
 
-  async uploadScan(userId: number, id: number, pdf: Buffer): Promise<PublicDocument> {
+  async uploadScanSide(
+    userId: number,
+    id: number,
+    side: ScanSide,
+    pdf: Buffer,
+  ): Promise<PublicDocument> {
     if (!this.scanStore) {
       throw new HttpError(503, "scan storage not configured", "SCAN_UNAVAILABLE");
     }
@@ -305,12 +311,24 @@ export class DocumentService {
       throw new HttpError(400, "file must be a PDF");
     }
 
-    await this.scanStore.save(id, pdf);
-    const record = await this.documentRepo.update(id, { imageUrl: "scan" });
+    await this.scanStore.saveSide(id, side, pdf);
+    const hasFront = await this.scanStore.hasSide(id, "front");
+    const hasBack = await this.scanStore.hasSide(id, "back");
+    const marker = scanMarkerFromSides(hasFront, hasBack);
+    const record = await this.documentRepo.update(id, { imageUrl: marker });
     return toPublicDocument(record, user.name);
   }
 
-  async getScan(userId: number, id: number): Promise<{ buffer: Buffer; filename: string }> {
+  /** @deprecated use uploadScanSide */
+  async uploadScan(userId: number, id: number, pdf: Buffer): Promise<PublicDocument> {
+    return this.uploadScanSide(userId, id, "front", pdf);
+  }
+
+  async getScanSide(
+    userId: number,
+    id: number,
+    side: ScanSide,
+  ): Promise<{ buffer: Buffer; filename: string }> {
     if (!this.scanStore) {
       throw new HttpError(503, "scan storage not configured", "SCAN_UNAVAILABLE");
     }
@@ -320,15 +338,18 @@ export class DocumentService {
     if (!this.canView(existing, user.familyId, user.id)) {
       throw new HttpError(403, "forbidden", "FORBIDDEN");
     }
-    if (existing.imageUrl !== "scan") {
-      throw new HttpError(404, "no scan stored", "NO_SCAN");
-    }
-    const buffer = await this.scanStore.read(id);
+    const buffer = await this.scanStore.readSide(id, side);
     if (!buffer) {
       throw new HttpError(404, "no scan stored", "NO_SCAN");
     }
-    const safeName = existing.typeLabel.replace(/[^\w\u3000-\u9fff\uac00-\ud7af-]+/g, "_").slice(0, 40) || "document";
-    return { buffer, filename: `${safeName}.pdf` };
+    const safeName =
+      existing.typeLabel.replace(/[^\w\u3000-\u9fff\uac00-\ud7af-]+/g, "_").slice(0, 40) || "document";
+    const suffix = side === "front" ? "" : "_back";
+    return { buffer, filename: `${safeName}${suffix}.pdf` };
+  }
+
+  async getScan(userId: number, id: number): Promise<{ buffer: Buffer; filename: string }> {
+    return this.getScanSide(userId, id, "front");
   }
 
   async removeScan(userId: number, id: number): Promise<PublicDocument> {

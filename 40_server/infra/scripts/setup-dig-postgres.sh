@@ -70,6 +70,7 @@ Environment=PORT=3002
 Environment=WEBAUTHN_RP_ID=sumicchogurashi-dev.duckdns.org
 Environment=WEBAUTHN_ORIGIN=https://sumicchogurashi-dev.duckdns.org
 Environment=DATA_FILE=${REPO_ROOT}/30_data/tasks-dev.json
+Environment=DOCUMENT_SCAN_DIR=${REPO_ROOT}/30_data/document-scans
 # MEMORY_AUTH intentionally unset — use Prisma/Postgres
 ExecStart=/usr/bin/node ${SERVER_DIR}/dist/index.js
 Restart=on-failure
