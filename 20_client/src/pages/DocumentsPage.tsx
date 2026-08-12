@@ -785,7 +785,7 @@ export default function DocumentsPage() {
                         </button>
                       )}
                       <SharedBadge isShared={d.isShared} />
-                      {canManage && (
+                      {(canManage || d.hasScan) && (
                         <button
                           type="button"
                           aria-label={t("documents.more")}
@@ -798,7 +798,7 @@ export default function DocumentsPage() {
                     </div>
                   </div>
 
-                  {menuId === d.id && canManage && (
+                  {menuId === d.id && (
                     <>
                       <button
                         type="button"
@@ -806,24 +806,88 @@ export default function DocumentsPage() {
                         aria-label="close menu"
                         onClick={() => setMenuId(null)}
                       />
-                      <div className="absolute right-3 top-12 z-50 min-w-[140px] overflow-hidden rounded-xl bg-white py-1 shadow-lg ring-1 ring-black/10">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(d)}
-                          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
-                        >
-                          <Pencil size={14} /> {t("documents.editDocument")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMenuId(null);
-                            setConfirmDelete(d);
-                          }}
-                          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-rose-600 hover:bg-rose-50"
-                        >
-                          <Trash2 size={14} /> {t("documents.deleteDocument")}
-                        </button>
+                      <div className="absolute right-3 top-12 z-50 min-w-[168px] overflow-hidden rounded-xl bg-white py-1 shadow-lg ring-1 ring-black/10">
+                        {d.hasScan && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMenuId(null);
+                              openShowMode(d);
+                            }}
+                            disabled={scanBusyId === d.id}
+                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+                          >
+                            <Maximize2 size={14} />{" "}
+                            {d.category === "medical"
+                              ? t("documents.showAtHospital")
+                              : t("documents.showCard")}
+                          </button>
+                        )}
+                        {d.hasScan && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMenuId(null);
+                              openExportOptions(d);
+                            }}
+                            disabled={scanBusyId === d.id}
+                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+                          >
+                            <FileDown size={14} /> {t("documents.openPdf")}
+                          </button>
+                        )}
+                        {canManage && d.hasScan && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMenuId(null);
+                              openScanWizard({ kind: "document", docId: d.id });
+                            }}
+                            disabled={scanBusyId === d.id}
+                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+                          >
+                            <Camera size={14} /> {t("documents.rescan")}
+                          </button>
+                        )}
+                        {canManage && !d.hasScan && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMenuId(null);
+                              openScanWizard({ kind: "document", docId: d.id });
+                            }}
+                            disabled={scanBusyId === d.id}
+                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+                          >
+                            <Camera size={14} />{" "}
+                            {scanBusyId === d.id ? t("documents.scanUploading") : t("documents.captureScanBoth")}
+                          </button>
+                        )}
+                        {canManage && (
+                          <>
+                            <div className="my-1 border-t border-neutral-100" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMenuId(null);
+                                openEdit(d);
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
+                            >
+                              <Pencil size={14} /> {t("documents.editDocument")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMenuId(null);
+                                setConfirmDelete(d);
+                              }}
+                              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-rose-600 hover:bg-rose-50"
+                            >
+                              <Trash2 size={14} /> {t("documents.deleteDocument")}
+                            </button>
+                          </>
+                        )}
                       </div>
                     </>
                   )}
@@ -874,49 +938,19 @@ export default function DocumentsPage() {
                     </div>
                   )}
 
-                  <div className="mt-3 flex flex-wrap gap-2 border-t border-neutral-100 pt-3">
-                    {d.hasScan ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => openShowMode(d)}
-                          disabled={scanBusyId === d.id}
-                          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
-                        >
-                          <Maximize2 size={14} />
-                          {t("documents.showAtHospital")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openExportOptions(d)}
-                          disabled={scanBusyId === d.id}
-                          className="flex items-center justify-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2.5 text-xs font-semibold text-neutral-600 disabled:opacity-50"
-                        >
-                          <FileDown size={14} />
-                          {t("documents.openPdf")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openScanWizard({ kind: "document", docId: d.id })}
-                          disabled={scanBusyId === d.id}
-                          className="flex items-center justify-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2.5 text-xs font-semibold text-neutral-600"
-                        >
-                          <Camera size={14} />
-                          {t("documents.rescan")}
-                        </button>
-                      </>
-                    ) : (
+                  {d.hasScan && d.category === "medical" && (
+                    <div className="mt-3 border-t border-neutral-100 pt-3">
                       <button
                         type="button"
-                        onClick={() => openScanWizard({ kind: "document", docId: d.id })}
+                        onClick={() => openShowMode(d)}
                         disabled={scanBusyId === d.id}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/40 py-2.5 text-xs font-semibold text-indigo-600 disabled:opacity-50"
+                        className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
                       >
-                        <Camera size={14} />
-                        {scanBusyId === d.id ? t("documents.scanUploading") : t("documents.captureScanBoth")}
+                        <Maximize2 size={14} />
+                        {t("documents.showAtHospital")}
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
                       );
                       })}
