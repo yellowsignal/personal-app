@@ -13,7 +13,7 @@ export const dict: Record<Lang, Record<string, string>> = {
   ko: {
     "nav.home": "홈",
     "nav.assets": "자산",
-    "nav.documents": "증명서",
+    "nav.documents": "카드함",
     "nav.checklists": "체크리스트",
     "nav.subscriptions": "구독",
     "nav.calendar": "캘린더",
@@ -143,7 +143,7 @@ export const dict: Record<Lang, Record<string, string>> = {
     "depositBank.MUFG": "三菱UFJ銀行",
     "depositBank.YUCHO": "ゆうちょ銀行",
 
-    "documents.title": "증명서 · 신분증",
+    "documents.title": "카드 · 증명서",
     "documents.subtitle": "만료일 자동 캘린더 등록",
     "documents.ocrButton": "카메라로 촬영해 OCR 자동 입력",
     "documents.ocrWizardTitle": "촬영 후 자동 입력",
@@ -337,7 +337,7 @@ export const dict: Record<Lang, Record<string, string>> = {
   ja: {
     "nav.home": "ホーム",
     "nav.assets": "資産",
-    "nav.documents": "証明書",
+    "nav.documents": "カード箱",
     "nav.checklists": "チェックリスト",
     "nav.subscriptions": "サブスク",
     "nav.calendar": "カレンダー",
@@ -467,7 +467,7 @@ export const dict: Record<Lang, Record<string, string>> = {
     "depositBank.MUFG": "三菱UFJ銀行",
     "depositBank.YUCHO": "ゆうちょ銀行",
 
-    "documents.title": "証明書・身分証",
+    "documents.title": "カード・証明書",
     "documents.subtitle": "有効期限をカレンダーに自動登録",
     "documents.ocrButton": "カメラで撮影してOCR自動入力",
     "documents.ocrWizardTitle": "撮影して自動入力",
