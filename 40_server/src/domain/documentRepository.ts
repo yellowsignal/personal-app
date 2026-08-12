@@ -9,6 +9,7 @@ export interface CreateDocumentInput {
   expiryDate: Date | null;
   imageUrl: string | null;
   isShared: boolean;
+  memo: string | null;
 }
 
 export interface UpdateDocumentInput {
@@ -18,6 +19,7 @@ export interface UpdateDocumentInput {
   expiryDate?: Date | null;
   imageUrl?: string | null;
   isShared?: boolean;
+  memo?: string | null;
   familyId?: number | null;
 }
 

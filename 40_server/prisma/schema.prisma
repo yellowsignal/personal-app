@@ -114,6 +114,7 @@ model Document {
   expiryDate DateTime? @map("expiry_date") @db.Date
   imageUrl   String?   @map("image_url") @db.Text
   isShared   Boolean   @default(false) @map("is_shared")
+  memo       String?   @db.Text
   createdAt  DateTime  @default(now()) @map("created_at")
 
   user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)

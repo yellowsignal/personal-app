@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Camera, Copy, Eye, EyeOff, FileDown, Plus, Trash2, X } from "lucide-react";
+import { Camera, Copy, Eye, EyeOff, FileDown, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
@@ -52,15 +52,19 @@ function maskSecret(): string {
 
 export default function DocumentsPage() {
   const { t } = useLanguage();
-  const { token, family } = useAuth();
+  const { token, family, user } = useAuth();
   const [scope, setScope] = useState<ViewScope>("all");
   const [items, setItems] = useState<PublicDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState<PublicDocument | null>(null);
+  const [menuId, setMenuId] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<PublicDocument | null>(null);
 
   const [typeLabel, setTypeLabel] = useState("");
   const [fieldDrafts, setFieldDrafts] = useState<FieldDraft[]>([emptyField()]);
+  const [memo, setMemo] = useState("");
   const [expiryDate, setExpiryDate] = useState(() => todayIsoDate());
   const [hasExpiry, setHasExpiry] = useState(true);
   const [isShared, setIsShared] = useState(false);
@@ -110,20 +114,50 @@ export default function DocumentsPage() {
     return [...items].sort((a, b) => daysLeft(a.expiryDate) - daysLeft(b.expiryDate));
   }, [items, daysLeft]);
 
-  function openCreate() {
+  function resetForm() {
     setTypeLabel("");
     setFieldDrafts([emptyField()]);
+    setMemo("");
     setExpiryDate(todayIsoDate());
     setHasExpiry(true);
     setIsShared(false);
     setCreateScanFront(null);
     setCreateScanBack(null);
+    setEditing(null);
+  }
+
+  function openCreate() {
+    resetForm();
+    setMenuId(null);
+    setShowCreate(true);
+  }
+
+  function openEdit(doc: PublicDocument) {
+    setEditing(doc);
+    setTypeLabel(doc.typeLabel);
+    setMemo(doc.memo ?? "");
+    setFieldDrafts(
+      doc.fields.map((f) => ({
+        key: crypto.randomUUID(),
+        id: f.id,
+        label: f.label,
+        value: f.isSecret ? "" : (f.value ?? ""),
+        isSecret: f.isSecret,
+      })),
+    );
+    setHasExpiry(!!doc.expiryDate);
+    setExpiryDate(doc.expiryDate ?? todayIsoDate());
+    setIsShared(doc.isShared);
+    setCreateScanFront(null);
+    setCreateScanBack(null);
+    setMenuId(null);
     setShowCreate(true);
   }
 
   function closeCreate() {
     setShowCreate(false);
     setSubmitting(false);
+    setEditing(null);
   }
 
   function updateField(key: string, patch: Partial<FieldDraft>) {
@@ -362,7 +396,7 @@ export default function DocumentsPage() {
     }
   }
 
-  async function handleCreate(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!token || submitting) return;
     if (!typeLabel.trim()) {
@@ -371,16 +405,30 @@ export default function DocumentsPage() {
     }
     const fields: DocumentFieldInput[] = fieldDrafts
       .filter((f) => f.label.trim())
-      .map((f) => ({
-        label: f.label.trim(),
-        isSecret: f.isSecret,
-        value: f.value,
-      }));
+      .map((f) => {
+        const base: DocumentFieldInput = {
+          id: f.id,
+          label: f.label.trim(),
+          isSecret: f.isSecret,
+        };
+        if (editing && f.isSecret && !f.value.trim()) {
+          return base;
+        }
+        return { ...base, value: f.value };
+      });
     if (fields.length === 0) {
       setError(t("documents.fieldsRequired"));
       return;
     }
-    if (!fields.some((f) => f.value?.trim())) {
+    const hasFieldValue = fields.some((f, idx) => {
+      const draft = fieldDrafts.filter((d) => d.label.trim())[idx];
+      if (f.value?.trim()) return true;
+      if (editing && draft?.isSecret) {
+        return editing.fields.some((ef) => ef.id === f.id && ef.hasValue);
+      }
+      return false;
+    });
+    if (!hasFieldValue) {
       setError(t("documents.fieldValueRequired"));
       return;
     }
@@ -392,12 +440,18 @@ export default function DocumentsPage() {
         fields,
         expiryDate: hasExpiry ? expiryDate : null,
         isShared,
+        memo: memo.trim() || null,
       };
-      const created = await documentsApi.create(token, payload);
-      if (createScanFront) {
-        await uploadScansForDocument(created.id, createScanFront, createScanBack);
+      if (editing) {
+        await documentsApi.update(token, editing.id, payload);
+      } else {
+        const created = await documentsApi.create(token, payload);
+        if (createScanFront) {
+          await uploadScansForDocument(created.id, createScanFront, createScanBack);
+        }
       }
       closeCreate();
+      resetForm();
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("documents.errorSave"));
@@ -406,9 +460,31 @@ export default function DocumentsPage() {
     }
   }
 
+  async function handleDelete() {
+    if (!token || !confirmDelete) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await documentsApi.remove(token, confirmDelete.id);
+      setConfirmDelete(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("documents.deleteError"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const canSubmit =
     typeLabel.trim().length > 0 &&
-    fieldDrafts.some((f) => f.label.trim() && f.value.trim());
+    fieldDrafts.some((f) => {
+      if (!f.label.trim()) return false;
+      if (f.value.trim()) return true;
+      if (editing && f.isSecret) {
+        return editing.fields.some((ef) => ef.id === f.id && ef.hasValue);
+      }
+      return false;
+    });
 
   return (
     <div>
@@ -464,12 +540,16 @@ export default function DocumentsPage() {
               const dLeft = daysLeft(d.expiryDate);
               const urgent = d.expiryDate !== null && dLeft <= 30;
               const docRevealed = Boolean(revealedByDoc[d.id]);
+              const canManage = user?.id === d.userId;
               return (
-                <div key={d.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
+                <div key={d.id} className="relative rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-[11px] font-semibold text-neutral-400">{d.ownerName}</p>
                       <p className="mt-0.5 text-sm font-bold text-neutral-900">{d.typeLabel}</p>
+                      {d.memo && (
+                        <p className="mt-1 text-xs text-neutral-500">{d.memo}</p>
+                      )}
                       {d.hasScan && (
                         <p className="mt-0.5 text-[10px] font-medium text-indigo-500">
                           {d.hasScanBack ? t("documents.scanBothSaved") : t("documents.scanFrontSaved")}
@@ -495,8 +575,48 @@ export default function DocumentsPage() {
                         </button>
                       )}
                       <SharedBadge isShared={d.isShared} />
+                      {canManage && (
+                        <button
+                          type="button"
+                          aria-label={t("documents.more")}
+                          onClick={() => setMenuId((id) => (id === d.id ? null : d.id))}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-50"
+                        >
+                          <MoreHorizontal size={18} />
+                        </button>
+                      )}
                     </div>
                   </div>
+
+                  {menuId === d.id && canManage && (
+                    <>
+                      <button
+                        type="button"
+                        className="fixed inset-0 z-40"
+                        aria-label="close menu"
+                        onClick={() => setMenuId(null)}
+                      />
+                      <div className="absolute right-3 top-12 z-50 min-w-[140px] overflow-hidden rounded-xl bg-white py-1 shadow-lg ring-1 ring-black/10">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(d)}
+                          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
+                        >
+                          <Pencil size={14} /> {t("documents.editDocument")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMenuId(null);
+                            setConfirmDelete(d);
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-rose-600 hover:bg-rose-50"
+                        >
+                          <Trash2 size={14} /> {t("documents.deleteDocument")}
+                        </button>
+                      </div>
+                    </>
+                  )}
 
                   <div className="mt-3 space-y-2">
                     {d.fields.map((field) => {
@@ -586,16 +706,20 @@ export default function DocumentsPage() {
       {showCreate && (
         <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/40 sm:items-center">
           <form
-            onSubmit={handleCreate}
+            onSubmit={handleSubmit}
             className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-bold text-neutral-900">{t("documents.newDocument")}</h2>
+              <h2 className="text-base font-bold text-neutral-900">
+                {editing ? t("documents.editDocument") : t("documents.newDocument")}
+              </h2>
               <button type="button" onClick={closeCreate} aria-label={t("documents.cancel")} className="rounded-full p-2">
                 <X size={18} className="text-neutral-400" />
               </button>
             </div>
-            <p className="mb-4 text-xs text-neutral-500">{t("documents.reviewOcrHint")}</p>
+            {!editing && (
+              <p className="mb-4 text-xs text-neutral-500">{t("documents.reviewOcrHint")}</p>
+            )}
 
             <label className="mb-2 block text-sm font-semibold text-neutral-700">{t("documents.fieldTypeLabel")}</label>
             <input
@@ -648,7 +772,11 @@ export default function DocumentsPage() {
                   <input
                     value={field.value}
                     onChange={(e) => updateField(field.key, { value: e.target.value })}
-                    placeholder={t("documents.placeholderFieldValue")}
+                    placeholder={
+                      editing && field.isSecret
+                        ? t("documents.secretKeepHint")
+                        : t("documents.placeholderFieldValue")
+                    }
                     className="mt-2 w-full rounded-lg border border-neutral-200 bg-white px-2.5 py-2 font-mono text-sm outline-none focus:border-indigo-400"
                   />
                   <label className="mt-2 flex items-center gap-2 text-xs text-neutral-600">
@@ -693,22 +821,33 @@ export default function DocumentsPage() {
               {t("documents.shareWithFamily")}
             </label>
 
-            <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50/80 p-3">
-              <p className="text-sm font-semibold text-neutral-700">{t("documents.cardScan")}</p>
-              <p className="mt-1 text-[11px] text-neutral-400">{t("documents.cardScanHint")}</p>
-              <button
-                type="button"
-                onClick={() => openScanWizard({ kind: "create" })}
-                className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-indigo-300 bg-white py-2.5 text-xs font-semibold text-indigo-600"
-              >
-                <Camera size={14} />
-                {createScanFront
-                  ? createScanBack
-                    ? t("documents.scanBothSelected")
-                    : t("documents.scanFrontSelected")
-                  : t("documents.captureScanBoth")}
-              </button>
-            </div>
+            <label className="mt-4 block text-sm font-semibold text-neutral-700">{t("documents.fieldMemo")}</label>
+            <textarea
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              placeholder={t("documents.placeholderMemo")}
+              rows={3}
+              className="mt-2 w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+            />
+
+            {!editing && (
+              <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50/80 p-3">
+                <p className="text-sm font-semibold text-neutral-700">{t("documents.cardScan")}</p>
+                <p className="mt-1 text-[11px] text-neutral-400">{t("documents.cardScanHint")}</p>
+                <button
+                  type="button"
+                  onClick={() => openScanWizard({ kind: "create" })}
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-indigo-300 bg-white py-2.5 text-xs font-semibold text-indigo-600"
+                >
+                  <Camera size={14} />
+                  {createScanFront
+                    ? createScanBack
+                      ? t("documents.scanBothSelected")
+                      : t("documents.scanFrontSelected")
+                    : t("documents.captureScanBoth")}
+                </button>
+              </div>
+            )}
 
             <button
               type="submit"
@@ -831,6 +970,34 @@ export default function DocumentsPage() {
             )}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+            <h2 className="text-base font-bold text-neutral-900">{t("documents.deleteDocument")}</h2>
+            <p className="mt-2 text-sm text-neutral-500">
+              {t("documents.deleteConfirm", { name: confirmDelete.typeLabel })}
+            </p>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-semibold text-neutral-600"
+              >
+                {t("documents.cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => void handleDelete()}
+                className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {t("documents.deleteDocument")}
+              </button>
+            </div>
           </div>
         </div>
       )}

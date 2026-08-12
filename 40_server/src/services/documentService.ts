@@ -65,6 +65,13 @@ function parseOptionalString(value: unknown, fieldName: string): string | null {
   return trimmed ? trimmed.slice(0, 500) : null;
 }
 
+function parseMemo(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") throw new HttpError(400, "memo must be a string");
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, 2000) : null;
+}
+
 function parseFieldsInput(value: unknown): DocumentFieldInput[] {
   if (!Array.isArray(value) || value.length === 0) {
     throw new HttpError(400, "fields must be a non-empty array");
@@ -214,6 +221,7 @@ export class DocumentService {
 
     const expiryDate = parseOptionalExpiryDate(body.expiryDate);
     const imageUrl = parseOptionalString(body.imageUrl, "imageUrl");
+    const memo = "memo" in body ? parseMemo(body.memo) : null;
 
     const isShared = body.isShared === true;
     if (isShared && !user.familyId) {
@@ -229,6 +237,7 @@ export class DocumentService {
       expiryDate,
       imageUrl,
       isShared,
+      memo,
     });
     return toPublicDocument(record, user.name);
   }
@@ -263,6 +272,7 @@ export class DocumentService {
       docNumber: "fields" in body ? null : undefined,
       expiryDate: "expiryDate" in body ? parseOptionalExpiryDate(body.expiryDate) : undefined,
       imageUrl: "imageUrl" in body ? parseOptionalString(body.imageUrl, "imageUrl") : undefined,
+      memo: "memo" in body ? parseMemo(body.memo) : undefined,
       isShared: body.isShared === undefined ? undefined : isShared,
       familyId: body.isShared === undefined ? undefined : isShared ? user.familyId : null,
     };

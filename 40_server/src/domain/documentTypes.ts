@@ -22,6 +22,7 @@ export interface DocumentRecord {
   expiryDate: Date | null;
   imageUrl: string | null;
   isShared: boolean;
+  memo: string | null;
   createdAt: Date;
 }
 
@@ -43,6 +44,7 @@ export interface PublicDocument {
   expiryDate: string | null;
   imageUrl: string | null;
   isShared: boolean;
+  memo: string | null;
   createdAt: string;
   ownerName: string;
   hasSecrets: boolean;
@@ -123,6 +125,7 @@ export function toPublicDocument(record: DocumentRecord, ownerName: string): Pub
     expiryDate: record.expiryDate ? record.expiryDate.toISOString().slice(0, 10) : null,
     imageUrl: record.imageUrl,
     isShared: record.isShared,
+    memo: record.memo,
     createdAt: record.createdAt.toISOString(),
     ownerName,
     hasSecrets: fields.some((f) => f.isSecret && f.hasValue),

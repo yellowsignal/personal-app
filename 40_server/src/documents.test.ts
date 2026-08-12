@@ -212,6 +212,93 @@ test("document multi-field (保険証) stores secrets masked and reveals via pas
   }
 });
 
+test("document update memo and delete owner-only", async () => {
+  const app = createApp(tmpStore(), {
+    authRepo: new MemoryAuthRepository(),
+    documentRepo: new MemoryDocumentRepository(),
+    documentScanStore: tmpScanStore(),
+    passkeyRepo: new MemoryPasskeyRepository(),
+    inviteTokenRepo: new MemoryInviteTokenRepository(),
+    challengeStore: new ChallengeStore(),
+    jwtSecret: "test-secret",
+  });
+
+  const { server, base } = await listen(app);
+  try {
+    const owner = await registerOwner(base);
+    const ownerFamily = (await fetch(`${base}/api/family`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    }).then((r) => r.json())) as { inviteCode: string };
+
+    const createRes = await fetch(`${base}/api/documents`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        typeLabel: "여권",
+        fields: [{ label: "여권번호", isSecret: true, value: "M12345678" }],
+        memo: "외교부 발급",
+        isShared: true,
+      }),
+    });
+    assert.equal(createRes.status, 201);
+    const created = (await createRes.json()) as { id: number; memo: string | null };
+    assert.equal(created.memo, "외교부 발급");
+
+    const updated = await fetch(`${base}/api/documents/${created.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ memo: "보관함 A-2", typeLabel: "여권 (갱신)" }),
+    });
+    assert.equal(updated.status, 200);
+    const updatedBody = (await updated.json()) as { memo: string | null; typeLabel: string };
+    assert.equal(updatedBody.memo, "보관함 A-2");
+    assert.equal(updatedBody.typeLabel, "여권 (갱신)");
+
+    const memberReg = await fetch(`${base}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "member2@example.com",
+        password: "password123",
+        name: "Member",
+        inviteCode: ownerFamily.inviteCode,
+      }),
+    });
+    const member = (await memberReg.json()) as { token: string };
+
+    const memberPatch = await fetch(`${base}/api/documents/${created.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${member.token}`,
+      },
+      body: JSON.stringify({ memo: "해킹" }),
+    });
+    assert.equal(memberPatch.status, 403);
+
+    const del = await fetch(`${base}/api/documents/${created.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(del.status, 204);
+
+    const afterDelete = await fetch(`${base}/api/documents`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(afterDelete.status, 200);
+    const items = (await afterDelete.json()) as unknown[];
+    assert.equal(items.length, 0);
+  } finally {
+    server.close();
+  }
+});
+
 test("document card scan stores front and back PDFs", async () => {
   const scanStore = tmpScanStore();
   const app = createApp(tmpStore(), {

@@ -29,6 +29,7 @@ export class MemoryDocumentRepository implements DocumentRepository {
       expiryDate: input.expiryDate,
       imageUrl: input.imageUrl,
       isShared: input.isShared,
+      memo: input.memo,
       createdAt: now,
     };
     this.docs.set(record.id, record);
@@ -47,6 +48,7 @@ export class MemoryDocumentRepository implements DocumentRepository {
       expiryDate: input.expiryDate === undefined ? existing.expiryDate : input.expiryDate,
       imageUrl: input.imageUrl === undefined ? existing.imageUrl : input.imageUrl,
       isShared: input.isShared === undefined ? existing.isShared : input.isShared,
+      memo: input.memo === undefined ? existing.memo : input.memo,
       familyId: input.familyId === undefined ? existing.familyId : input.familyId,
     };
     this.docs.set(id, updated);

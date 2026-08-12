@@ -16,6 +16,7 @@ function map(row: PrismaDocument): DocumentRecord {
     expiryDate: row.expiryDate,
     imageUrl: row.imageUrl,
     isShared: row.isShared,
+    memo: row.memo,
     createdAt: row.createdAt,
   };
 }
@@ -48,6 +49,7 @@ export class PrismaDocumentRepository implements DocumentRepository {
         expiryDate: input.expiryDate,
         imageUrl: input.imageUrl,
         isShared: input.isShared,
+        memo: input.memo,
       },
     });
     return map(row);
@@ -63,6 +65,7 @@ export class PrismaDocumentRepository implements DocumentRepository {
         expiryDate: input.expiryDate,
         imageUrl: input.imageUrl,
         isShared: input.isShared,
+        memo: input.memo,
         familyId: input.familyId,
       },
     });

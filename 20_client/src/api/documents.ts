@@ -23,6 +23,7 @@ export interface PublicDocument {
   expiryDate: string | null;
   imageUrl: string | null;
   isShared: boolean;
+  memo: string | null;
   createdAt: string;
   ownerName: string;
   hasSecrets: boolean;
@@ -45,6 +46,7 @@ export interface CreateDocumentInput {
   expiryDate?: string | null;
   imageUrl?: string | null;
   isShared?: boolean;
+  memo?: string | null;
 }
 
 export const DOCUMENT_TYPE_SUGGESTIONS = [
@@ -81,6 +83,13 @@ export const documentsApi = {
       method: "PATCH",
       token,
       body: JSON.stringify(body),
+    });
+  },
+
+  remove(token: string, id: number) {
+    return apiFetch<void>(`/api/documents/${id}`, {
+      method: "DELETE",
+      token,
     });
   },
 
