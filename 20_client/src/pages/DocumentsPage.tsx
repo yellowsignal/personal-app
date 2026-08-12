@@ -5,9 +5,13 @@ import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
 import DocumentShowMode from "../components/DocumentShowMode";
 import { useLanguage } from "../i18n/LanguageContext";
+import {
+  documentTypeSuggestions,
+  localizeDocumentFieldLabel,
+  localizeDocumentTypeLabel,
+} from "../i18n/translations";
 import { useAuth } from "../context/AuthContext";
 import {
-  DOCUMENT_TYPE_SUGGESTIONS,
   DOCUMENT_CATEGORY_ORDER,
   documentsApi,
   type CreateDocumentInput,
@@ -55,7 +59,7 @@ function maskSecret(): string {
 }
 
 export default function DocumentsPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { token, family, user } = useAuth();
   const [scope, setScope] = useState<ViewScope>("all");
   const [items, setItems] = useState<PublicDocument[]>([]);
@@ -671,7 +675,9 @@ export default function DocumentsPage() {
                   className="flex min-w-[132px] shrink-0 flex-col rounded-2xl bg-white px-3 py-3 text-left shadow-sm ring-1 ring-indigo-100"
                 >
                   <Star size={14} className="fill-amber-400 text-amber-400" />
-                  <p className="mt-1 line-clamp-2 text-sm font-bold text-neutral-900">{d.typeLabel}</p>
+                  <p className="mt-1 line-clamp-2 text-sm font-bold text-neutral-900">
+                    {localizeDocumentTypeLabel(d.typeLabel, t)}
+                  </p>
                   <p className="mt-1 text-[10px] font-semibold text-indigo-600">{t("documents.showAtHospital")}</p>
                 </button>
               ))}
@@ -735,7 +741,9 @@ export default function DocumentsPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-[11px] font-semibold text-neutral-400">{d.ownerName}</p>
-                      <p className="mt-0.5 text-sm font-bold text-neutral-900">{d.typeLabel}</p>
+                      <p className="mt-0.5 text-sm font-bold text-neutral-900">
+                        {localizeDocumentTypeLabel(d.typeLabel, t)}
+                      </p>
                       {d.memo && (
                         <p className="mt-1 text-xs text-neutral-500">{d.memo}</p>
                       )}
@@ -828,7 +836,9 @@ export default function DocumentsPage() {
                       return (
                         <div key={field.id} className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="text-[11px] font-medium text-neutral-400">{field.label}</p>
+                            <p className="text-[11px] font-medium text-neutral-400">
+                              {localizeDocumentFieldLabel(field.label, t)}
+                            </p>
                             <p className="mt-0.5 break-all font-mono text-xs text-neutral-600">{display}</p>
                           </div>
                           {showCopy && (
@@ -964,7 +974,7 @@ export default function DocumentsPage() {
               className="mb-4 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
             />
             <datalist id="document-type-suggestions">
-              {DOCUMENT_TYPE_SUGGESTIONS.map((s) => (
+              {documentTypeSuggestions[lang].map((s) => (
                 <option key={s} value={s} />
               ))}
             </datalist>

@@ -3,6 +3,7 @@ import { Maximize2, Minimize2, Sun, X } from "lucide-react";
 import type { PublicDocument } from "../api/documents";
 import { documentsApi, type ScanSide } from "../api/documents";
 import { pdfBlobToImageUrl } from "../utils/pdfToImage";
+import { localizeDocumentFieldLabel, localizeDocumentTypeLabel } from "../i18n/translations";
 
 interface DocumentShowModeProps {
   doc: PublicDocument;
@@ -98,7 +99,9 @@ export default function DocumentShowMode({
       {!uiHidden && (
         <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-neutral-900">{doc.typeLabel}</p>
+            <p className="truncate text-sm font-bold text-neutral-900">
+              {localizeDocumentTypeLabel(doc.typeLabel, t)}
+            </p>
             <p className="text-[11px] text-neutral-500">{t("documents.showModeHint")}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -186,7 +189,9 @@ export default function DocumentShowMode({
                 key={field.id}
                 className="rounded-xl bg-neutral-50 px-3 py-2 ring-1 ring-neutral-100"
               >
-                <p className="text-[10px] font-medium text-neutral-400">{field.label}</p>
+                <p className="text-[10px] font-medium text-neutral-400">
+                  {localizeDocumentFieldLabel(field.label, t)}
+                </p>
                 <p className="font-mono text-sm font-semibold text-neutral-900">{value}</p>
               </div>
             ))}
