@@ -13,7 +13,7 @@ export const dict: Record<Lang, Record<string, string>> = {
   ko: {
     "nav.home": "홈",
     "nav.assets": "자산",
-    "nav.documents": "카드함",
+    "nav.documents": "카드 · 증명서",
     "nav.checklists": "체크리스트",
     "nav.subscriptions": "구독",
     "nav.calendar": "캘린더",
@@ -360,7 +360,7 @@ export const dict: Record<Lang, Record<string, string>> = {
   ja: {
     "nav.home": "ホーム",
     "nav.assets": "資産",
-    "nav.documents": "カード箱",
+    "nav.documents": "カード・証明書",
     "nav.checklists": "チェックリスト",
     "nav.subscriptions": "サブスク",
     "nav.calendar": "カレンダー",
