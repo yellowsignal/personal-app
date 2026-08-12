@@ -17,6 +17,8 @@ import { ApiError } from "../api/http";
 import { isPasskeySupported } from "../api/passkey";
 import { imageFileToPdfBlob } from "../utils/imageToPdf";
 import { mergePdfBlobs } from "../utils/pdfMerge";
+import { runOcrOnFiles } from "../utils/documentOcr";
+import { parseDocumentOcrText } from "../utils/documentOcrParse";
 
 interface FieldDraft {
   key: string;
@@ -26,7 +28,7 @@ interface FieldDraft {
   isSecret: boolean;
 }
 
-type ScanWizardTarget = { kind: "document"; docId: number } | { kind: "create" };
+type ScanWizardTarget = { kind: "document"; docId: number } | { kind: "create"; withOcr?: boolean };
 
 interface ScanWizardState {
   target: ScanWizardTarget;
@@ -72,6 +74,8 @@ export default function DocumentsPage() {
   const [createScanBack, setCreateScanBack] = useState<File | null>(null);
   const [scanWizard, setScanWizard] = useState<ScanWizardState | null>(null);
   const [exportDoc, setExportDoc] = useState<PublicDocument | null>(null);
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
   const scanInputRef = useRef<HTMLInputElement>(null);
   const scanCaptureSideRef = useRef<ScanSide>("front");
 
@@ -202,6 +206,52 @@ export default function DocumentsPage() {
     setScanWizard({ target, step: "front", frontFile: null, backFile: null });
   }
 
+  function openOcrRegister() {
+    openScanWizard({ kind: "create", withOcr: true });
+  }
+
+  function applyOcrResult(parsed: ReturnType<typeof parseDocumentOcrText>) {
+    if (parsed.typeLabel) setTypeLabel(parsed.typeLabel);
+    if (parsed.fields.length > 0) {
+      setFieldDrafts(
+        parsed.fields.map((f) => ({
+          key: crypto.randomUUID(),
+          label: f.label,
+          value: f.value,
+          isSecret: f.isSecret,
+        })),
+      );
+    }
+    if (parsed.expiryDate) {
+      setHasExpiry(true);
+      setExpiryDate(parsed.expiryDate);
+    }
+  }
+
+  async function runOcrAndOpenCreate(front: File, back: File | null) {
+    setOcrBusy(true);
+    setOcrProgress(0);
+    setError(null);
+    try {
+      const files = back ? [front, back] : [front];
+      const text = await runOcrOnFiles(files, setOcrProgress);
+      const parsed = parseDocumentOcrText(text);
+      applyOcrResult(parsed);
+      setCreateScanFront(front);
+      setCreateScanBack(back);
+      closeScanWizard();
+      setShowCreate(true);
+      if (parsed.fields.length === 0 && !parsed.typeLabel) {
+        setError(t("documents.ocrLowConfidence"));
+      }
+    } catch {
+      setError(t("documents.ocrError"));
+    } finally {
+      setOcrBusy(false);
+      setOcrProgress(0);
+    }
+  }
+
   function closeScanWizard() {
     setScanWizard(null);
   }
@@ -226,13 +276,17 @@ export default function DocumentsPage() {
 
   async function confirmScanWizard() {
     if (!scanWizard?.frontFile) return;
-    if (scanWizard.target.kind === "create") {
-      setCreateScanFront(scanWizard.frontFile);
-      setCreateScanBack(scanWizard.backFile);
+    if (scanWizard.target.kind === "document") {
+      await uploadScansForDocument(scanWizard.target.docId, scanWizard.frontFile, scanWizard.backFile);
       closeScanWizard();
       return;
     }
-    await uploadScansForDocument(scanWizard.target.docId, scanWizard.frontFile, scanWizard.backFile);
+    if (scanWizard.target.withOcr) {
+      await runOcrAndOpenCreate(scanWizard.frontFile, scanWizard.backFile);
+      return;
+    }
+    setCreateScanFront(scanWizard.frontFile);
+    setCreateScanBack(scanWizard.backFile);
     closeScanWizard();
   }
 
@@ -365,10 +419,10 @@ export default function DocumentsPage() {
           <button
             type="button"
             onClick={openCreate}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-white"
-            aria-label={t("documents.newDocument")}
+            className="rounded-full px-3 py-1.5 text-xs font-semibold text-indigo-600"
+            aria-label={t("documents.manualEntry")}
           >
-            <Plus size={18} />
+            {t("documents.manualEntry")}
           </button>
         }
       />
@@ -385,7 +439,15 @@ export default function DocumentsPage() {
           onChange={(e) => void handleScanInputChange(e)}
         />
 
-        <p className="mt-4 rounded-2xl bg-indigo-50/60 px-4 py-3 text-xs text-indigo-700">
+        <button
+          type="button"
+          onClick={openOcrRegister}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-sm"
+        >
+          <Camera size={18} />
+          {t("documents.ocrButton")}
+        </button>
+        <p className="mt-2 rounded-2xl bg-indigo-50/60 px-4 py-3 text-xs text-indigo-700">
           {t("documents.scanHint")}
         </p>
 
@@ -533,6 +595,7 @@ export default function DocumentsPage() {
                 <X size={18} className="text-neutral-400" />
               </button>
             </div>
+            <p className="mb-4 text-xs text-neutral-500">{t("documents.reviewOcrHint")}</p>
 
             <label className="mb-2 block text-sm font-semibold text-neutral-700">{t("documents.fieldTypeLabel")}</label>
             <input
@@ -661,8 +724,28 @@ export default function DocumentsPage() {
       {scanWizard && (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">
           <div className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl">
+            {ocrBusy ? (
+              <>
+                <h2 className="text-base font-bold text-neutral-900">{t("documents.ocrProcessing")}</h2>
+                <p className="mt-2 text-sm text-neutral-600">{t("documents.ocrProcessingHint")}</p>
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-neutral-100">
+                  <div
+                    className="h-full bg-indigo-600 transition-all"
+                    style={{ width: `${Math.round(ocrProgress * 100)}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-center text-xs text-neutral-400">
+                  {Math.round(ocrProgress * 100)}%
+                </p>
+              </>
+            ) : (
+              <>
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-bold text-neutral-900">{t("documents.scanWizardTitle")}</h2>
+              <h2 className="text-base font-bold text-neutral-900">
+                {scanWizard.target.kind === "create" && scanWizard.target.withOcr
+                  ? t("documents.ocrWizardTitle")
+                  : t("documents.scanWizardTitle")}
+              </h2>
               <button type="button" onClick={closeScanWizard} className="rounded-full p-2">
                 <X size={18} className="text-neutral-400" />
               </button>
@@ -740,8 +823,12 @@ export default function DocumentsPage() {
                   onClick={() => void confirmScanWizard()}
                   className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white"
                 >
-                  {t("documents.scanSave")}
+                  {scanWizard.target.kind === "create" && scanWizard.target.withOcr
+                    ? t("documents.ocrAnalyze")
+                    : t("documents.scanSave")}
                 </button>
+              </>
+            )}
               </>
             )}
           </div>
