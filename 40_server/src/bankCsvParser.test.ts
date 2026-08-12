@@ -2,6 +2,19 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseBankStatementCsv } from "./services/bankCsvParser.js";
 
+test("parseBankStatementCsv skips Shinhan title row before header", () => {
+  const csv = `신한은행 입출금거래내역
+조회기간,2026-01-01 ~ 2026-01-31
+
+No,거래일,거래시간,적요,출금(원),입금(원),잔액(원)
+1,20260105,143000,급여,,3500000,3500000
+2,20260110,090000,카드,120000,,3380000`;
+  const rows = parseBankStatementCsv("SHINHAN", csv);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0]?.amount, 3500000);
+  assert.equal(rows[1]?.category, "debit");
+});
+
 test("parseBankStatementCsv parses Shinhan deposit CSV", () => {
   const csv = `거래일자,적요,입금액,출금액,잔액
 2026-01-05,급여,3500000,,3500000

@@ -107,6 +107,15 @@ function findColumn(headers: string[], patterns: RegExp[]): number {
   return -1;
 }
 
+function looksLikeHeaderRow(headers: string[], bankCode: DepositBank): boolean {
+  if (headers.filter((h) => h.trim()).length < 3) return false;
+  const patterns = BANK_COLUMN_PATTERNS[bankCode];
+  const dateCol = findColumn(headers, patterns.date);
+  const creditCol = findColumn(headers, patterns.credit);
+  const debitCol = findColumn(headers, patterns.debit);
+  return dateCol >= 0 && (creditCol >= 0 || debitCol >= 0);
+}
+
 const BANK_COLUMN_PATTERNS: Record<
   DepositBank,
   {
@@ -118,10 +127,10 @@ const BANK_COLUMN_PATTERNS: Record<
   }
 > = {
   SHINHAN: {
-    date: [/거래일/, /일자/, /date/i],
+    date: [/거래일자/, /거래일/, /일자/, /date/i],
     description: [/적요/, /내용/, /memo/i, /description/i],
-    credit: [/입금/, /credit/i, /deposit/i],
-    debit: [/출금/, /debit/i, /withdraw/i],
+    credit: [/입금액/, /입금/, /credit/i, /deposit/i],
+    debit: [/출금액/, /출금/, /debit/i, /withdraw/i],
     balance: [/잔액/, /balance/i],
   },
   MUFG: {
@@ -192,15 +201,13 @@ function parseWithHeaders(
   return rows;
 }
 
-function detectHeaderRow(rows: string[][]): { headerIndex: number; headers: string[] } | null {
-  for (let i = 0; i < Math.min(rows.length, 8); i++) {
+function detectHeaderRow(
+  rows: string[][],
+  bankCode: DepositBank,
+): { headerIndex: number; headers: string[] } | null {
+  for (let i = 0; i < Math.min(rows.length, 20); i++) {
     const row = rows[i]!;
-    const joined = row.join(" ");
-    if (
-      /거래일|입금|출금|잔액|日付|摘要|預入|引出|残高|date|deposit|withdraw|balance/i.test(
-        joined,
-      )
-    ) {
+    if (looksLikeHeaderRow(row, bankCode)) {
       return { headerIndex: i, headers: row };
     }
   }
@@ -214,7 +221,7 @@ export function parseBankStatementCsv(bankCode: DepositBank, rawText: string): P
   const rows = parseCsvRows(text);
   if (rows.length === 0) return [];
 
-  const headerInfo = detectHeaderRow(rows);
+  const headerInfo = detectHeaderRow(rows, bankCode);
   if (headerInfo) {
     const dataRows = rows.slice(headerInfo.headerIndex + 1);
     const parsed = parseWithHeaders(bankCode, headerInfo.headers, dataRows);

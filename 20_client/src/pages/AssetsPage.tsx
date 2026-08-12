@@ -20,6 +20,7 @@ import {
 import { ApiError } from "../api/http";
 import { formatMoney } from "../utils/formatMoney";
 import { exchangeRates } from "../mocks/data";
+import { readBankCsvFile } from "../utils/readBankCsvFile";
 
 const CURRENCY_SYMBOL = { KRW: "₩", JPY: "¥", USD: "$" };
 const ASSET_TYPES: AssetType[] = ["deposit", "stock", "cash", "realestate"];
@@ -111,6 +112,7 @@ export default function AssetsPage() {
   const [transactions, setTransactions] = useState<PublicTransaction[]>([]);
   const [statementLoading, setStatementLoading] = useState(false);
   const [importBusyId, setImportBusyId] = useState<number | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
   const importTargetIdRef = useRef<number | null>(null);
 
@@ -299,17 +301,29 @@ export default function AssetsPage() {
 
     setImportBusyId(assetId);
     setError(null);
+    setImportSuccess(null);
     try {
-      const csvText = await file.text();
+      const csvText = await readBankCsvFile(file);
       const result = await assetsApi.importStatement(token, assetId, csvText);
       setItems((prev) => prev.map((a) => (a.id === assetId ? result.asset : a)));
+      if (result.imported > 0) {
+        setImportSuccess(
+          t("assets.importSuccess", { imported: result.imported, skipped: result.skipped }),
+        );
+      } else if (result.skipped > 0) {
+        setImportSuccess(t("assets.importAllDuplicate", { skipped: result.skipped }));
+      }
       if (statementAsset?.id === assetId) {
         const rows = await assetsApi.listTransactions(token, assetId);
         setTransactions(rows);
         setStatementAsset(result.asset);
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("assets.importError"));
+      if (err instanceof Error && err.message === "EXCEL_NOT_CSV") {
+        setError(t("assets.excelNotCsv"));
+      } else {
+        setError(err instanceof ApiError ? err.message : t("assets.importError"));
+      }
     } finally {
       setImportBusyId(null);
     }
@@ -367,6 +381,9 @@ export default function AssetsPage() {
 
         {error && (
           <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>
+        )}
+        {importSuccess && (
+          <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{importSuccess}</p>
         )}
 
         {loading ? (
