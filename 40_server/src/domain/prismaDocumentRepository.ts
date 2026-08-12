@@ -4,6 +4,7 @@ import type {
 } from "@prisma/client";
 import type { DocumentRepository, CreateDocumentInput, UpdateDocumentInput } from "./documentRepository.js";
 import type { DocumentRecord } from "./documentTypes.js";
+import { parseDocumentCategory } from "../documentCategories.js";
 
 function map(row: PrismaDocument): DocumentRecord {
   return {
@@ -11,7 +12,7 @@ function map(row: PrismaDocument): DocumentRecord {
     userId: row.userId,
     familyId: row.familyId,
     typeLabel: row.docType,
-    category: row.category,
+    category: parseDocumentCategory(row.category),
     fieldsJson: row.fieldsJson,
     docNumber: row.docNumber,
     expiryDate: row.expiryDate,
