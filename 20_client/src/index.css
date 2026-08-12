@@ -9,16 +9,30 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+button,
+a,
+[role="button"],
+label {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 html,
 body {
   margin: 0;
   min-height: 100vh;
   background: #f2f2f7;
   color: #1c1c1e;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 #root {
   min-height: 100vh;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* Simulates the iPhone safe-area insets when previewing on desktop */
@@ -38,6 +52,11 @@ body {
 /* iOS Safari zooms focused fields when font-size < 16px. Keep ≥16px instead of locking zoom. */
 input,
 textarea,
-select {
+select,
+[contenteditable="true"],
+.select-text {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
   font-size: 16px;
 }
