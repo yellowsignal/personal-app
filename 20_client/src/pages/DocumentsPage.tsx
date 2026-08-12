@@ -80,6 +80,7 @@ export default function DocumentsPage() {
   const [exportDoc, setExportDoc] = useState<PublicDocument | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
+  const [fromOcrReview, setFromOcrReview] = useState(false);
   const scanInputRef = useRef<HTMLInputElement>(null);
   const scanCaptureSideRef = useRef<ScanSide>("front");
 
@@ -123,6 +124,7 @@ export default function DocumentsPage() {
     setIsShared(false);
     setCreateScanFront(null);
     setCreateScanBack(null);
+    setFromOcrReview(false);
     setEditing(null);
   }
 
@@ -157,6 +159,7 @@ export default function DocumentsPage() {
   function closeCreate() {
     setShowCreate(false);
     setSubmitting(false);
+    setFromOcrReview(false);
     setEditing(null);
   }
 
@@ -262,24 +265,81 @@ export default function DocumentsPage() {
     }
   }
 
+  function buildPayloadFromParsed(parsed: ReturnType<typeof parseDocumentOcrText>): CreateDocumentInput | null {
+    const label = parsed.typeLabel?.trim() ?? "";
+    const fields: DocumentFieldInput[] = parsed.fields
+      .filter((f) => f.label.trim())
+      .map((f) => ({
+        label: f.label.trim(),
+        value: f.value,
+        isSecret: f.isSecret,
+      }));
+    const hasFieldValue = fields.some((f) => f.value?.trim());
+    if (!label || fields.length === 0 || !hasFieldValue) return null;
+    return {
+      typeLabel: label,
+      fields,
+      expiryDate: parsed.expiryDate ?? null,
+      isShared: false,
+      memo: null,
+    };
+  }
+
+  async function runOcrOnScanFiles(front: File, back: File | null) {
+    const files = back ? [front, back] : [front];
+    const text = await runOcrOnFiles(files, setOcrProgress);
+    return parseDocumentOcrText(text);
+  }
+
+  function openOcrReviewForm(front: File, back: File | null, parsed: ReturnType<typeof parseDocumentOcrText>) {
+    applyOcrResult(parsed);
+    setCreateScanFront(front);
+    setCreateScanBack(back);
+    setFromOcrReview(true);
+    closeScanWizard();
+    setShowCreate(true);
+  }
+
+  async function runOcrAndSave(front: File, back: File | null) {
+    if (!token) return;
+    setOcrBusy(true);
+    setOcrProgress(0);
+    setError(null);
+    try {
+      const parsed = await runOcrOnScanFiles(front, back);
+      const payload = buildPayloadFromParsed(parsed);
+      if (payload) {
+        const created = await documentsApi.create(token, payload);
+        await uploadScansForDocument(created.id, front, back);
+        closeScanWizard();
+        resetForm();
+        await load();
+        return;
+      }
+      openOcrReviewForm(front, back, parsed);
+      setError(t("documents.ocrLowConfidence"));
+    } catch {
+      setError(t("documents.ocrError"));
+      openOcrReviewForm(front, back, { typeLabel: null, fields: [], expiryDate: null });
+    } finally {
+      setOcrBusy(false);
+      setOcrProgress(0);
+    }
+  }
+
   async function runOcrAndOpenCreate(front: File, back: File | null) {
     setOcrBusy(true);
     setOcrProgress(0);
     setError(null);
     try {
-      const files = back ? [front, back] : [front];
-      const text = await runOcrOnFiles(files, setOcrProgress);
-      const parsed = parseDocumentOcrText(text);
-      applyOcrResult(parsed);
-      setCreateScanFront(front);
-      setCreateScanBack(back);
-      closeScanWizard();
-      setShowCreate(true);
+      const parsed = await runOcrOnScanFiles(front, back);
+      openOcrReviewForm(front, back, parsed);
       if (parsed.fields.length === 0 && !parsed.typeLabel) {
         setError(t("documents.ocrLowConfidence"));
       }
     } catch {
       setError(t("documents.ocrError"));
+      openOcrReviewForm(front, back, { typeLabel: null, fields: [], expiryDate: null });
     } finally {
       setOcrBusy(false);
       setOcrProgress(0);
@@ -316,7 +376,7 @@ export default function DocumentsPage() {
       return;
     }
     if (scanWizard.target.withOcr) {
-      await runOcrAndOpenCreate(scanWizard.frontFile, scanWizard.backFile);
+      await runOcrAndSave(scanWizard.frontFile, scanWizard.backFile);
       return;
     }
     setCreateScanFront(scanWizard.frontFile);
@@ -717,7 +777,7 @@ export default function DocumentsPage() {
                 <X size={18} className="text-neutral-400" />
               </button>
             </div>
-            {!editing && (
+            {!editing && fromOcrReview && (
               <p className="mb-4 text-xs text-neutral-500">{t("documents.reviewOcrHint")}</p>
             )}
 
@@ -833,19 +893,54 @@ export default function DocumentsPage() {
             {!editing && (
               <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50/80 p-3">
                 <p className="text-sm font-semibold text-neutral-700">{t("documents.cardScan")}</p>
-                <p className="mt-1 text-[11px] text-neutral-400">{t("documents.cardScanHint")}</p>
-                <button
-                  type="button"
-                  onClick={() => openScanWizard({ kind: "create" })}
-                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-indigo-300 bg-white py-2.5 text-xs font-semibold text-indigo-600"
-                >
-                  <Camera size={14} />
-                  {createScanFront
-                    ? createScanBack
-                      ? t("documents.scanBothSelected")
-                      : t("documents.scanFrontSelected")
-                    : t("documents.captureScanBoth")}
-                </button>
+                {createScanFront ? (
+                  <>
+                    <p className="mt-1 text-[11px] text-emerald-600">{t("documents.scanAttachedHint")}</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="mb-1 text-[10px] font-semibold text-neutral-400">{t("documents.scanFrontLabel")}</p>
+                        <img
+                          src={URL.createObjectURL(createScanFront)}
+                          alt=""
+                          className="h-20 w-full rounded-lg bg-neutral-100 object-contain"
+                        />
+                      </div>
+                      <div>
+                        <p className="mb-1 text-[10px] font-semibold text-neutral-400">{t("documents.scanBackLabel")}</p>
+                        {createScanBack ? (
+                          <img
+                            src={URL.createObjectURL(createScanBack)}
+                            alt=""
+                            className="h-20 w-full rounded-lg bg-neutral-100 object-contain"
+                          />
+                        ) : (
+                          <div className="flex h-20 items-center justify-center rounded-lg bg-neutral-100 text-[10px] text-neutral-400">
+                            {t("documents.scanNoBack")}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openScanWizard({ kind: "create" })}
+                      className="mt-2 w-full rounded-lg border border-neutral-200 bg-white py-2 text-xs font-semibold text-neutral-600"
+                    >
+                      {t("documents.rescan")}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1 text-[11px] text-neutral-400">{t("documents.cardScanHint")}</p>
+                    <button
+                      type="button"
+                      onClick={() => openScanWizard({ kind: "create" })}
+                      className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-indigo-300 bg-white py-2.5 text-xs font-semibold text-indigo-600"
+                    >
+                      <Camera size={14} />
+                      {t("documents.captureScanBoth")}
+                    </button>
+                  </>
+                )}
               </div>
             )}
 
@@ -932,7 +1027,11 @@ export default function DocumentsPage() {
 
             {scanWizard.step === "review" && scanWizard.frontFile && (
               <>
-                <p className="text-sm text-neutral-600">{t("documents.scanStepReview")}</p>
+                <p className="text-sm text-neutral-600">
+                  {scanWizard.target.kind === "create" && scanWizard.target.withOcr
+                    ? t("documents.ocrReviewStepHint")
+                    : t("documents.scanStepReview")}
+                </p>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <div>
                     <p className="mb-1 text-[10px] font-semibold text-neutral-400">{t("documents.scanFrontLabel")}</p>
@@ -957,15 +1056,36 @@ export default function DocumentsPage() {
                     )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void confirmScanWizard()}
-                  className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white"
-                >
-                  {scanWizard.target.kind === "create" && scanWizard.target.withOcr
-                    ? t("documents.ocrAnalyze")
-                    : t("documents.scanSave")}
-                </button>
+                {scanWizard.target.kind === "create" && scanWizard.target.withOcr ? (
+                  <div className="mt-4 space-y-2">
+                    <button
+                      type="button"
+                      disabled={ocrBusy}
+                      onClick={() => void confirmScanWizard()}
+                      className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                    >
+                      {t("documents.ocrAnalyze")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={ocrBusy}
+                      onClick={() =>
+                        void runOcrAndOpenCreate(scanWizard.frontFile!, scanWizard.backFile)
+                      }
+                      className="w-full rounded-xl border border-neutral-200 py-3 text-sm font-semibold text-neutral-600 disabled:opacity-40"
+                    >
+                      {t("documents.ocrReviewEdit")}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void confirmScanWizard()}
+                    className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white"
+                  >
+                    {t("documents.scanSave")}
+                  </button>
+                )}
               </>
             )}
               </>
