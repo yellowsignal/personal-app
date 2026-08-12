@@ -75,3 +75,15 @@ test("parseDocumentOcrText extracts CVC from card back OCR", () => {
   `);
   assert.equal(result.fields.find((f) => f.label === "CVC")?.value, "123");
 });
+
+test("parseDocumentOcrText extracts 診察券 hospital and patient number", () => {
+  const result = parseDocumentOcrText(`
+    さくらクリニック
+    診察券
+    患者番号：123456
+    氏名 山田太郎
+  `);
+  assert.equal(result.typeLabel, "さくらクリニック 診察券");
+  assert.equal(result.fields.find((f) => f.label === "患者番号")?.value, "123456");
+  assert.equal(result.fields.find((f) => f.label === "患者番号")?.isSecret, false);
+});

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Camera, Copy, Eye, EyeOff, FileDown, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Camera, Copy, Eye, EyeOff, FileDown, Maximize2, MoreHorizontal, Pencil, Plus, Star, Trash2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
+import DocumentShowMode from "../components/DocumentShowMode";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -19,6 +20,7 @@ import { imageFileToPdfBlob } from "../utils/imageToPdf";
 import { mergePdfBlobs } from "../utils/pdfMerge";
 import { runOcrOnFiles } from "../utils/documentOcr";
 import { parseDocumentOcrText } from "@personal-app/document-ocr-parse";
+import { readPinnedDocumentIds, togglePinnedDocumentId } from "../utils/documentPins";
 
 interface FieldDraft {
   key: string;
@@ -81,6 +83,8 @@ export default function DocumentsPage() {
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [fromOcrReview, setFromOcrReview] = useState(false);
+  const [showModeDoc, setShowModeDoc] = useState<PublicDocument | null>(null);
+  const [pinnedIds, setPinnedIds] = useState<number[]>(() => readPinnedDocumentIds());
   const scanInputRef = useRef<HTMLInputElement>(null);
   const scanCaptureSideRef = useRef<ScanSide>("front");
 
@@ -112,8 +116,32 @@ export default function DocumentsPage() {
   }, []);
 
   const visible = useMemo(() => {
-    return [...items].sort((a, b) => daysLeft(a.expiryDate) - daysLeft(b.expiryDate));
-  }, [items, daysLeft]);
+    const sorted = [...items].sort((a, b) => daysLeft(a.expiryDate) - daysLeft(b.expiryDate));
+    return sorted.sort((a, b) => {
+      const aPinned = pinnedIds.includes(a.id) ? 0 : 1;
+      const bPinned = pinnedIds.includes(b.id) ? 0 : 1;
+      if (aPinned !== bPinned) return aPinned - bPinned;
+      return daysLeft(a.expiryDate) - daysLeft(b.expiryDate);
+    });
+  }, [items, daysLeft, pinnedIds]);
+
+  const pinnedQuickAccess = useMemo(
+    () => visible.filter((d) => pinnedIds.includes(d.id) && d.hasScan),
+    [visible, pinnedIds],
+  );
+
+  function togglePin(docId: number) {
+    setPinnedIds(togglePinnedDocumentId(docId));
+  }
+
+  function openShowMode(doc: PublicDocument) {
+    setMenuId(null);
+    setShowModeDoc(doc);
+  }
+
+  function closeShowMode() {
+    setShowModeDoc(null);
+  }
 
   function resetForm() {
     setTypeLabel("");
@@ -587,6 +615,26 @@ export default function DocumentsPage() {
           {t("documents.scanHint")}
         </p>
 
+        {pinnedQuickAccess.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-2 text-xs font-semibold text-neutral-500">{t("documents.pinnedQuickAccess")}</p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {pinnedQuickAccess.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => openShowMode(d)}
+                  className="flex min-w-[132px] shrink-0 flex-col rounded-2xl bg-white px-3 py-3 text-left shadow-sm ring-1 ring-indigo-100"
+                >
+                  <Star size={14} className="fill-amber-400 text-amber-400" />
+                  <p className="mt-1 line-clamp-2 text-sm font-bold text-neutral-900">{d.typeLabel}</p>
+                  <p className="mt-1 text-[10px] font-semibold text-indigo-600">{t("documents.showAtHospital")}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="mt-4 flex flex-col gap-3">
           {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</p>}
           {loading ? (
@@ -617,6 +665,19 @@ export default function DocumentsPage() {
                       )}
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
+                      {d.hasScan && (
+                        <button
+                          type="button"
+                          onClick={() => togglePin(d.id)}
+                          className="rounded-full p-2 text-neutral-400 hover:bg-neutral-50"
+                          aria-label={pinnedIds.includes(d.id) ? t("documents.unpin") : t("documents.pin")}
+                        >
+                          <Star
+                            size={18}
+                            className={pinnedIds.includes(d.id) ? "fill-amber-400 text-amber-400" : ""}
+                          />
+                        </button>
+                      )}
                       {d.hasSecrets && (
                         <button
                           type="button"
@@ -727,9 +788,18 @@ export default function DocumentsPage() {
                       <>
                         <button
                           type="button"
+                          onClick={() => openShowMode(d)}
+                          disabled={scanBusyId === d.id}
+                          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+                        >
+                          <Maximize2 size={14} />
+                          {t("documents.showAtHospital")}
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => openExportOptions(d)}
                           disabled={scanBusyId === d.id}
-                          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+                          className="flex items-center justify-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2.5 text-xs font-semibold text-neutral-600 disabled:opacity-50"
                         >
                           <FileDown size={14} />
                           {t("documents.openPdf")}
@@ -1150,6 +1220,16 @@ export default function DocumentsPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {showModeDoc && token && (
+        <DocumentShowMode
+          doc={showModeDoc}
+          token={token}
+          revealedFields={revealedByDoc[showModeDoc.id] ?? null}
+          t={t}
+          onClose={closeShowMode}
+        />
       )}
     </div>
   );

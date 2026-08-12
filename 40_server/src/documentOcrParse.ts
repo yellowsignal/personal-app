@@ -158,8 +158,17 @@ function detectType(text: string, cardNumber: string | null): string | null {
     return /체크|debit|デビット/i.test(text) ? "체크카드" : "신용카드";
   }
   if (/주민등록|住民/i.test(text)) return "주민등록증";
+  const shinsatsuken = detectShinsatsukenType(text);
+  if (shinsatsuken) return shinsatsuken;
   if (cardNumber) return "신용카드";
   return null;
+}
+
+function detectShinsatsukenType(text: string): string | null {
+  if (!/診察券|患者番号|患者Ｎｏ|受付番号|診療/i.test(text)) return null;
+  const hospital = text.match(/([\u4e00-\u9fff\u3040-\u30ffーA-Za-z0-9]+(?:病院|クリニック|医院|診療所|メディカル))/);
+  if (hospital?.[1]) return `${hospital[1]} 診察券`;
+  return "診察券";
 }
 
 function pushUnique(fields: OcrParsedField[], field: OcrParsedField): void {
@@ -185,6 +194,8 @@ function extractLabeledFields(text: string): OcrParsedField[] {
   const patterns: Array<{ label: string; re: RegExp; isSecret: boolean }> = [
     { label: "記号", re: /記\s*号[：:\s]*([0-9]{1,6})/i, isSecret: false },
     { label: "番号", re: /番\s*号[：:\s]*([0-9]{1,12})/i, isSecret: true },
+    { label: "患者番号", re: /患者(?:番号|Ｎｏ|No|编号)[：:\s]*([0-9]{1,12})/i, isSecret: false },
+    { label: "受付番号", re: /受付(?:番号|No)[：:\s]*([0-9]{1,12})/i, isSecret: false },
     { label: "枝番", re: /枝\s*番[：:\s]*([0-9]{1,4})/i, isSecret: true },
     { label: "기호", re: /기\s*호[：:\s]*([0-9\-]{3,})/i, isSecret: false },
     { label: "번호", re: /(?:번\s*호|번호)[：:\s]*([0-9\-]{4,})/i, isSecret: true },

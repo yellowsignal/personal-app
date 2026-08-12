@@ -58,6 +58,7 @@ export const DOCUMENT_TYPE_SUGGESTIONS = [
   "재류카드",
   "マイナンバーカード",
   "保険証",
+  "診察券",
   "자격증",
 ];
 
