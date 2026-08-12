@@ -4,6 +4,7 @@ import AppLayout from "./layouts/AppLayout";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import AssetsPage from "./pages/AssetsPage";
+import AssetStatementPage from "./pages/AssetStatementPage";
 import DocumentsPage from "./pages/DocumentsPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import CalendarPage from "./pages/CalendarPage";
@@ -19,6 +20,7 @@ export default function App() {
         <Route element={<AppLayout />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/assets" element={<AssetsPage />} />
+          <Route path="/assets/:assetId/statement" element={<AssetStatementPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/subscriptions" element={<SubscriptionsPage />} />
           <Route path="/calendar" element={<CalendarPage />} />

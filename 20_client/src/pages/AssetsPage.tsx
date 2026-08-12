@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileText, MoreHorizontal, Pencil, Plus, RefreshCw, Trash2, TrendingDown, TrendingUp, Upload, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronRight, MoreHorizontal, Pencil, Plus, RefreshCw, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
@@ -14,13 +15,11 @@ import {
   type CreateAssetInput,
   type DepositBank,
   type PublicAsset,
-  type PublicTransaction,
   type StockMarket,
 } from "../api/assets";
 import { ApiError } from "../api/http";
 import { formatMoney } from "../utils/formatMoney";
 import { exchangeRates } from "../mocks/data";
-import { readBankCsvFile } from "../utils/readBankCsvFile";
 
 const CURRENCY_SYMBOL = { KRW: "₩", JPY: "¥", USD: "$" };
 const ASSET_TYPES: AssetType[] = ["deposit", "stock", "cash", "realestate"];
@@ -93,6 +92,7 @@ export default function AssetsPage() {
   const { t } = useLanguage();
   const { currency } = useCurrency();
   const { token, user, family } = useAuth();
+  const navigate = useNavigate();
   const [scope, setScope] = useState<ViewScope>("all");
   const [items, setItems] = useState<PublicAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -108,13 +108,6 @@ export default function AssetsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<PublicAsset | null>(null);
-  const [statementAsset, setStatementAsset] = useState<PublicAsset | null>(null);
-  const [transactions, setTransactions] = useState<PublicTransaction[]>([]);
-  const [statementLoading, setStatementLoading] = useState(false);
-  const [importBusyId, setImportBusyId] = useState<number | null>(null);
-  const [importSuccess, setImportSuccess] = useState<string | null>(null);
-  const csvInputRef = useRef<HTMLInputElement>(null);
-  const importTargetIdRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -275,67 +268,8 @@ export default function AssetsPage() {
     }
   }
 
-  async function openStatement(asset: PublicAsset) {
-    if (!token) return;
-    setStatementAsset(asset);
-    setStatementLoading(true);
-    setError(null);
-    try {
-      const rows = await assetsApi.listTransactions(token, asset.id);
-      setTransactions(rows);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("assets.statementLoadError"));
-      setTransactions([]);
-    } finally {
-      setStatementLoading(false);
-    }
-  }
-
-  function closeStatement() {
-    setStatementAsset(null);
-    setTransactions([]);
-  }
-
-  function startCsvImport(assetId: number) {
-    importTargetIdRef.current = assetId;
-    csvInputRef.current?.click();
-  }
-
-  async function handleCsvSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    const assetId = importTargetIdRef.current;
-    importTargetIdRef.current = null;
-    if (!token || !file || assetId == null) return;
-
-    setImportBusyId(assetId);
-    setError(null);
-    setImportSuccess(null);
-    try {
-      const csvText = await readBankCsvFile(file);
-      const result = await assetsApi.importStatement(token, assetId, csvText);
-      setItems((prev) => prev.map((a) => (a.id === assetId ? result.asset : a)));
-      if (result.imported > 0) {
-        setImportSuccess(
-          t("assets.importSuccess", { imported: result.imported, skipped: result.skipped }),
-        );
-      } else if (result.skipped > 0) {
-        setImportSuccess(t("assets.importAllDuplicate", { skipped: result.skipped }));
-      }
-      if (statementAsset?.id === assetId) {
-        const rows = await assetsApi.listTransactions(token, assetId);
-        setTransactions(rows);
-        setStatementAsset(result.asset);
-      }
-    } catch (err) {
-      if (err instanceof Error && err.message === "EXCEL_NOT_CSV") {
-        setError(t("assets.excelNotCsv"));
-      } else {
-        setError(err instanceof ApiError ? err.message : t("assets.importError"));
-      }
-    } finally {
-      setImportBusyId(null);
-    }
+  function openDepositStatement(asset: PublicAsset) {
+    navigate(`/assets/${asset.id}/statement`);
   }
 
   return (
@@ -369,14 +303,6 @@ export default function AssetsPage() {
       <div className="mx-auto max-w-md px-4 pt-4 pb-8">
         <ScopeToggle value={scope} onChange={setScope} />
 
-        <input
-          ref={csvInputRef}
-          type="file"
-          accept=".csv,text/csv,text/plain"
-          className="hidden"
-          onChange={(e) => void handleCsvSelected(e)}
-        />
-
         <div className="mt-4 rounded-2xl bg-neutral-900 p-4 text-white">
           <p className="text-xs text-neutral-400">{t("assets.total", { currency })}</p>
           <p className="mt-1 text-2xl font-bold">
@@ -390,9 +316,6 @@ export default function AssetsPage() {
 
         {error && (
           <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>
-        )}
-        {importSuccess && (
-          <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{importSuccess}</p>
         )}
 
         {!loading && !hasDeposit && (
@@ -420,17 +343,94 @@ export default function AssetsPage() {
             {visible.map((a) => {
               const canManage = user?.id === a.userId;
               const gain = a.gainPercent;
+
+              if (a.type === "deposit") {
+                return (
+                  <div
+                    key={a.id}
+                    className="relative overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => openDepositStatement(a)}
+                      className="flex w-full items-center gap-2 p-4 pr-12 text-left active:bg-neutral-50"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-semibold text-indigo-500">
+                          {t("assetType.deposit")}
+                          {a.bankCode ? ` · ${t(`depositBank.${a.bankCode}`)}` : ""}
+                        </p>
+                        <p className="mt-0.5 truncate text-sm font-bold text-neutral-900">{a.label}</p>
+                        {(a.isShared || scope === "family") && (
+                          <p className="mt-1 inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-600">
+                            {t("assets.registeredBy", { name: a.ownerName })}
+                          </p>
+                        )}
+                        <p className="mt-2 text-xl font-bold text-neutral-900">
+                          {CURRENCY_SYMBOL[a.currency]}
+                          {formatMoney(a.amount, a.currency)}
+                        </p>
+                      </div>
+                      <ChevronRight size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-300" />
+                    </button>
+
+                    <div className="absolute right-10 top-3 flex items-center gap-1">
+                      <SharedBadge isShared={a.isShared} />
+                      {canManage && (
+                        <button
+                          type="button"
+                          aria-label={t("assets.more")}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuId((id) => (id === a.id ? null : a.id));
+                          }}
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-100"
+                        >
+                          <MoreHorizontal size={18} />
+                        </button>
+                      )}
+                    </div>
+
+                    {menuId === a.id && canManage && (
+                      <>
+                        <button
+                          type="button"
+                          className="fixed inset-0 z-40"
+                          aria-label="close menu"
+                          onClick={() => setMenuId(null)}
+                        />
+                        <div className="absolute right-3 top-12 z-50 min-w-[140px] overflow-hidden rounded-xl bg-white py-1 shadow-lg ring-1 ring-black/10">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(a)}
+                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
+                          >
+                            <Pencil size={14} /> {t("assets.edit")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMenuId(null);
+                              setConfirmDelete(a);
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-rose-600 hover:bg-rose-50"
+                          >
+                            <Trash2 size={14} /> {t("assets.delete")}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              }
+
               return (
                 <div key={a.id} className="relative rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-[11px] font-semibold text-indigo-500">
                         {t(`assetType.${a.type}`)}
-                        {a.type === "deposit" && a.bankCode
-                          ? ` · ${t(`depositBank.${a.bankCode}`)}`
-                          : a.stockMarket
-                            ? ` · ${t(`stockMarket.${a.stockMarket}`)}`
-                            : ""}
+                        {a.stockMarket ? ` · ${t(`stockMarket.${a.stockMarket}`)}` : ""}
                       </p>
                       <p className="mt-0.5 truncate text-sm font-bold text-neutral-900">{a.label}</p>
                     </div>
@@ -542,29 +542,6 @@ export default function AssetsPage() {
                     </div>
                   )}
 
-                  {a.type === "deposit" && (
-                    <div className="mt-3 flex gap-2 border-t border-neutral-100 pt-3">
-                      <button
-                        type="button"
-                        onClick={() => void openStatement(a)}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-neutral-200 py-2.5 text-xs font-semibold text-neutral-700"
-                      >
-                        <FileText size={14} />
-                        {t("assets.viewStatement")}
-                      </button>
-                      {canManage && (
-                        <button
-                          type="button"
-                          disabled={importBusyId === a.id}
-                          onClick={() => startCsvImport(a.id)}
-                          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
-                        >
-                          <Upload size={14} />
-                          {importBusyId === a.id ? t("assets.importing") : t("assets.importCsv")}
-                        </button>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -783,96 +760,6 @@ export default function AssetsPage() {
               {submitting ? t("assets.saving") : t("assets.save")}
             </button>
           </form>
-        </div>
-      )}
-
-      {statementAsset && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
-          <div className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-2xl bg-white shadow-xl sm:rounded-2xl">
-            <div className="flex items-start justify-between gap-2 border-b border-neutral-100 p-5">
-              <div className="min-w-0">
-                <h2 className="text-base font-bold text-neutral-900">{t("assets.statementTitle")}</h2>
-                <p className="mt-0.5 truncate text-sm text-neutral-500">{statementAsset.label}</p>
-                {statementAsset.bankCode && (
-                  <p className="mt-0.5 text-[11px] text-indigo-500">
-                    {t(`depositBank.${statementAsset.bankCode}`)}
-                  </p>
-                )}
-              </div>
-              <button type="button" onClick={closeStatement} className="rounded-full p-2">
-                <X size={18} className="text-neutral-400" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-5 py-4">
-              {statementLoading ? (
-                <p className="py-8 text-center text-sm text-neutral-400">{t("assets.statementLoading")}</p>
-              ) : transactions.length === 0 ? (
-                <div className="py-8 text-center">
-                  <p className="text-sm text-neutral-500">{t("assets.statementEmpty")}</p>
-                  {user?.id === statementAsset.userId && (
-                    <button
-                      type="button"
-                      onClick={() => startCsvImport(statementAsset.id)}
-                      disabled={importBusyId === statementAsset.id}
-                      className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
-                    >
-                      <Upload size={14} />
-                      {t("assets.importCsv")}
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {transactions.map((tx) => (
-                    <div
-                      key={tx.id}
-                      className="rounded-xl border border-neutral-100 bg-neutral-50/80 px-3 py-2.5"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-[11px] font-medium text-neutral-400">{tx.date}</p>
-                          <p className="mt-0.5 text-sm text-neutral-800">
-                            {tx.description || t("assets.noDescription")}
-                          </p>
-                        </div>
-                        <p
-                          className={`shrink-0 text-sm font-bold ${
-                            tx.category === "credit" ? "text-emerald-600" : "text-rose-600"
-                          }`}
-                        >
-                          {tx.category === "credit" ? "+" : "-"}
-                          {CURRENCY_SYMBOL[tx.currency]}
-                          {formatMoney(tx.amount, tx.currency)}
-                        </p>
-                      </div>
-                      {tx.balanceAfter != null && (
-                        <p className="mt-1 text-[10px] text-neutral-400">
-                          {t("assets.balanceAfter", {
-                            v: `${CURRENCY_SYMBOL[tx.currency]}${formatMoney(tx.balanceAfter, tx.currency)}`,
-                          })}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {user?.id === statementAsset.userId && transactions.length > 0 && (
-              <div className="border-t border-neutral-100 p-4">
-                <button
-                  type="button"
-                  onClick={() => startCsvImport(statementAsset.id)}
-                  disabled={importBusyId === statementAsset.id}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 py-2.5 text-xs font-semibold text-indigo-600 disabled:opacity-50"
-                >
-                  <Upload size={14} />
-                  {importBusyId === statementAsset.id ? t("assets.importing") : t("assets.importMoreCsv")}
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       )}
 
