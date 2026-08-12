@@ -1,6 +1,17 @@
 export type ViewScope = "all" | "personal" | "family";
 export type AssetType = "deposit" | "stock" | "cash" | "realestate";
 export type StockMarket = "KR" | "JP" | "US";
+/** Supported deposit banks (CSV parsers will follow these codes). */
+export type DepositBank = "SHINHAN" | "MUFG" | "YUCHO";
+
+export const DEPOSIT_BANKS: Record<
+  DepositBank,
+  { country: "KR" | "JP"; currency: "KRW" | "JPY" }
+> = {
+  SHINHAN: { country: "KR", currency: "KRW" },
+  MUFG: { country: "JP", currency: "JPY" },
+  YUCHO: { country: "JP", currency: "JPY" },
+};
 
 export interface AssetRecord {
   id: number;
@@ -10,6 +21,7 @@ export interface AssetRecord {
   label: string;
   currency: string;
   amount: number;
+  bankCode: DepositBank | null;
   stockMarket: StockMarket | null;
   stockCode: string | null;
   quantity: number | null;
@@ -28,6 +40,7 @@ export interface PublicAsset {
   label: string;
   currency: string;
   amount: number;
+  bankCode: DepositBank | null;
   stockMarket: StockMarket | null;
   stockCode: string | null;
   quantity: number | null;
@@ -60,6 +73,7 @@ export function toPublicAsset(record: AssetRecord, ownerName: string): PublicAss
     label: record.label,
     currency: record.currency,
     amount: record.amount,
+    bankCode: record.bankCode,
     stockMarket: record.stockMarket,
     stockCode: record.stockCode,
     quantity,

@@ -8,9 +8,11 @@ import { useCurrency } from "../context/CurrencyContext";
 import { useAuth } from "../context/AuthContext";
 import {
   assetsApi,
+  DEPOSIT_BANKS,
   type AssetCurrency,
   type AssetType,
   type CreateAssetInput,
+  type DepositBank,
   type PublicAsset,
   type StockMarket,
 } from "../api/assets";
@@ -24,6 +26,7 @@ const MARKETS: StockMarket[] = ["KR", "JP", "US"];
 
 // 종목의 시장은 사용자가 마지막으로 선택한 값을 기억해 두었다가 다음 입력 시 기본값으로 사용합니다.
 const LAST_MARKET_STORAGE_KEY = "myfamilyhub_last_stock_market";
+const LAST_BANK_STORAGE_KEY = "myfamilyhub_last_deposit_bank";
 
 function readLastMarket(): StockMarket {
   if (typeof window === "undefined") return "KR";
@@ -31,11 +34,18 @@ function readLastMarket(): StockMarket {
   return stored === "KR" || stored === "JP" || stored === "US" ? stored : "KR";
 }
 
+function readLastBank(): DepositBank {
+  if (typeof window === "undefined") return "SHINHAN";
+  const stored = window.localStorage.getItem(LAST_BANK_STORAGE_KEY);
+  return stored === "SHINHAN" || stored === "MUFG" || stored === "YUCHO" ? stored : "SHINHAN";
+}
+
 type FormState = {
   type: AssetType;
   label: string;
   currency: AssetCurrency;
   amount: number;
+  bankCode: DepositBank;
   stockMarket: StockMarket;
   stockCode: string;
   quantity: string;
@@ -43,12 +53,17 @@ type FormState = {
   isShared: boolean;
 };
 
-function emptyForm(currency: AssetCurrency, lastMarket: StockMarket): FormState {
+function emptyForm(
+  currency: AssetCurrency,
+  lastMarket: StockMarket,
+  lastBank: DepositBank,
+): FormState {
   return {
     type: "deposit",
     label: "",
     currency,
     amount: 0,
+    bankCode: lastBank,
     stockMarket: lastMarket,
     stockCode: "",
     quantity: "",
@@ -57,12 +72,13 @@ function emptyForm(currency: AssetCurrency, lastMarket: StockMarket): FormState 
   };
 }
 
-function toForm(item: PublicAsset, lastMarket: StockMarket): FormState {
+function toForm(item: PublicAsset, lastMarket: StockMarket, lastBank: DepositBank): FormState {
   return {
     type: item.type,
     label: item.label,
     currency: item.currency,
     amount: item.amount,
+    bankCode: item.bankCode ?? lastBank,
     stockMarket: item.stockMarket ?? lastMarket,
     stockCode: item.stockCode ?? "",
     quantity: item.quantity != null ? String(item.quantity) : "",
@@ -83,7 +99,10 @@ export default function AssetsPage() {
   const [editing, setEditing] = useState<PublicAsset | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [lastMarket, setLastMarket] = useState<StockMarket>(readLastMarket);
-  const [form, setForm] = useState<FormState>(() => emptyForm(currency, readLastMarket()));
+  const [lastBank, setLastBank] = useState<DepositBank>(readLastBank);
+  const [form, setForm] = useState<FormState>(() =>
+    emptyForm(currency, readLastMarket(), readLastBank()),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<PublicAsset | null>(null);
@@ -123,14 +142,14 @@ export default function AssetsPage() {
 
   function openCreate() {
     setEditing(null);
-    setForm(emptyForm(currency, lastMarket));
+    setForm(emptyForm(currency, lastMarket, lastBank));
     setMenuId(null);
     setShowForm(true);
   }
 
   function openEdit(item: PublicAsset) {
     setEditing(item);
-    setForm(toForm(item, lastMarket));
+    setForm(toForm(item, lastMarket, lastBank));
     setMenuId(null);
     setShowForm(true);
   }
@@ -138,7 +157,7 @@ export default function AssetsPage() {
   function closeForm() {
     setShowForm(false);
     setEditing(null);
-    setForm(emptyForm(currency, lastMarket));
+    setForm(emptyForm(currency, lastMarket, lastBank));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -160,6 +179,16 @@ export default function AssetsPage() {
       };
       setLastMarket(form.stockMarket);
       window.localStorage.setItem(LAST_MARKET_STORAGE_KEY, form.stockMarket);
+    } else if (form.type === "deposit") {
+      payload = {
+        type: "deposit",
+        label: form.label.trim(),
+        bankCode: form.bankCode,
+        amount: form.amount,
+        isShared: form.isShared,
+      };
+      setLastBank(form.bankCode);
+      window.localStorage.setItem(LAST_BANK_STORAGE_KEY, form.bankCode);
     } else {
       payload = {
         type: form.type,
@@ -289,7 +318,11 @@ export default function AssetsPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-[11px] font-semibold text-indigo-500">
                         {t(`assetType.${a.type}`)}
-                        {a.stockMarket ? ` · ${t(`stockMarket.${a.stockMarket}`)}` : ""}
+                        {a.type === "deposit" && a.bankCode
+                          ? ` · ${t(`depositBank.${a.bankCode}`)}`
+                          : a.stockMarket
+                            ? ` · ${t(`stockMarket.${a.stockMarket}`)}`
+                            : ""}
                       </p>
                       <p className="mt-0.5 truncate text-sm font-bold text-neutral-900">{a.label}</p>
                     </div>
@@ -519,6 +552,52 @@ export default function AssetsPage() {
                   </label>
                 </div>
                 <p className="mt-2 text-[11px] text-neutral-400">{t("assets.stockFormHint")}</p>
+              </>
+            ) : form.type === "deposit" ? (
+              <>
+                <label className="mt-3 block text-xs font-semibold text-neutral-500">
+                  {t("assets.fieldBank")}
+                  <select
+                    required
+                    value={form.bankCode}
+                    onChange={(e) => {
+                      const bankCode = e.target.value as DepositBank;
+                      setForm((f) => ({
+                        ...f,
+                        bankCode,
+                        currency: DEPOSIT_BANKS[bankCode].currency,
+                      }));
+                    }}
+                    className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
+                  >
+                    <optgroup label={t("depositCountry.KR")}>
+                      <option value="SHINHAN">{t("depositBank.SHINHAN")}</option>
+                    </optgroup>
+                    <optgroup label={t("depositCountry.JP")}>
+                      <option value="MUFG">{t("depositBank.MUFG")}</option>
+                      <option value="YUCHO">{t("depositBank.YUCHO")}</option>
+                    </optgroup>
+                  </select>
+                </label>
+                <label className="mt-3 block text-xs font-semibold text-neutral-500">
+                  {t("assets.fieldAmount")}
+                  <input
+                    required
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={form.amount || ""}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, amount: Number(e.target.value) || 0 }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
+                  />
+                  <span className="mt-1 block text-[11px] font-normal text-neutral-400">
+                    {t("assets.depositAmountHint", {
+                      currency: DEPOSIT_BANKS[form.bankCode].currency,
+                    })}
+                  </span>
+                </label>
               </>
             ) : (
               <div className="mt-3 grid grid-cols-2 gap-3">

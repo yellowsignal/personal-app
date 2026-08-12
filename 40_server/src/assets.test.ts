@@ -68,7 +68,7 @@ test("asset CRUD and scope filtering", async () => {
       body: JSON.stringify({
         type: "deposit",
         label: "급여통장",
-        currency: "KRW",
+        bankCode: "SHINHAN",
         amount: 1_000_000,
         isShared: false,
       }),
@@ -79,10 +79,14 @@ test("asset CRUD and scope filtering", async () => {
       isShared: boolean;
       ownerName: string;
       label: string;
+      bankCode: string;
+      currency: string;
     };
     assert.equal(personalBody.isShared, false);
     assert.equal(personalBody.ownerName, "민호");
     assert.equal(personalBody.label, "급여통장");
+    assert.equal(personalBody.bankCode, "SHINHAN");
+    assert.equal(personalBody.currency, "KRW");
 
     const shared = await fetch(`${base}/api/assets`, {
       method: "POST",
@@ -179,7 +183,7 @@ test("family member sees shared assets from owner", async () => {
       body: JSON.stringify({
         type: "deposit",
         label: "개인통장",
-        currency: "KRW",
+        bankCode: "YUCHO",
         amount: 1000,
         isShared: false,
       }),
@@ -225,7 +229,7 @@ test("only owner can update or delete an asset", async () => {
       body: JSON.stringify({
         type: "deposit",
         label: "공유예금",
-        currency: "KRW",
+        bankCode: "MUFG",
         amount: 5000,
         isShared: true,
       }),

@@ -1,4 +1,4 @@
-import type { AssetRecord, StockMarket } from "./assetTypes.js";
+import type { AssetRecord, DepositBank, StockMarket } from "./assetTypes.js";
 
 export interface CreateAssetInput {
   userId: number;
@@ -7,6 +7,7 @@ export interface CreateAssetInput {
   label: string;
   currency: string;
   amount: number;
+  bankCode: DepositBank | null;
   stockMarket: StockMarket | null;
   stockCode: string | null;
   quantity: number | null;
@@ -20,6 +21,7 @@ export interface UpdateAssetInput {
   label?: string;
   currency?: string;
   amount?: number;
+  bankCode?: DepositBank | null;
   stockMarket?: StockMarket | null;
   stockCode?: string | null;
   quantity?: number | null;

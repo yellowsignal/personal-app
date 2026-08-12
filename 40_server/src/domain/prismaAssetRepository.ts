@@ -4,7 +4,7 @@ import type {
   AssetRepository,
   UpdateAssetInput,
 } from "./assetRepository.js";
-import type { AssetRecord, StockMarket } from "./assetTypes.js";
+import type { AssetRecord, DepositBank, StockMarket } from "./assetTypes.js";
 
 function map(row: PrismaAsset): AssetRecord {
   return {
@@ -15,6 +15,7 @@ function map(row: PrismaAsset): AssetRecord {
     label: row.label,
     currency: row.currency,
     amount: Number(row.amount),
+    bankCode: (row.bankCode as DepositBank | null) ?? null,
     stockMarket: (row.stockMarket as StockMarket | null) ?? null,
     stockCode: row.stockCode,
     quantity: row.quantity === null ? null : Number(row.quantity),
@@ -55,6 +56,7 @@ export class PrismaAssetRepository implements AssetRepository {
         label: input.label,
         currency: input.currency,
         amount: input.amount,
+        bankCode: input.bankCode,
         stockMarket: input.stockMarket,
         stockCode: input.stockCode,
         quantity: input.quantity,
@@ -74,6 +76,7 @@ export class PrismaAssetRepository implements AssetRepository {
         label: input.label,
         currency: input.currency,
         amount: input.amount,
+        bankCode: input.bankCode,
         stockMarket: input.stockMarket,
         stockCode: input.stockCode,
         quantity: input.quantity,

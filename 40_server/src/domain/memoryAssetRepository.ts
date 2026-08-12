@@ -35,6 +35,7 @@ export class MemoryAssetRepository implements AssetRepository {
       label: input.label,
       currency: input.currency,
       amount: input.amount,
+      bankCode: input.bankCode,
       stockMarket: input.stockMarket,
       stockCode: input.stockCode,
       quantity: input.quantity,
@@ -54,6 +55,7 @@ export class MemoryAssetRepository implements AssetRepository {
     const updated: AssetRecord = {
       ...existing,
       ...input,
+      bankCode: input.bankCode === undefined ? existing.bankCode : input.bankCode,
       stockMarket: input.stockMarket === undefined ? existing.stockMarket : input.stockMarket,
       stockCode: input.stockCode === undefined ? existing.stockCode : input.stockCode,
       quantity: input.quantity === undefined ? existing.quantity : input.quantity,

@@ -4,6 +4,16 @@ import type { ViewScope } from "../components/ScopeToggle";
 export type AssetCurrency = "KRW" | "JPY" | "USD";
 export type AssetType = "deposit" | "stock" | "cash" | "realestate";
 export type StockMarket = "KR" | "JP" | "US";
+export type DepositBank = "SHINHAN" | "MUFG" | "YUCHO";
+
+export const DEPOSIT_BANKS: Record<
+  DepositBank,
+  { country: "KR" | "JP"; currency: AssetCurrency }
+> = {
+  SHINHAN: { country: "KR", currency: "KRW" },
+  MUFG: { country: "JP", currency: "JPY" },
+  YUCHO: { country: "JP", currency: "JPY" },
+};
 
 export interface PublicAsset {
   id: number;
@@ -13,6 +23,7 @@ export interface PublicAsset {
   label: string;
   currency: AssetCurrency;
   amount: number;
+  bankCode: DepositBank | null;
   stockMarket: StockMarket | null;
   stockCode: string | null;
   quantity: number | null;
@@ -31,6 +42,7 @@ export interface CreateAssetInput {
   label: string;
   currency?: AssetCurrency;
   amount?: number;
+  bankCode?: DepositBank;
   stockMarket?: StockMarket;
   stockCode?: string;
   quantity?: number;

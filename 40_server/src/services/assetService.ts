@@ -1,8 +1,10 @@
 import type { AuthRepository } from "../domain/authRepository.js";
 import type { AssetRepository } from "../domain/assetRepository.js";
 import {
+  DEPOSIT_BANKS,
   toPublicAsset,
   type AssetType,
+  type DepositBank,
   type PublicAsset,
   type StockMarket,
   type ViewScope,
@@ -13,6 +15,7 @@ import { currencyForMarket, fetchYahooPrice, toYahooSymbol } from "./stockQuote.
 const CURRENCIES = new Set(["KRW", "JPY", "USD"]);
 const ASSET_TYPES = new Set(["deposit", "stock", "cash", "realestate"]);
 const MARKETS = new Set(["KR", "JP", "US"]);
+const BANKS = new Set(Object.keys(DEPOSIT_BANKS));
 
 function parseScope(value: unknown): ViewScope {
   if (value === "personal" || value === "family" || value === "all") return value;
@@ -44,6 +47,13 @@ function parseMarket(value: unknown): StockMarket {
     throw new HttpError(400, "stockMarket must be KR, JP, or US");
   }
   return value as StockMarket;
+}
+
+function parseBank(value: unknown): DepositBank {
+  if (typeof value !== "string" || !BANKS.has(value)) {
+    throw new HttpError(400, "bankCode must be SHINHAN, MUFG, or YUCHO");
+  }
+  return value as DepositBank;
 }
 
 function parsePositive(value: unknown, field: string): number {
@@ -154,11 +164,33 @@ export class AssetService {
         label: body.label.trim().slice(0, 200),
         currency,
         amount,
+        bankCode: null,
         stockMarket,
         stockCode,
         quantity,
         buyPrice,
         currentPrice,
+        isShared,
+      });
+      return toPublicAsset(record, user.name);
+    }
+
+    if (type === "deposit") {
+      const bankCode = parseBank(body.bankCode);
+      const currency = DEPOSIT_BANKS[bankCode].currency;
+      const record = await this.assetRepo.create({
+        userId: user.id,
+        familyId: user.familyId,
+        type,
+        label: body.label.trim().slice(0, 200),
+        currency,
+        amount: parseAmount(body.amount),
+        bankCode,
+        stockMarket: null,
+        stockCode: null,
+        quantity: null,
+        buyPrice: null,
+        currentPrice: null,
         isShared,
       });
       return toPublicAsset(record, user.name);
@@ -171,6 +203,7 @@ export class AssetService {
       label: body.label.trim().slice(0, 200),
       currency: parseCurrency(body.currency),
       amount: parseAmount(body.amount),
+      bankCode: null,
       stockMarket: null,
       stockCode: null,
       quantity: null,
@@ -194,6 +227,33 @@ export class AssetService {
     }
     const nextType = body.type === undefined ? (existing.type as AssetType) : parseType(body.type);
 
+    if (nextType === "deposit") {
+      const bankCode =
+        body.bankCode !== undefined
+          ? parseBank(body.bankCode)
+          : existing.bankCode ??
+            (() => {
+              throw new HttpError(400, "bankCode must be SHINHAN, MUFG, or YUCHO");
+            })();
+      const updated = await this.assetRepo.update(id, {
+        type: body.type === undefined ? undefined : nextType,
+        label:
+          typeof body.label === "string" && body.label.trim()
+            ? body.label.trim().slice(0, 200)
+            : undefined,
+        currency: DEPOSIT_BANKS[bankCode].currency,
+        amount: body.amount === undefined ? undefined : parseAmount(body.amount),
+        bankCode,
+        stockMarket: null,
+        stockCode: null,
+        quantity: null,
+        buyPrice: null,
+        currentPrice: null,
+        isShared: body.isShared === undefined ? undefined : isShared,
+      });
+      return toPublicAsset(updated, user.name);
+    }
+
     if (nextType !== "stock") {
       const updated = await this.assetRepo.update(id, {
         type: body.type === undefined ? undefined : nextType,
@@ -203,6 +263,7 @@ export class AssetService {
             : undefined,
         currency: body.currency === undefined ? undefined : parseCurrency(body.currency),
         amount: body.amount === undefined ? undefined : parseAmount(body.amount),
+        bankCode: null,
         stockMarket: null,
         stockCode: null,
         quantity: null,
@@ -267,6 +328,7 @@ export class AssetService {
           : undefined,
       currency: currencyForMarket(market),
       amount,
+      bankCode: null,
       stockMarket: market,
       stockCode,
       quantity,
