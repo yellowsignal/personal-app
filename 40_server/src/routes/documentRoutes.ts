@@ -77,6 +77,34 @@ export function createDocumentRouter(service: DocumentService, jwtSecret: string
     }
   });
 
+  router.post("/:id/fields/reveal/options", auth, async (req: AuthedRequest, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        res.status(400).json({ error: "invalid id" });
+        return;
+      }
+      const options = await service.revealFieldOptions(req.userId!, id);
+      res.json(options);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  router.post("/:id/fields/reveal/verify", auth, async (req: AuthedRequest, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        res.status(400).json({ error: "invalid id" });
+        return;
+      }
+      const revealed = await service.revealFields(req.userId!, id, req.body ?? {});
+      res.json(revealed);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
   return router;
 }
 

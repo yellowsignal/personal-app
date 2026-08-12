@@ -10,7 +10,8 @@ function map(row: PrismaDocument): DocumentRecord {
     id: row.id,
     userId: row.userId,
     familyId: row.familyId,
-    docType: row.docType as DocumentRecord["docType"],
+    typeLabel: row.docType,
+    fieldsJson: row.fieldsJson,
     docNumber: row.docNumber,
     expiryDate: row.expiryDate,
     imageUrl: row.imageUrl,
@@ -41,8 +42,9 @@ export class PrismaDocumentRepository implements DocumentRepository {
       data: {
         userId: input.userId,
         familyId: input.familyId,
-        docType: input.docType,
+        docType: input.typeLabel,
         docNumber: input.docNumber,
+        fieldsJson: input.fieldsJson,
         expiryDate: input.expiryDate,
         imageUrl: input.imageUrl,
         isShared: input.isShared,
@@ -55,8 +57,9 @@ export class PrismaDocumentRepository implements DocumentRepository {
     const row = await this.db.document.update({
       where: { id },
       data: {
-        docType: input.docType,
+        docType: input.typeLabel,
         docNumber: input.docNumber,
+        fieldsJson: input.fieldsJson,
         expiryDate: input.expiryDate,
         imageUrl: input.imageUrl,
         isShared: input.isShared,
@@ -75,4 +78,3 @@ export class PrismaDocumentRepository implements DocumentRepository {
     }
   }
 }
-

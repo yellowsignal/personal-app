@@ -106,9 +106,11 @@ model Document {
   id         Int       @id @default(autoincrement())
   userId     Int       @map("user_id")
   familyId   Int?      @map("family_id")
-  /// license | passport | idcard | certificate | ...
+  /// Free-text label, e.g. 신용카드, 保険証
   docType    String    @map("doc_type") @db.VarChar(50)
   docNumber  String?   @map("doc_number") @db.VarChar(100)
+  /// JSON array of { id, label, isSecret, valueCipher?, valuePlain? }
+  fieldsJson String?   @map("fields_json") @db.Text
   expiryDate DateTime? @map("expiry_date") @db.Date
   imageUrl   String?   @map("image_url") @db.Text
   isShared   Boolean   @default(false) @map("is_shared")

@@ -17,12 +17,16 @@ export interface PendingRegistration {
 }
 
 export type AuthenticationPurpose = "login" | "reveal-credentials";
+export type RevealResourceKind = "subscription" | "document";
 
 export interface PendingAuthentication {
   expiresAt: number;
   purpose: AuthenticationPurpose;
   userId?: number;
+  /** @deprecated use revealKind + revealId */
   subscriptionId?: number;
+  revealKind?: RevealResourceKind;
+  revealId?: number;
 }
 
 export class ChallengeStore {

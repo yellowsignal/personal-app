@@ -112,7 +112,7 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
     }
 
     if (deps.documentRepo) {
-      const documentService = new DocumentService(deps.authRepo, deps.documentRepo);
+      const documentService = new DocumentService(deps.authRepo, deps.documentRepo, passkeyService);
       app.use("/api/documents", createDocumentRouter(documentService, jwtSecret));
     }
 

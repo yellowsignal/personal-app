@@ -1,5 +1,5 @@
 import type { DocumentRepository, CreateDocumentInput, UpdateDocumentInput } from "./documentRepository.js";
-import type { DocumentRecord, DocumentType } from "./documentTypes.js";
+import type { DocumentRecord } from "./documentTypes.js";
 
 export class MemoryDocumentRepository implements DocumentRepository {
   private docs = new Map<number, DocumentRecord>();
@@ -23,7 +23,8 @@ export class MemoryDocumentRepository implements DocumentRepository {
       id: this.nextId++,
       userId: input.userId,
       familyId: input.familyId,
-      docType: input.docType,
+      typeLabel: input.typeLabel,
+      fieldsJson: input.fieldsJson,
       docNumber: input.docNumber,
       expiryDate: input.expiryDate,
       imageUrl: input.imageUrl,
@@ -40,7 +41,8 @@ export class MemoryDocumentRepository implements DocumentRepository {
 
     const updated: DocumentRecord = {
       ...existing,
-      docType: input.docType === undefined ? existing.docType : input.docType,
+      typeLabel: input.typeLabel === undefined ? existing.typeLabel : input.typeLabel,
+      fieldsJson: input.fieldsJson === undefined ? existing.fieldsJson : input.fieldsJson,
       docNumber: input.docNumber === undefined ? existing.docNumber : input.docNumber,
       expiryDate: input.expiryDate === undefined ? existing.expiryDate : input.expiryDate,
       imageUrl: input.imageUrl === undefined ? existing.imageUrl : input.imageUrl,
@@ -55,4 +57,3 @@ export class MemoryDocumentRepository implements DocumentRepository {
     return this.docs.delete(id);
   }
 }
-

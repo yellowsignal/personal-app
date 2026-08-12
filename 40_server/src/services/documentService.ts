@@ -1,47 +1,138 @@
+import { decryptSecret, encryptSecret } from "../auth/secretCrypto.js";
 import type { AuthRepository } from "../domain/authRepository.js";
 import type { DocumentRepository } from "../domain/documentRepository.js";
-import type { DocumentType, DocumentRecord, PublicDocument } from "../domain/documentTypes.js";
-import { toPublicDocument } from "../domain/documentTypes.js";
+import type { DocumentRecord, PublicDocument, StoredDocumentField } from "../domain/documentTypes.js";
+import {
+  newFieldId,
+  parseStoredFields,
+  serializeStoredFields,
+  toPublicDocument,
+} from "../domain/documentTypes.js";
 import { HttpError } from "./authService.js";
+import type { PasskeyService } from "./passkeyService.js";
 import type { ViewScope } from "../domain/subscriptionTypes.js";
 
-const DOC_TYPES = new Set<DocumentType>(["license", "passport", "idcard", "certificate"]);
+const TYPE_SUGGESTIONS = [
+  "운전면허증",
+  "여권",
+  "주민등록증",
+  "신용카드",
+  "체크카드",
+  "재류카드",
+  "マイナンバーカード",
+  "保険証",
+  "자격증",
+];
+
+export interface DocumentFieldInput {
+  id?: string;
+  label: string;
+  isSecret?: boolean;
+  /** Omit on edit to keep existing secret value */
+  value?: string;
+}
 
 function parseScope(value: unknown): ViewScope {
   if (value === "personal" || value === "family" || value === "all") return value;
   return "all";
 }
 
-function parseDocType(value: unknown): DocumentType {
-  if (typeof value !== "string" || !DOC_TYPES.has(value as DocumentType)) {
-    throw new HttpError(400, "docType must be one of license, passport, idcard, certificate");
+function parseTypeLabel(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new HttpError(400, "typeLabel is required");
   }
-  return value as DocumentType;
-}
-
-function parseOptionalString(value: unknown): string | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== "string") throw new HttpError(400, "docNumber must be a string");
-  const trimmed = value.trim();
-  return trimmed ? trimmed.slice(0, 100) : null;
+  return value.trim().slice(0, 50);
 }
 
 function parseOptionalExpiryDate(value: unknown): Date | null {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string") throw new HttpError(400, "expiryDate must be a string (YYYY-MM-DD)");
-  // Expect YYYY-MM-DD from <input type="date">
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     throw new HttpError(400, "expiryDate must be YYYY-MM-DD");
   }
   const [y, m, d] = value.split("-").map((x) => Number(x));
-  const date = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
-  return date;
+  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+}
+
+function parseOptionalString(value: unknown, fieldName: string): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") throw new HttpError(400, `${fieldName} must be a string`);
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, 500) : null;
+}
+
+function parseFieldsInput(value: unknown): DocumentFieldInput[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new HttpError(400, "fields must be a non-empty array");
+  }
+  if (value.length > 20) {
+    throw new HttpError(400, "fields cannot exceed 20 items");
+  }
+  const out: DocumentFieldInput[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const label = typeof row.label === "string" ? row.label.trim() : "";
+    if (!label) continue;
+    out.push({
+      id: typeof row.id === "string" && row.id.trim() ? row.id.trim() : undefined,
+      label: label.slice(0, 80),
+      isSecret: row.isSecret === true,
+      value: typeof row.value === "string" ? row.value : undefined,
+    });
+  }
+  if (out.length === 0) {
+    throw new HttpError(400, "at least one field with a label is required");
+  }
+  return out;
+}
+
+function buildStoredFields(
+  inputs: DocumentFieldInput[],
+  existing: StoredDocumentField[] = [],
+): StoredDocumentField[] {
+  const existingById = new Map(existing.map((f) => [f.id, f]));
+  const out: StoredDocumentField[] = [];
+
+  for (const input of inputs) {
+    const id = input.id && existingById.has(input.id) ? input.id : newFieldId();
+    const prev = existingById.get(id);
+    const isSecret = input.isSecret === true;
+
+    if (isSecret) {
+      let valueCipher: string | null = prev?.valueCipher ?? null;
+      if (input.value !== undefined) {
+        const trimmed = input.value.trim();
+        valueCipher = trimmed ? encryptSecret(trimmed) : null;
+      }
+      out.push({ id, label: input.label, isSecret: true, valueCipher, valuePlain: null });
+    } else {
+      const valuePlain =
+        input.value !== undefined ? (input.value.trim() ? input.value.trim().slice(0, 500) : null) : (prev?.valuePlain ?? null);
+      out.push({ id, label: input.label, isSecret: false, valueCipher: null, valuePlain });
+    }
+  }
+  return out;
+}
+
+function decryptFieldValue(field: StoredDocumentField): string | null {
+  if (!field.isSecret) return field.valuePlain ?? null;
+  if (field.valueCipher) {
+    try {
+      return decryptSecret(field.valueCipher);
+    } catch {
+      throw new HttpError(500, "failed to decrypt field", "DECRYPT_FAILED");
+    }
+  }
+  // Legacy plain docNumber migrated to secret field without cipher
+  return field.valuePlain ?? null;
 }
 
 export class DocumentService {
   constructor(
     private readonly authRepo: AuthRepository,
     private readonly documentRepo: DocumentRepository,
+    private readonly passkeyService: PasskeyService | null = null,
   ) {}
 
   private async requireUser(userId: number) {
@@ -85,7 +176,6 @@ export class DocumentService {
     const scope = parseScope(scopeRaw);
     const records = await this.documentRepo.listForUser(userId, user.familyId);
 
-    // Sort by nearest expiry first; null expiry goes last.
     records.sort(
       (a, b) =>
         (a.expiryDate?.getTime() ?? Infinity) - (b.expiryDate?.getTime() ?? Infinity) ||
@@ -109,10 +199,16 @@ export class DocumentService {
 
   async create(userId: number, body: Record<string, unknown>): Promise<PublicDocument> {
     const user = await this.requireUser(userId);
-    const docType = parseDocType(body.docType);
-    const docNumber = parseOptionalString(body.docNumber);
+    const typeLabel = parseTypeLabel(body.typeLabel ?? body.docType);
+    const fieldInputs = parseFieldsInput(body.fields);
+    const storedFields = buildStoredFields(fieldInputs);
+    const hasAnyValue = storedFields.some((f) => (f.isSecret ? f.valueCipher : f.valuePlain));
+    if (!hasAnyValue) {
+      throw new HttpError(400, "at least one field value is required");
+    }
+
     const expiryDate = parseOptionalExpiryDate(body.expiryDate);
-    const imageUrl = parseOptionalString(body.imageUrl);
+    const imageUrl = parseOptionalString(body.imageUrl, "imageUrl");
 
     const isShared = body.isShared === true;
     if (isShared && !user.familyId) {
@@ -122,8 +218,9 @@ export class DocumentService {
     const record = await this.documentRepo.create({
       userId: user.id,
       familyId: isShared ? user.familyId : null,
-      docType,
-      docNumber,
+      typeLabel,
+      fieldsJson: serializeStoredFields(storedFields),
+      docNumber: null,
       expiryDate,
       imageUrl,
       isShared,
@@ -144,11 +241,23 @@ export class DocumentService {
       throw new HttpError(400, "join a family before sharing documents", "NO_FAMILY");
     }
 
+    const existingFields = parseStoredFields(existing);
+    let fieldsJson = existing.fieldsJson;
+    if ("fields" in body) {
+      const fieldInputs = parseFieldsInput(body.fields);
+      const storedFields = buildStoredFields(fieldInputs, existingFields);
+      fieldsJson = serializeStoredFields(storedFields);
+    }
+
     const updated: Parameters<DocumentRepository["update"]>[1] = {
-      docType: typeof body.docType === "string" ? parseDocType(body.docType) : undefined,
-      docNumber: "docNumber" in body ? parseOptionalString(body.docNumber) : undefined,
+      typeLabel:
+        body.typeLabel !== undefined || body.docType !== undefined
+          ? parseTypeLabel(body.typeLabel ?? body.docType)
+          : undefined,
+      fieldsJson: "fields" in body ? fieldsJson : undefined,
+      docNumber: "fields" in body ? null : undefined,
       expiryDate: "expiryDate" in body ? parseOptionalExpiryDate(body.expiryDate) : undefined,
-      imageUrl: "imageUrl" in body ? parseOptionalString(body.imageUrl) : undefined,
+      imageUrl: "imageUrl" in body ? parseOptionalString(body.imageUrl, "imageUrl") : undefined,
       isShared: body.isShared === undefined ? undefined : isShared,
       familyId: body.isShared === undefined ? undefined : isShared ? user.familyId : null,
     };
@@ -168,5 +277,55 @@ export class DocumentService {
     const removed = await this.documentRepo.remove(id);
     if (!removed) throw new HttpError(404, "document not found", "NOT_FOUND");
   }
-}
 
+  async revealFieldOptions(userId: number, id: number) {
+    if (!this.passkeyService) {
+      throw new HttpError(503, "passkey not configured", "PASSKEY_UNAVAILABLE");
+    }
+    const user = await this.requireUser(userId);
+    const existing = await this.documentRepo.findById(id);
+    if (!existing) throw new HttpError(404, "document not found", "NOT_FOUND");
+    if (!this.canView(existing, user.familyId, user.id)) {
+      throw new HttpError(403, "forbidden", "FORBIDDEN");
+    }
+    const fields = parseStoredFields(existing);
+    const hasSecrets = fields.some((f) => f.isSecret && (f.valueCipher || f.valuePlain));
+    if (!hasSecrets) {
+      throw new HttpError(404, "no secret fields stored", "NO_SECRETS");
+    }
+    return this.passkeyService.credentialRevealOptions(user.id, "document", id);
+  }
+
+  async revealFields(
+    userId: number,
+    id: number,
+    body: Record<string, unknown>,
+  ): Promise<{ fields: Array<{ id: string; label: string; value: string }> }> {
+    if (!this.passkeyService) {
+      throw new HttpError(503, "passkey not configured", "PASSKEY_UNAVAILABLE");
+    }
+    const user = await this.requireUser(userId);
+    const existing = await this.documentRepo.findById(id);
+    if (!existing) throw new HttpError(404, "document not found", "NOT_FOUND");
+    if (!this.canView(existing, user.familyId, user.id)) {
+      throw new HttpError(403, "forbidden", "FORBIDDEN");
+    }
+
+    await this.passkeyService.credentialRevealVerify(user.id, "document", id, body);
+
+    const stored = parseStoredFields(existing);
+    const revealed = stored
+      .filter((f) => f.isSecret && (f.valueCipher || f.valuePlain))
+      .map((f) => {
+        const value = decryptFieldValue(f);
+        return value ? { id: f.id, label: f.label, value } : null;
+      })
+      .filter((x): x is { id: string; label: string; value: string } => x !== null);
+
+    return { fields: revealed };
+  }
+
+  static typeSuggestions(): string[] {
+    return TYPE_SUGGESTIONS;
+  }
+}

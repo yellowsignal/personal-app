@@ -10,7 +10,7 @@ import type {
   RegistrationResponseJSON,
 } from "@simplewebauthn/server";
 import { randomBytes } from "node:crypto";
-import type { ChallengeStore, RegistrationFlow } from "../auth/challengeStore.js";
+import type { ChallengeStore, RegistrationFlow, RevealResourceKind } from "../auth/challengeStore.js";
 import { generateInviteCode } from "../auth/invite.js";
 import { generateInviteTokenPlain, hashInviteToken, passkeyUserEmail } from "../auth/inviteTokenUtil.js";
 import { signAuthToken } from "../auth/token.js";
@@ -321,13 +321,14 @@ export class PasskeyService {
     return this.session(toPublicUser(user), family);
   }
 
-  async credentialRevealOptions(userId: number, subscriptionId: number) {
+  async credentialRevealOptions(userId: number, kind: RevealResourceKind, resourceId: number) {
     if (process.env.PASSKEY_REVEAL_TEST_BYPASS === "1") {
       const challenge = randomBytes(32).toString("base64url");
       this.challenges.putAuthentication(challenge, {
         purpose: "reveal-credentials",
         userId,
-        subscriptionId,
+        revealKind: kind,
+        revealId: resourceId,
       });
       const { rpID } = this.webauthn();
       return {
@@ -355,15 +356,28 @@ export class PasskeyService {
     this.challenges.putAuthentication(options.challenge, {
       purpose: "reveal-credentials",
       userId,
-      subscriptionId,
+      revealKind: kind,
+      revealId: resourceId,
     });
     return options;
+  }
+
+  private matchesRevealTarget(
+    pending: import("../auth/challengeStore.js").PendingAuthentication,
+    kind: RevealResourceKind,
+    resourceId: number,
+  ): boolean {
+    if (pending.revealKind !== undefined && pending.revealId !== undefined) {
+      return pending.revealKind === kind && pending.revealId === resourceId;
+    }
+    return kind === "subscription" && pending.subscriptionId === resourceId;
   }
 
   /** Verifies Passkey step-up for credential reveal. Does not mint a new session JWT. */
   async credentialRevealVerify(
     userId: number,
-    subscriptionId: number,
+    kind: RevealResourceKind,
+    resourceId: number,
     body: Record<string, unknown>,
   ): Promise<void> {
     const challenge = typeof body.challenge === "string" ? body.challenge : null;
@@ -375,7 +389,7 @@ export class PasskeyService {
         !pending ||
         pending.purpose !== "reveal-credentials" ||
         pending.userId !== userId ||
-        pending.subscriptionId !== subscriptionId
+        !this.matchesRevealTarget(pending, kind, resourceId)
       ) {
         throw new HttpError(400, "reveal session expired", "CHALLENGE_EXPIRED");
       }
@@ -390,7 +404,7 @@ export class PasskeyService {
       !pending ||
       pending.purpose !== "reveal-credentials" ||
       pending.userId !== userId ||
-      pending.subscriptionId !== subscriptionId
+      !this.matchesRevealTarget(pending, kind, resourceId)
     ) {
       throw new HttpError(400, "reveal session expired", "CHALLENGE_EXPIRED");
     }

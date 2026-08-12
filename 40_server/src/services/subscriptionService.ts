@@ -262,7 +262,7 @@ export class SubscriptionService {
     if (!existing.loginPasswordCipher && !existing.loginId) {
       throw new HttpError(404, "no credentials stored", "NO_CREDENTIALS");
     }
-    return this.passkeyService.credentialRevealOptions(user.id, id);
+    return this.passkeyService.credentialRevealOptions(user.id, "subscription", id);
   }
 
   async revealCredentials(
@@ -283,7 +283,7 @@ export class SubscriptionService {
       throw new HttpError(404, "no credentials stored", "NO_CREDENTIALS");
     }
 
-    await this.passkeyService.credentialRevealVerify(user.id, id, body);
+    await this.passkeyService.credentialRevealVerify(user.id, "subscription", id, body);
 
     let password: string | null = null;
     if (existing.loginPasswordCipher) {

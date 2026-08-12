@@ -1,9 +1,10 @@
-import type { DocumentRecord, DocumentType, PublicDocument } from "./documentTypes.js";
+import type { DocumentRecord } from "./documentTypes.js";
 
 export interface CreateDocumentInput {
   userId: number;
   familyId: number | null;
-  docType: DocumentType;
+  typeLabel: string;
+  fieldsJson: string | null;
   docNumber: string | null;
   expiryDate: Date | null;
   imageUrl: string | null;
@@ -11,7 +12,8 @@ export interface CreateDocumentInput {
 }
 
 export interface UpdateDocumentInput {
-  docType?: DocumentType;
+  typeLabel?: string;
+  fieldsJson?: string | null;
   docNumber?: string | null;
   expiryDate?: Date | null;
   imageUrl?: string | null;
@@ -26,4 +28,3 @@ export interface DocumentRepository {
   update(id: number, input: UpdateDocumentInput): Promise<DocumentRecord>;
   remove(id: number): Promise<boolean>;
 }
-
