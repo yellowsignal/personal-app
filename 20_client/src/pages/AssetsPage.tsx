@@ -149,9 +149,18 @@ export default function AssetsPage() {
   );
   const totalDisplay = totalBase / exchangeRates[currency];
 
+  const hasDeposit = useMemo(() => visible.some((a) => a.type === "deposit"), [visible]);
+
   function openCreate() {
     setEditing(null);
     setForm(emptyForm(currency, lastMarket, lastBank));
+    setMenuId(null);
+    setShowForm(true);
+  }
+
+  function openCreateDeposit() {
+    setEditing(null);
+    setForm({ ...emptyForm(currency, lastMarket, lastBank), type: "deposit" });
     setMenuId(null);
     setShowForm(true);
   }
@@ -386,10 +395,26 @@ export default function AssetsPage() {
           <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{importSuccess}</p>
         )}
 
+        {!loading && !hasDeposit && (
+          <p className="mt-3 rounded-xl bg-indigo-50/70 px-4 py-3 text-xs text-indigo-700">
+            {t("assets.depositCsvHint")}
+          </p>
+        )}
+
         {loading ? (
           <p className="mt-6 text-center text-sm text-neutral-400">{t("assets.loading")}</p>
         ) : visible.length === 0 ? (
-          <p className="mt-6 text-center text-sm text-neutral-400">{t("assets.empty")}</p>
+          <div className="mt-6 rounded-2xl bg-white px-4 py-10 text-center shadow-sm ring-1 ring-black/5">
+            <p className="text-sm font-medium text-neutral-600">{t("assets.empty")}</p>
+            <p className="mt-2 text-xs text-neutral-400">{t("assets.depositCsvHint")}</p>
+            <button
+              type="button"
+              onClick={openCreateDeposit}
+              className="mt-4 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white"
+            >
+              {t("assets.addDeposit")}
+            </button>
+          </div>
         ) : (
           <div className="mt-4 flex flex-col gap-3">
             {visible.map((a) => {

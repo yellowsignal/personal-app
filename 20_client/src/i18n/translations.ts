@@ -125,6 +125,8 @@ export const dict: Record<Lang, Record<string, string>> = {
     "assets.statementEmpty": "등록된 거래 내역이 없습니다. 은행에서 받은 CSV를 가져와 주세요.",
     "assets.noDescription": "(적요 없음)",
     "assets.balanceAfter": "잔액 {v}",
+    "assets.depositCsvHint": "예금 계좌를 추가하면 카드에서 「CSV 가져오기」·「명세 보기」를 사용할 수 있습니다.",
+    "assets.addDeposit": "예금 계좌 추가",
 
     "assetType.deposit": "예금",
     "assetType.stock": "주식",
@@ -442,6 +444,8 @@ export const dict: Record<Lang, Record<string, string>> = {
     "assets.statementEmpty": "取引明細がありません。銀行のCSVを取り込んでください。",
     "assets.noDescription": "（摘要なし）",
     "assets.balanceAfter": "残高 {v}",
+    "assets.depositCsvHint": "預金口座を追加すると、カードから「CSV取込」「明細を見る」が使えます。",
+    "assets.addDeposit": "預金口座を追加",
 
     "assetType.deposit": "預金",
     "assetType.stock": "株式",
