@@ -1,9 +1,12 @@
 import type { DocumentRecord } from "./documentTypes.js";
 
+import type { DocumentCategory } from "../documentCategories.js";
+
 export interface CreateDocumentInput {
   userId: number;
   familyId: number | null;
   typeLabel: string;
+  category: DocumentCategory;
   fieldsJson: string | null;
   docNumber: string | null;
   expiryDate: Date | null;
@@ -14,6 +17,7 @@ export interface CreateDocumentInput {
 
 export interface UpdateDocumentInput {
   typeLabel?: string;
+  category?: DocumentCategory;
   fieldsJson?: string | null;
   docNumber?: string | null;
   expiryDate?: Date | null;

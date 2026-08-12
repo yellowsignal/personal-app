@@ -8,6 +8,8 @@ import {
   serializeStoredFields,
   toPublicDocument,
 } from "../domain/documentTypes.js";
+import type { DocumentCategory } from "../documentCategories.js";
+import { inferCategoryFromTypeLabel, parseDocumentCategory } from "../documentCategories.js";
 import { HttpError } from "./authService.js";
 import type { PasskeyService } from "./passkeyService.js";
 import type { ViewScope } from "../domain/subscriptionTypes.js";
@@ -39,6 +41,13 @@ export interface DocumentFieldInput {
 function parseScope(value: unknown): ViewScope {
   if (value === "personal" || value === "family" || value === "all") return value;
   return "all";
+}
+
+function parseCategory(value: unknown, typeLabel: string): DocumentCategory {
+  if (value !== undefined && value !== null && value !== "") {
+    return parseDocumentCategory(value, inferCategoryFromTypeLabel(typeLabel));
+  }
+  return inferCategoryFromTypeLabel(typeLabel);
 }
 
 function parseTypeLabel(value: unknown): string {
@@ -212,6 +221,7 @@ export class DocumentService {
   async create(userId: number, body: Record<string, unknown>): Promise<PublicDocument> {
     const user = await this.requireUser(userId);
     const typeLabel = parseTypeLabel(body.typeLabel ?? body.docType);
+    const category = parseCategory(body.category, typeLabel);
     const fieldInputs = parseFieldsInput(body.fields);
     const storedFields = buildStoredFields(fieldInputs);
     const hasAnyValue = storedFields.some((f) => (f.isSecret ? f.valueCipher : f.valuePlain));
@@ -232,6 +242,7 @@ export class DocumentService {
       userId: user.id,
       familyId: isShared ? user.familyId : null,
       typeLabel,
+      category,
       fieldsJson: serializeStoredFields(storedFields),
       docNumber: null,
       expiryDate,
@@ -268,6 +279,12 @@ export class DocumentService {
         body.typeLabel !== undefined || body.docType !== undefined
           ? parseTypeLabel(body.typeLabel ?? body.docType)
           : undefined,
+      category:
+        body.category !== undefined
+          ? parseCategory(body.category, body.typeLabel !== undefined ? parseTypeLabel(body.typeLabel) : existing.typeLabel)
+          : body.typeLabel !== undefined || body.docType !== undefined
+            ? parseCategory(undefined, parseTypeLabel(body.typeLabel ?? body.docType))
+            : undefined,
       fieldsJson: "fields" in body ? fieldsJson : undefined,
       docNumber: "fields" in body ? null : undefined,
       expiryDate: "expiryDate" in body ? parseOptionalExpiryDate(body.expiryDate) : undefined,

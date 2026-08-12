@@ -24,6 +24,7 @@ export class MemoryDocumentRepository implements DocumentRepository {
       userId: input.userId,
       familyId: input.familyId,
       typeLabel: input.typeLabel,
+      category: input.category,
       fieldsJson: input.fieldsJson,
       docNumber: input.docNumber,
       expiryDate: input.expiryDate,
@@ -43,6 +44,7 @@ export class MemoryDocumentRepository implements DocumentRepository {
     const updated: DocumentRecord = {
       ...existing,
       typeLabel: input.typeLabel === undefined ? existing.typeLabel : input.typeLabel,
+      category: input.category === undefined ? existing.category : input.category,
       fieldsJson: input.fieldsJson === undefined ? existing.fieldsJson : input.fieldsJson,
       docNumber: input.docNumber === undefined ? existing.docNumber : input.docNumber,
       expiryDate: input.expiryDate === undefined ? existing.expiryDate : input.expiryDate,

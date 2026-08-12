@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Camera, Copy, Eye, EyeOff, FileDown, Maximize2, MoreHorizontal, Pencil, Plus, Star, Trash2, X } from "lucide-react";
+import { Camera, ChevronDown, Copy, Eye, EyeOff, FileDown, Maximize2, MoreHorizontal, Pencil, Plus, Star, Trash2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
@@ -8,8 +8,10 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
 import {
   DOCUMENT_TYPE_SUGGESTIONS,
+  DOCUMENT_CATEGORY_ORDER,
   documentsApi,
   type CreateDocumentInput,
+  type DocumentCategory,
   type DocumentFieldInput,
   type PublicDocument,
   type ScanSide,
@@ -65,6 +67,9 @@ export default function DocumentsPage() {
   const [confirmDelete, setConfirmDelete] = useState<PublicDocument | null>(null);
 
   const [typeLabel, setTypeLabel] = useState("");
+  const [category, setCategory] = useState<DocumentCategory>("other");
+  const [categoryFilter, setCategoryFilter] = useState<DocumentCategory | "all">("all");
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<DocumentCategory>>(new Set());
   const [fieldDrafts, setFieldDrafts] = useState<FieldDraft[]>([emptyField()]);
   const [memo, setMemo] = useState("");
   const [expiryDate, setExpiryDate] = useState(() => todayIsoDate());
@@ -130,6 +135,40 @@ export default function DocumentsPage() {
     [visible, pinnedIds],
   );
 
+  const filteredByCategory = useMemo(() => {
+    if (categoryFilter === "all") return visible;
+    return visible.filter((d) => d.category === categoryFilter);
+  }, [visible, categoryFilter]);
+
+  const groupedDocuments = useMemo(() => {
+    const buckets = new Map<DocumentCategory, PublicDocument[]>();
+    for (const cat of DOCUMENT_CATEGORY_ORDER) buckets.set(cat, []);
+    for (const doc of filteredByCategory) {
+      const list = buckets.get(doc.category) ?? buckets.get("other")!;
+      list.push(doc);
+    }
+    const sortDocs = (docs: PublicDocument[]) =>
+      [...docs].sort((a, b) => {
+        const aPinned = pinnedIds.includes(a.id) ? 0 : 1;
+        const bPinned = pinnedIds.includes(b.id) ? 0 : 1;
+        if (aPinned !== bPinned) return aPinned - bPinned;
+        return daysLeft(a.expiryDate) - daysLeft(b.expiryDate);
+      });
+    return DOCUMENT_CATEGORY_ORDER.map((cat) => ({
+      category: cat,
+      items: sortDocs(buckets.get(cat) ?? []),
+    })).filter((group) => group.items.length > 0);
+  }, [filteredByCategory, pinnedIds, daysLeft]);
+
+  function toggleCategoryCollapse(cat: DocumentCategory) {
+    setCollapsedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  }
+
   function togglePin(docId: number) {
     setPinnedIds(togglePinnedDocumentId(docId));
   }
@@ -145,6 +184,7 @@ export default function DocumentsPage() {
 
   function resetForm() {
     setTypeLabel("");
+    setCategory("other");
     setFieldDrafts([emptyField()]);
     setMemo("");
     setExpiryDate(todayIsoDate());
@@ -165,6 +205,7 @@ export default function DocumentsPage() {
   function openEdit(doc: PublicDocument) {
     setEditing(doc);
     setTypeLabel(doc.typeLabel);
+    setCategory(doc.category);
     setMemo(doc.memo ?? "");
     setFieldDrafts(
       doc.fields.map((f) => ({
@@ -277,6 +318,7 @@ export default function DocumentsPage() {
 
   function applyOcrResult(parsed: ReturnType<typeof parseDocumentOcrText>) {
     if (parsed.typeLabel) setTypeLabel(parsed.typeLabel);
+    if (parsed.category) setCategory(parsed.category);
     if (parsed.fields.length > 0) {
       setFieldDrafts(
         parsed.fields.map((f) => ({
@@ -306,6 +348,7 @@ export default function DocumentsPage() {
     if (!label || fields.length === 0 || !hasFieldValue) return null;
     return {
       typeLabel: label,
+      category: parsed.category ?? category,
       fields,
       expiryDate: parsed.expiryDate ?? null,
       isShared: false,
@@ -348,7 +391,7 @@ export default function DocumentsPage() {
       setError(t("documents.ocrLowConfidence"));
     } catch {
       setError(t("documents.ocrError"));
-      openOcrReviewForm(front, back, { typeLabel: null, fields: [], expiryDate: null });
+      openOcrReviewForm(front, back, { typeLabel: null, category: null, fields: [], expiryDate: null });
     } finally {
       setOcrBusy(false);
       setOcrProgress(0);
@@ -367,7 +410,7 @@ export default function DocumentsPage() {
       }
     } catch {
       setError(t("documents.ocrError"));
-      openOcrReviewForm(front, back, { typeLabel: null, fields: [], expiryDate: null });
+      openOcrReviewForm(front, back, { typeLabel: null, category: null, fields: [], expiryDate: null });
     } finally {
       setOcrBusy(false);
       setOcrProgress(0);
@@ -525,6 +568,7 @@ export default function DocumentsPage() {
       setError(null);
       const payload: CreateDocumentInput = {
         typeLabel: typeLabel.trim(),
+        category,
         fields,
         expiryDate: hasExpiry ? expiryDate : null,
         isShared,
@@ -635,16 +679,53 @@ export default function DocumentsPage() {
           </div>
         )}
 
-        <div className="mt-4 flex flex-col gap-3">
+        <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+          {(["all", ...DOCUMENT_CATEGORY_ORDER] as const).map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setCategoryFilter(cat)}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${
+                categoryFilter === cat
+                  ? "bg-indigo-600 text-white"
+                  : "bg-white text-neutral-600 ring-1 ring-black/5"
+              }`}
+            >
+              {cat === "all" ? t("documents.category.all") : t(`documents.category.${cat}`)}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 flex flex-col gap-4">
           {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</p>}
           {loading ? (
             <p className="py-10 text-center text-sm text-neutral-400">{t("documents.loading")}</p>
-          ) : visible.length === 0 ? (
+          ) : filteredByCategory.length === 0 ? (
             <div className="rounded-2xl bg-white px-4 py-12 text-center shadow-sm ring-1 ring-black/5">
               <p className="text-sm font-medium text-neutral-600">{t("documents.empty")}</p>
             </div>
           ) : (
-            visible.map((d) => {
+            groupedDocuments.map((group) => {
+              const collapsed = collapsedCategories.has(group.category);
+              return (
+                <section key={group.category}>
+                  <button
+                    type="button"
+                    onClick={() => toggleCategoryCollapse(group.category)}
+                    className="flex w-full items-center justify-between rounded-xl bg-neutral-100/80 px-3 py-2.5 text-left"
+                  >
+                    <span className="text-sm font-bold text-neutral-800">
+                      {t(`documents.category.${group.category}`)}
+                      <span className="ml-1.5 text-xs font-semibold text-neutral-400">({group.items.length})</span>
+                    </span>
+                    <ChevronDown
+                      size={18}
+                      className={`text-neutral-400 transition-transform ${collapsed ? "" : "rotate-180"}`}
+                    />
+                  </button>
+                  {!collapsed && (
+                    <div className="mt-2 flex flex-col gap-3">
+                      {group.items.map((d) => {
               const dLeft = daysLeft(d.expiryDate);
               const urgent = d.expiryDate !== null && dLeft <= 30;
               const docRevealed = Boolean(revealedByDoc[d.id]);
@@ -827,6 +908,11 @@ export default function DocumentsPage() {
                     )}
                   </div>
                 </div>
+                      );
+                      })}
+                    </div>
+                  )}
+                </section>
               );
             })
           )}
@@ -851,12 +937,30 @@ export default function DocumentsPage() {
               <p className="mb-4 text-xs text-neutral-500">{t("documents.reviewOcrHint")}</p>
             )}
 
-            <label className="mb-2 block text-sm font-semibold text-neutral-700">{t("documents.fieldTypeLabel")}</label>
+            <label className="mb-2 block text-sm font-semibold text-neutral-700">{t("documents.fieldCategory")}</label>
+            <div className="mb-4 flex flex-wrap gap-2">
+              {DOCUMENT_CATEGORY_ORDER.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setCategory(cat)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                    category === cat
+                      ? "bg-indigo-600 text-white"
+                      : "bg-neutral-100 text-neutral-600"
+                  }`}
+                >
+                  {t(`documents.category.${cat}`)}
+                </button>
+              ))}
+            </div>
+
+            <label className="mb-2 block text-sm font-semibold text-neutral-700">{t("documents.fieldName")}</label>
             <input
               list="document-type-suggestions"
               value={typeLabel}
               onChange={(e) => setTypeLabel(e.target.value)}
-              placeholder={t("documents.placeholderTypeLabel")}
+              placeholder={t("documents.placeholderName")}
               className="mb-4 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
             />
             <datalist id="document-type-suggestions">

@@ -5,6 +5,10 @@ import type {
 } from "@simplewebauthn/browser";
 import { apiFetch, ApiError } from "./http";
 import type { ViewScope } from "../components/ScopeToggle";
+import type { DocumentCategory } from "@personal-app/document-categories";
+
+export type { DocumentCategory };
+export { DOCUMENT_CATEGORIES, DOCUMENT_CATEGORY_ORDER } from "@personal-app/document-categories";
 
 export interface PublicDocumentField {
   id: string;
@@ -19,6 +23,7 @@ export interface PublicDocument {
   userId: number;
   familyId: number | null;
   typeLabel: string;
+  category: DocumentCategory;
   fields: PublicDocumentField[];
   expiryDate: string | null;
   imageUrl: string | null;
@@ -42,6 +47,7 @@ export interface DocumentFieldInput {
 
 export interface CreateDocumentInput {
   typeLabel: string;
+  category: DocumentCategory;
   fields: DocumentFieldInput[];
   expiryDate?: string | null;
   imageUrl?: string | null;

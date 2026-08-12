@@ -1,3 +1,6 @@
+import type { DocumentCategory } from "./documentCategories.js";
+import { inferCategoryFromTypeLabel } from "./documentCategories.js";
+
 export interface OcrParsedField {
   label: string;
   value: string;
@@ -6,6 +9,7 @@ export interface OcrParsedField {
 
 export interface OcrParseResult {
   typeLabel: string | null;
+  category: DocumentCategory | null;
   fields: OcrParsedField[];
   expiryDate: string | null;
 }
@@ -167,7 +171,7 @@ function detectType(text: string, cardNumber: string | null): string | null {
 function detectShinsatsukenType(text: string): string | null {
   if (!/診察券|患者番号|患者Ｎｏ|受付番号|診療/i.test(text)) return null;
   const hospital = text.match(/([\u4e00-\u9fff\u3040-\u30ffーA-Za-z0-9]+(?:病院|クリニック|医院|診療所|メディカル))/);
-  if (hospital?.[1]) return `${hospital[1]} 診察券`;
+  if (hospital?.[1]) return hospital[1];
   return "診察券";
 }
 
@@ -261,6 +265,12 @@ export function parseDocumentOcrText(text: string): OcrParseResult {
   const normalized = normalizeText(text);
   const cardNumber = extractCardNumber(normalized);
   const typeLabel = detectType(normalized, cardNumber);
+  const isMedical = /診察券|患者番号|患者Ｎｏ|受付番号|診療/i.test(normalized);
+  const category = isMedical
+    ? "medical"
+    : typeLabel
+      ? inferCategoryFromTypeLabel(typeLabel)
+      : null;
   const fields = extractLabeledFields(normalized);
   for (const s of extractSpecialNumbers(normalized, typeLabel)) {
     pushUnique(fields, s);
@@ -275,6 +285,7 @@ export function parseDocumentOcrText(text: string): OcrParseResult {
 
   return {
     typeLabel,
+    category,
     fields,
     expiryDate: findExpiry(normalized),
   };

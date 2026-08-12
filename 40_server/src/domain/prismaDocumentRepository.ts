@@ -11,6 +11,7 @@ function map(row: PrismaDocument): DocumentRecord {
     userId: row.userId,
     familyId: row.familyId,
     typeLabel: row.docType,
+    category: row.category,
     fieldsJson: row.fieldsJson,
     docNumber: row.docNumber,
     expiryDate: row.expiryDate,
@@ -44,6 +45,7 @@ export class PrismaDocumentRepository implements DocumentRepository {
         userId: input.userId,
         familyId: input.familyId,
         docType: input.typeLabel,
+        category: input.category,
         docNumber: input.docNumber,
         fieldsJson: input.fieldsJson,
         expiryDate: input.expiryDate,
@@ -60,6 +62,7 @@ export class PrismaDocumentRepository implements DocumentRepository {
       where: { id },
       data: {
         docType: input.typeLabel,
+        category: input.category,
         docNumber: input.docNumber,
         fieldsJson: input.fieldsJson,
         expiryDate: input.expiryDate,

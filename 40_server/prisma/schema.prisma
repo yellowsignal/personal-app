@@ -107,8 +107,10 @@ model Document {
   id         Int       @id @default(autoincrement())
   userId     Int       @map("user_id")
   familyId   Int?      @map("family_id")
-  /// Free-text label, e.g. 신용카드, 保険証
+  /// Free-text label, e.g. 신한 Visa, さくらクリニック
   docType    String    @map("doc_type") @db.VarChar(50)
+  /// medical | card | id | insurance | certificate | other
+  category   String    @default("other") @db.VarChar(50)
   docNumber  String?   @map("doc_number") @db.VarChar(100)
   /// JSON array of { id, label, isSecret, valueCipher?, valuePlain? }
   fieldsJson String?   @map("fields_json") @db.Text
@@ -125,6 +127,7 @@ model Document {
   @@index([userId])
   @@index([familyId])
   @@index([expiryDate])
+  @@index([category])
   @@map("documents")
 }
 

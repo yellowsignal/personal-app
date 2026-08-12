@@ -83,7 +83,8 @@ test("parseDocumentOcrText extracts 診察券 hospital and patient number", () =
     患者番号：123456
     氏名 山田太郎
   `);
-  assert.equal(result.typeLabel, "さくらクリニック 診察券");
+  assert.equal(result.typeLabel, "さくらクリニック");
+  assert.equal(result.category, "medical");
   assert.equal(result.fields.find((f) => f.label === "患者番号")?.value, "123456");
   assert.equal(result.fields.find((f) => f.label === "患者番号")?.isSecret, false);
 });

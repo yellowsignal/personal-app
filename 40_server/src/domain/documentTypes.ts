@@ -1,4 +1,6 @@
 import { randomBytes } from "node:crypto";
+import type { DocumentCategory } from "../documentCategories.js";
+import { parseDocumentCategory } from "../documentCategories.js";
 import { parseScanMarker } from "../storage/documentScanStore.js";
 
 /** Stored in DB (fields_json column). Secret values are AES-GCM encrypted. */
@@ -14,8 +16,9 @@ export interface DocumentRecord {
   id: number;
   userId: number;
   familyId: number | null;
-  /** Free-text label, e.g. "신용카드", "保険証" */
+  /** Display name, e.g. "さくらクリニック", "신한 Visa" */
   typeLabel: string;
+  category: DocumentCategory;
   fieldsJson: string | null;
   /** Legacy single-number column; migrated to fields on read when fieldsJson is empty */
   docNumber: string | null;
@@ -40,6 +43,7 @@ export interface PublicDocument {
   userId: number;
   familyId: number | null;
   typeLabel: string;
+  category: DocumentCategory;
   fields: PublicDocumentField[];
   expiryDate: string | null;
   imageUrl: string | null;
@@ -121,6 +125,7 @@ export function toPublicDocument(record: DocumentRecord, ownerName: string): Pub
     userId: record.userId,
     familyId: record.familyId,
     typeLabel: record.typeLabel,
+    category: parseDocumentCategory(record.category),
     fields,
     expiryDate: record.expiryDate ? record.expiryDate.toISOString().slice(0, 10) : null,
     imageUrl: record.imageUrl,

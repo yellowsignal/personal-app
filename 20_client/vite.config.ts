@@ -13,6 +13,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@personal-app/document-ocr-parse": path.resolve(__dirname, "../40_server/src/documentOcrParse.ts"),
+      "@personal-app/document-categories": path.resolve(__dirname, "../40_server/src/documentCategories.ts"),
     },
   },
   server: {

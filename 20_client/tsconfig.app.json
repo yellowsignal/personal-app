@@ -18,7 +18,8 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@personal-app/document-ocr-parse": ["../40_server/src/documentOcrParse.ts"]
+      "@personal-app/document-ocr-parse": ["../40_server/src/documentOcrParse.ts"],
+      "@personal-app/document-categories": ["../40_server/src/documentCategories.ts"]
     }
   },
   "include": ["src"]

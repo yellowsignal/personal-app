@@ -73,6 +73,7 @@ test("documents personal shows only private; family shows only shared", async ()
       },
       body: JSON.stringify({
         typeLabel: "운전면허증",
+        category: "id",
         fields: [{ label: "면허번호", isSecret: true, value: "11-22-334455-60" }],
         expiryDate: "2026-09-02",
         isShared: false,
@@ -92,6 +93,7 @@ test("documents personal shows only private; family shows only shared", async ()
       },
       body: JSON.stringify({
         typeLabel: "여권",
+        category: "id",
         fields: [{ label: "여권번호", isSecret: true, value: "M12345678" }],
         expiryDate: "2027-03-14",
         isShared: true,
@@ -169,6 +171,7 @@ test("document multi-field (保険証) stores secrets masked and reveals via pas
       },
       body: JSON.stringify({
         typeLabel: "保険証",
+        category: "insurance",
         fields: [
           { label: "記号", isSecret: false, value: "1234" },
           { label: "番号", isSecret: true, value: "567890" },
@@ -238,6 +241,7 @@ test("document update memo and delete owner-only", async () => {
       },
       body: JSON.stringify({
         typeLabel: "여권",
+        category: "id",
         fields: [{ label: "여권번호", isSecret: true, value: "M12345678" }],
         memo: "외교부 발급",
         isShared: true,
@@ -322,6 +326,7 @@ test("document card scan stores front and back PDFs", async () => {
       },
       body: JSON.stringify({
         typeLabel: "재류카드",
+        category: "id",
         fields: [{ label: "番号", isSecret: true, value: "AB12345678CD" }],
         isShared: false,
       }),
