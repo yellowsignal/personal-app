@@ -16,7 +16,16 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-async function addImagePage(pdf: import("jspdf").jsPDF, file: File, isFirst: boolean): Promise<void> {
+/** Minimal jsPDF surface used for image layout (avoids static import for tsc). */
+interface PdfCanvas {
+  addPage(): void;
+  internal: { pageSize: { getWidth(): number; getHeight(): number } };
+  getImageProperties(src: string): { width: number; height: number };
+  addImage(data: string, format: string, x: number, y: number, w: number, h: number): void;
+  output(type: "blob"): Blob;
+}
+
+async function addImagePage(pdf: PdfCanvas, file: File, isFirst: boolean): Promise<void> {
   const dataUrl = await readFileAsDataUrl(file);
   await loadImage(dataUrl);
   if (!isFirst) pdf.addPage();
@@ -37,10 +46,14 @@ async function addImagePage(pdf: import("jspdf").jsPDF, file: File, isFirst: boo
   pdf.addImage(dataUrl, format, x, y, w, h);
 }
 
+async function createA4Pdf(): Promise<PdfCanvas> {
+  const { jsPDF } = await import("jspdf");
+  return new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" }) as unknown as PdfCanvas;
+}
+
 /** Fit a card photo onto A4 and return a single-page PDF blob. */
 export async function imageFileToPdfBlob(file: File): Promise<Blob> {
-  const { jsPDF } = await import("jspdf");
-  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pdf = await createA4Pdf();
   await addImagePage(pdf, file, true);
   return pdf.output("blob");
 }
@@ -48,8 +61,7 @@ export async function imageFileToPdfBlob(file: File): Promise<Blob> {
 /** Front + back on separate pages in one PDF. */
 export async function imageFilesToCombinedPdfBlob(files: File[]): Promise<Blob> {
   if (files.length === 0) throw new Error("no images");
-  const { jsPDF } = await import("jspdf");
-  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pdf = await createA4Pdf();
   for (let i = 0; i < files.length; i++) {
     await addImagePage(pdf, files[i]!, i === 0);
   }

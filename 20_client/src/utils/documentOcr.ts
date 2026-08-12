@@ -35,7 +35,7 @@ export async function runOcrOnFile(
   const { createWorker } = await import("tesseract.js");
   const prepared = await preprocessImage(file);
   const worker = await createWorker("jpn+kor+eng", 1, {
-    logger: (m) => {
+    logger: (m: { status?: string; progress?: number }) => {
       if (m.status === "recognizing text" && typeof m.progress === "number") {
         onProgress?.(m.progress);
       }

@@ -41,6 +41,13 @@ fi
 
 echo "==> HEAD: $(git log -1 --oneline)"
 
+echo "==> npm install (client deps: jspdf, pdf-lib, tesseract.js, …)"
+if [[ -f "$REPO_ROOT/package-lock.json" ]]; then
+  npm ci
+else
+  npm install
+fi
+
 if [[ "$FRONTEND_ONLY" -eq 0 ]]; then
   echo "==> prisma migrate deploy"
   cd "$REPO_ROOT/40_server"
