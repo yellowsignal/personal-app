@@ -4,22 +4,26 @@ import { TaskStore } from "./store.js";
 import type { AuthRepository } from "./domain/authRepository.js";
 import type { AssetRepository } from "./domain/assetRepository.js";
 import type { SubscriptionRepository } from "./domain/subscriptionRepository.js";
+import type { ChecklistRepository } from "./domain/checklistRepository.js";
 import type { InviteTokenRepository, PasskeyRepository } from "./domain/passkeyTypes.js";
 import { AuthService } from "./services/authService.js";
 import { AssetService } from "./services/assetService.js";
 import { SubscriptionService } from "./services/subscriptionService.js";
+import { ChecklistService } from "./services/checklistService.js";
 import { PasskeyService } from "./services/passkeyService.js";
 import { ChallengeStore } from "./auth/challengeStore.js";
 import { createAuthRouter } from "./routes/authRoutes.js";
 import { createFamilyRouter } from "./routes/familyRoutes.js";
 import { createAssetRouter } from "./routes/assetRoutes.js";
 import { createSubscriptionRouter } from "./routes/subscriptionRoutes.js";
+import { createChecklistRouter } from "./routes/checklistRoutes.js";
 import { createPasskeyRouter } from "./routes/passkeyRoutes.js";
 
 export interface AppDeps {
   authRepo?: AuthRepository;
   assetRepo?: AssetRepository;
   subscriptionRepo?: SubscriptionRepository;
+  checklistRepo?: ChecklistRepository;
   passkeyRepo?: PasskeyRepository;
   inviteTokenRepo?: InviteTokenRepository;
   challengeStore?: ChallengeStore;
@@ -96,6 +100,11 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
         passkeyService,
       );
       app.use("/api/subscriptions", createSubscriptionRouter(subscriptionService, jwtSecret));
+    }
+
+    if (deps.checklistRepo) {
+      const checklistService = new ChecklistService(deps.authRepo, deps.checklistRepo);
+      app.use("/api/checklists", createChecklistRouter(checklistService, jwtSecret));
     }
 
     if (passkeyService) {

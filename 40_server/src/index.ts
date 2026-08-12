@@ -9,6 +9,8 @@ import { MemoryAssetRepository } from "./domain/memoryAssetRepository.js";
 import { PrismaAssetRepository } from "./domain/prismaAssetRepository.js";
 import { MemorySubscriptionRepository } from "./domain/memorySubscriptionRepository.js";
 import { PrismaSubscriptionRepository } from "./domain/prismaSubscriptionRepository.js";
+import { MemoryChecklistRepository } from "./domain/memoryChecklistRepository.js";
+import { PrismaChecklistRepository } from "./domain/prismaChecklistRepository.js";
 import { MemoryPasskeyRepository } from "./domain/memoryPasskeyRepository.js";
 import { MemoryInviteTokenRepository } from "./domain/memoryInviteTokenRepository.js";
 import {
@@ -19,6 +21,7 @@ import { ChallengeStore } from "./auth/challengeStore.js";
 import type { AuthRepository } from "./domain/authRepository.js";
 import type { AssetRepository } from "./domain/assetRepository.js";
 import type { SubscriptionRepository } from "./domain/subscriptionRepository.js";
+import type { ChecklistRepository } from "./domain/checklistRepository.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -38,6 +41,9 @@ const assetRepo: AssetRepository = useMemoryAuth
 const subscriptionRepo: SubscriptionRepository = useMemoryAuth
   ? new MemorySubscriptionRepository()
   : new PrismaSubscriptionRepository(prisma);
+const checklistRepo: ChecklistRepository = useMemoryAuth
+  ? new MemoryChecklistRepository()
+  : new PrismaChecklistRepository(prisma);
 const passkeyRepo = useMemoryAuth ? new MemoryPasskeyRepository() : new PrismaPasskeyRepository(prisma);
 const inviteTokenRepo = useMemoryAuth
   ? new MemoryInviteTokenRepository()
@@ -47,6 +53,7 @@ const app = createApp(store, {
   authRepo,
   assetRepo,
   subscriptionRepo,
+  checklistRepo,
   passkeyRepo,
   inviteTokenRepo,
   challengeStore,
@@ -57,6 +64,6 @@ app.listen(PORT, () => {
   console.log(`[server] personal-app API listening on http://localhost:${PORT}`);
   console.log(`[server] persisting tasks to ${DATA_FILE}`);
   console.log(
-    `[server] auth/family/assets/subscriptions/passkey routes enabled (JWT, store=${useMemoryAuth ? "memory" : "prisma"})`,
+    `[server] auth/family/assets/subscriptions/checklists/passkey routes enabled (JWT, store=${useMemoryAuth ? "memory" : "prisma"})`,
   );
 });

@@ -34,6 +34,7 @@ model Family {
   transactions     Transaction[]
   photos           Photo[]
   calendarEvents   CalendarEvent[]
+  checklists       Checklist[]
 
   @@map("families")
 }
@@ -61,6 +62,7 @@ model User {
   transactions     Transaction[]
   photos           Photo[]
   calendarEvents   CalendarEvent[]
+  checklists       Checklist[]
 
   @@index([familyId])
   @@map("users")
@@ -220,6 +222,42 @@ model CalendarEvent {
   @@index([category])
   @@index([sourceDocumentId])
   @@map("calendar_events")
+}
+
+model Checklist {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  familyId  Int?     @map("family_id")
+  title     String   @db.VarChar(200)
+  isShared  Boolean  @default(false) @map("is_shared")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family Family?         @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  items  ChecklistItem[]
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([isShared])
+  @@map("checklists")
+}
+
+model ChecklistItem {
+  id          Int      @id @default(autoincrement())
+  checklistId Int      @map("checklist_id")
+  parentId    Int?     @map("parent_id")
+  title       String   @db.VarChar(300)
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  checklist Checklist       @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  parent    ChecklistItem?  @relation("ChecklistItemTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  ChecklistItem[] @relation("ChecklistItemTree")
+
+  @@index([checklistId])
+  @@index([parentId])
+  @@map("checklist_items")
 }
 
 model PasskeyCredential {

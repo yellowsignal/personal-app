@@ -1,11 +1,11 @@
 import { NavLink } from "react-router-dom";
-import { Home, Wallet, IdCard, CreditCard, CalendarDays } from "lucide-react";
+import { Home, Wallet, ListChecks, CreditCard, CalendarDays } from "lucide-react";
 import { useLanguage } from "../i18n/LanguageContext";
 
 const NAV_ITEMS = [
   { to: "/", key: "nav.home", icon: Home, end: true },
   { to: "/assets", key: "nav.assets", icon: Wallet },
-  { to: "/documents", key: "nav.documents", icon: IdCard },
+  { to: "/checklists", key: "nav.checklists", icon: ListChecks },
   { to: "/subscriptions", key: "nav.subscriptions", icon: CreditCard },
   { to: "/calendar", key: "nav.calendar", icon: CalendarDays },
 ];

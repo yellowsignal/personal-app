@@ -14,6 +14,8 @@
 | `transactions` | `Transaction` | 수입/지출 |
 | `photos` | `Photo` | 사진 |
 | `calendar_events` | `CalendarEvent` | 일정 + 증명서 만료 연동 |
+| `checklists` | `Checklist` | 체크리스트 (제목·가족 공유) |
+| `checklist_items` | `ChecklistItem` | 트리 항목 (`parent_id` 자기참조) |
 
 공통: 도메인 테이블에 `is_shared` (개인 vs 가족 공유).
 

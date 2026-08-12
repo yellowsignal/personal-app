@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Bell, ChevronRight, Images, Settings } from "lucide-react";
+import { Bell, ChevronRight, IdCard, Images, ListChecks, Settings } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -184,6 +184,15 @@ export default function DashboardPage() {
 
         <section className="mt-5 grid grid-cols-2 gap-3">
           <Link
+            to="/checklists"
+            className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"
+          >
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-50">
+              <ListChecks size={18} className="text-teal-600" />
+            </div>
+            <span className="text-sm font-semibold text-neutral-800">{t("dashboard.checklists")}</span>
+          </Link>
+          <Link
             to="/photos"
             className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"
           >
@@ -191,6 +200,15 @@ export default function DashboardPage() {
               <Images size={18} className="text-amber-500" />
             </div>
             <span className="text-sm font-semibold text-neutral-800">{t("dashboard.photoAlbum")}</span>
+          </Link>
+          <Link
+            to="/documents"
+            className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"
+          >
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-50">
+              <IdCard size={18} className="text-sky-500" />
+            </div>
+            <span className="text-sm font-semibold text-neutral-800">{t("nav.documents")}</span>
           </Link>
           <Link
             to="/settings"

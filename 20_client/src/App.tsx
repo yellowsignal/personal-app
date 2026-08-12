@@ -8,6 +8,7 @@ import DocumentsPage from "./pages/DocumentsPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import CalendarPage from "./pages/CalendarPage";
 import PhotosPage from "./pages/PhotosPage";
+import ChecklistsPage from "./pages/ChecklistsPage";
 import SettingsPage from "./pages/SettingsPage";
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="/subscriptions" element={<SubscriptionsPage />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/photos" element={<PhotosPage />} />
+          <Route path="/checklists" element={<ChecklistsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>
