@@ -21,6 +21,7 @@ import { createSubscriptionRouter } from "./routes/subscriptionRoutes.js";
 import { createChecklistRouter } from "./routes/checklistRoutes.js";
 import { createDocumentRouter } from "./routes/documentRoutes.js";
 import { createPasskeyRouter } from "./routes/passkeyRoutes.js";
+import type { DocumentScanStore } from "./storage/documentScanStore.js";
 
 export interface AppDeps {
   authRepo?: AuthRepository;
@@ -28,6 +29,7 @@ export interface AppDeps {
   subscriptionRepo?: SubscriptionRepository;
   checklistRepo?: ChecklistRepository;
   documentRepo?: DocumentRepository;
+  documentScanStore?: DocumentScanStore;
   passkeyRepo?: PasskeyRepository;
   inviteTokenRepo?: InviteTokenRepository;
   challengeStore?: ChallengeStore;
@@ -112,7 +114,12 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
     }
 
     if (deps.documentRepo) {
-      const documentService = new DocumentService(deps.authRepo, deps.documentRepo, passkeyService);
+      const documentService = new DocumentService(
+        deps.authRepo,
+        deps.documentRepo,
+        passkeyService,
+        deps.documentScanStore ?? null,
+      );
       app.use("/api/documents", createDocumentRouter(documentService, jwtSecret));
     }
 

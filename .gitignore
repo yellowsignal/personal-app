@@ -6,6 +6,7 @@ coverage/
 
 # Local data
 30_data/*.json
+30_data/document-scans/
 !30_data/.gitkeep
 
 # Logs

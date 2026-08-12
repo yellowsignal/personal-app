@@ -10,10 +10,16 @@ import { MemoryPasskeyRepository } from "./domain/memoryPasskeyRepository.js";
 import { MemoryInviteTokenRepository } from "./domain/memoryInviteTokenRepository.js";
 import { ChallengeStore } from "./auth/challengeStore.js";
 import { TaskStore } from "./store.js";
+import { DocumentScanStore } from "./storage/documentScanStore.js";
 
 function tmpStore(): TaskStore {
   const dir = mkdtempSync(join(tmpdir(), "personal-app-"));
   return new TaskStore(join(dir, "tasks.json"));
+}
+
+function tmpScanStore(): DocumentScanStore {
+  const dir = mkdtempSync(join(tmpdir(), "personal-app-scans-"));
+  return new DocumentScanStore(dir);
 }
 
 async function listen(app: ReturnType<typeof createApp>) {
@@ -45,6 +51,7 @@ test("documents personal shows only private; family shows only shared", async ()
   const app = createApp(tmpStore(), {
     authRepo: new MemoryAuthRepository(),
     documentRepo: new MemoryDocumentRepository(),
+    documentScanStore: tmpScanStore(),
     passkeyRepo: new MemoryPasskeyRepository(),
     inviteTokenRepo: new MemoryInviteTokenRepository(),
     challengeStore: new ChallengeStore(),
@@ -144,6 +151,7 @@ test("document multi-field (保険証) stores secrets masked and reveals via pas
   const app = createApp(tmpStore(), {
     authRepo: new MemoryAuthRepository(),
     documentRepo: new MemoryDocumentRepository(),
+    documentScanStore: tmpScanStore(),
     passkeyRepo: new MemoryPasskeyRepository(),
     inviteTokenRepo: new MemoryInviteTokenRepository(),
     challengeStore: new ChallengeStore(),
@@ -200,6 +208,62 @@ test("document multi-field (保険証) stores secrets masked and reveals via pas
     assert.equal(byLabel["枝番"], "01");
   } finally {
     delete process.env.PASSKEY_REVEAL_TEST_BYPASS;
+    server.close();
+  }
+});
+
+test("document card scan stores PDF and returns on download", async () => {
+  const scanStore = tmpScanStore();
+  const app = createApp(tmpStore(), {
+    authRepo: new MemoryAuthRepository(),
+    documentRepo: new MemoryDocumentRepository(),
+    documentScanStore: scanStore,
+    passkeyRepo: new MemoryPasskeyRepository(),
+    inviteTokenRepo: new MemoryInviteTokenRepository(),
+    challengeStore: new ChallengeStore(),
+    jwtSecret: "test-secret",
+  });
+
+  const { server, base } = await listen(app);
+  try {
+    const owner = await registerOwner(base);
+    const createRes = await fetch(`${base}/api/documents`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        typeLabel: "재류카드",
+        fields: [{ label: "番号", isSecret: true, value: "AB12345678CD" }],
+        isShared: false,
+      }),
+    });
+    assert.equal(createRes.status, 201);
+    const created = (await createRes.json()) as { id: number; hasScan: boolean };
+    assert.equal(created.hasScan, false);
+
+    const pdf = Buffer.from("%PDF-1.4 test card scan\n%%EOF\n");
+    const uploadRes = await fetch(`${base}/api/documents/${created.id}/scan`, {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${owner.token}`,
+        "content-type": "application/pdf",
+      },
+      body: pdf,
+    });
+    assert.equal(uploadRes.status, 200);
+    const uploaded = (await uploadRes.json()) as { hasScan: boolean };
+    assert.equal(uploaded.hasScan, true);
+
+    const downloadRes = await fetch(`${base}/api/documents/${created.id}/scan`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(downloadRes.status, 200);
+    assert.match(downloadRes.headers.get("content-type") ?? "", /application\/pdf/);
+    const downloaded = Buffer.from(await downloadRes.arrayBuffer());
+    assert.ok(downloaded.subarray(0, 4).equals(Buffer.from("%PDF")));
+  } finally {
     server.close();
   }
 });

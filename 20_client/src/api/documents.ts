@@ -3,7 +3,7 @@ import type {
   AuthenticationResponseJSON,
   PublicKeyCredentialRequestOptionsJSON,
 } from "@simplewebauthn/browser";
-import { apiFetch } from "./http";
+import { apiFetch, ApiError } from "./http";
 import type { ViewScope } from "../components/ScopeToggle";
 
 export interface PublicDocumentField {
@@ -26,6 +26,7 @@ export interface PublicDocument {
   createdAt: string;
   ownerName: string;
   hasSecrets: boolean;
+  hasScan: boolean;
 }
 
 export interface DocumentFieldInput {
@@ -94,5 +95,39 @@ export const documentsApi = {
         body: JSON.stringify({ challenge: options.challenge, response }),
       },
     );
+  },
+
+  async uploadScan(token: string, id: number, pdf: Blob): Promise<PublicDocument> {
+    const res = await fetch(`/api/documents/${id}/scan`, {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/pdf",
+      },
+      body: pdf,
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+    if (!res.ok) {
+      throw new ApiError(data.error ?? `request failed (${res.status})`, res.status, data.code);
+    }
+    return data as PublicDocument;
+  },
+
+  async downloadScan(token: string, id: number): Promise<Blob> {
+    const res = await fetch(`/api/documents/${id}/scan`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+      throw new ApiError(data.error ?? `request failed (${res.status})`, res.status, data.code);
+    }
+    return res.blob();
+  },
+
+  async removeScan(token: string, id: number): Promise<PublicDocument> {
+    return apiFetch<PublicDocument>(`/api/documents/${id}/scan`, {
+      method: "DELETE",
+      token,
+    });
   },
 };

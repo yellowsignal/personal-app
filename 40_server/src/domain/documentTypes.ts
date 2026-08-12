@@ -45,6 +45,8 @@ export interface PublicDocument {
   createdAt: string;
   ownerName: string;
   hasSecrets: boolean;
+  /** Card/photo scan stored as PDF on server */
+  hasScan: boolean;
 }
 
 export function newFieldId(): string {
@@ -121,6 +123,7 @@ export function toPublicDocument(record: DocumentRecord, ownerName: string): Pub
     createdAt: record.createdAt.toISOString(),
     ownerName,
     hasSecrets: fields.some((f) => f.isSecret && f.hasValue),
+    hasScan: record.imageUrl === "scan",
   };
 }
 

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { Camera, Copy, Eye, EyeOff, Plus, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Camera, Copy, Eye, EyeOff, FileDown, Plus, Trash2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
@@ -14,6 +14,7 @@ import {
 } from "../api/documents";
 import { ApiError } from "../api/http";
 import { isPasskeySupported } from "../api/passkey";
+import { imageFileToPdfBlob } from "../utils/imageToPdf";
 
 interface FieldDraft {
   key: string;
@@ -55,6 +56,10 @@ export default function DocumentsPage() {
   const [revealedByDoc, setRevealedByDoc] = useState<Record<number, Record<string, string>>>({});
   const [revealBusyId, setRevealBusyId] = useState<number | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [scanBusyId, setScanBusyId] = useState<number | null>(null);
+  const [createScanFile, setCreateScanFile] = useState<File | null>(null);
+  const scanInputRef = useRef<HTMLInputElement>(null);
+  const scanTargetIdRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -93,6 +98,7 @@ export default function DocumentsPage() {
     setExpiryDate(todayIsoDate());
     setHasExpiry(true);
     setIsShared(false);
+    setCreateScanFile(null);
     setShowCreate(true);
   }
 
@@ -158,6 +164,66 @@ export default function DocumentsPage() {
     }
   }
 
+  async function uploadScanForDocument(documentId: number, file: File) {
+    if (!token) return;
+    setScanBusyId(documentId);
+    setError(null);
+    try {
+      const pdf = await imageFileToPdfBlob(file);
+      await documentsApi.uploadScan(token, documentId, pdf);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("documents.scanUploadError"));
+    } finally {
+      setScanBusyId(null);
+    }
+  }
+
+  function triggerScan(documentId: number) {
+    scanTargetIdRef.current = documentId;
+    scanInputRef.current?.click();
+  }
+
+  async function handleScanInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const targetId = scanTargetIdRef.current;
+    scanTargetIdRef.current = null;
+    if (targetId === null) return;
+    if (targetId === -1) {
+      setCreateScanFile(file);
+      return;
+    }
+    await uploadScanForDocument(targetId, file);
+  }
+
+  async function handleOpenPdf(doc: PublicDocument) {
+    if (!token) return;
+    setScanBusyId(doc.id);
+    setError(null);
+    try {
+      const blob = await documentsApi.downloadScan(token, doc.id);
+      const file = new File([blob], `${doc.typeLabel}.pdf`, { type: "application/pdf" });
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: doc.typeLabel });
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("documents.scanOpenError"));
+    } finally {
+      setScanBusyId(null);
+    }
+  }
+
+  function triggerCreateScan() {
+    scanTargetIdRef.current = -1;
+    scanInputRef.current?.click();
+  }
+
   async function handleCopy(value: string, copyKey: string) {
     try {
       await navigator.clipboard.writeText(value);
@@ -199,7 +265,11 @@ export default function DocumentsPage() {
         expiryDate: hasExpiry ? expiryDate : null,
         isShared,
       };
-      await documentsApi.create(token, payload);
+      const created = await documentsApi.create(token, payload);
+      if (createScanFile) {
+        const pdf = await imageFileToPdfBlob(createScanFile);
+        await documentsApi.uploadScan(token, created.id, pdf);
+      }
       closeCreate();
       await load();
     } catch (err) {
@@ -233,10 +303,18 @@ export default function DocumentsPage() {
       <div className="mx-auto max-w-md px-4 pt-4 pb-8">
         <ScopeToggle value={scope} onChange={setScope} />
 
-        <button className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-indigo-300 bg-indigo-50/60 py-3 text-sm font-semibold text-indigo-500">
-          <Camera size={16} />
-          {t("documents.ocrButton")}
-        </button>
+        <input
+          ref={scanInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => void handleScanInputChange(e)}
+        />
+
+        <p className="mt-4 rounded-2xl bg-indigo-50/60 px-4 py-3 text-xs text-indigo-700">
+          {t("documents.scanHint")}
+        </p>
 
         <div className="mt-4 flex flex-col gap-3">
           {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</p>}
@@ -323,6 +401,41 @@ export default function DocumentsPage() {
                       </span>
                     </div>
                   )}
+
+                  <div className="mt-3 flex flex-wrap gap-2 border-t border-neutral-100 pt-3">
+                    {d.hasScan ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void handleOpenPdf(d)}
+                          disabled={scanBusyId === d.id}
+                          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+                        >
+                          <FileDown size={14} />
+                          {t("documents.openPdf")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => triggerScan(d.id)}
+                          disabled={scanBusyId === d.id}
+                          className="flex items-center justify-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2.5 text-xs font-semibold text-neutral-600"
+                        >
+                          <Camera size={14} />
+                          {t("documents.rescan")}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => triggerScan(d.id)}
+                        disabled={scanBusyId === d.id}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/40 py-2.5 text-xs font-semibold text-indigo-600 disabled:opacity-50"
+                      >
+                        <Camera size={14} />
+                        {scanBusyId === d.id ? t("documents.scanUploading") : t("documents.captureScan")}
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })
@@ -438,6 +551,19 @@ export default function DocumentsPage() {
               />
               {t("documents.shareWithFamily")}
             </label>
+
+            <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50/80 p-3">
+              <p className="text-sm font-semibold text-neutral-700">{t("documents.cardScan")}</p>
+              <p className="mt-1 text-[11px] text-neutral-400">{t("documents.cardScanHint")}</p>
+              <button
+                type="button"
+                onClick={triggerCreateScan}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-indigo-300 bg-white py-2.5 text-xs font-semibold text-indigo-600"
+              >
+                <Camera size={14} />
+                {createScanFile ? t("documents.scanSelected") : t("documents.captureScan")}
+              </button>
+            </div>
 
             <button
               type="submit"

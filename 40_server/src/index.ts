@@ -20,6 +20,7 @@ import {
   PrismaPasskeyRepository,
 } from "./domain/prismaPasskeyRepository.js";
 import { ChallengeStore } from "./auth/challengeStore.js";
+import { DocumentScanStore, defaultDocumentScanDir } from "./storage/documentScanStore.js";
 import type { AuthRepository } from "./domain/authRepository.js";
 import type { AssetRepository } from "./domain/assetRepository.js";
 import type { SubscriptionRepository } from "./domain/subscriptionRepository.js";
@@ -55,12 +56,14 @@ const inviteTokenRepo = useMemoryAuth
   ? new MemoryInviteTokenRepository()
   : new PrismaInviteTokenRepository(prisma);
 const challengeStore = new ChallengeStore();
+const documentScanStore = new DocumentScanStore(defaultDocumentScanDir());
 const app = createApp(store, {
   authRepo,
   assetRepo,
   subscriptionRepo,
   checklistRepo,
   documentRepo,
+  documentScanStore,
   passkeyRepo,
   inviteTokenRepo,
   challengeStore,

@@ -11,6 +11,9 @@ import {
 import { HttpError } from "./authService.js";
 import type { PasskeyService } from "./passkeyService.js";
 import type { ViewScope } from "../domain/subscriptionTypes.js";
+import type { DocumentScanStore } from "../storage/documentScanStore.js";
+
+const MAX_SCAN_BYTES = 8 * 1024 * 1024;
 
 const TYPE_SUGGESTIONS = [
   "운전면허증",
@@ -133,6 +136,7 @@ export class DocumentService {
     private readonly authRepo: AuthRepository,
     private readonly documentRepo: DocumentRepository,
     private readonly passkeyService: PasskeyService | null = null,
+    private readonly scanStore: DocumentScanStore | null = null,
   ) {}
 
   private async requireUser(userId: number) {
@@ -276,6 +280,70 @@ export class DocumentService {
     }
     const removed = await this.documentRepo.remove(id);
     if (!removed) throw new HttpError(404, "document not found", "NOT_FOUND");
+    if (this.scanStore) {
+      await this.scanStore.remove(id);
+    }
+  }
+
+  async uploadScan(userId: number, id: number, pdf: Buffer): Promise<PublicDocument> {
+    if (!this.scanStore) {
+      throw new HttpError(503, "scan storage not configured", "SCAN_UNAVAILABLE");
+    }
+    const user = await this.requireUser(userId);
+    const existing = await this.documentRepo.findById(id);
+    if (!existing) throw new HttpError(404, "document not found", "NOT_FOUND");
+    if (!this.canModify(existing, user.id)) {
+      throw new HttpError(403, "only the owner can upload a scan", "FORBIDDEN");
+    }
+    if (!pdf.length) {
+      throw new HttpError(400, "PDF body is required");
+    }
+    if (pdf.length > MAX_SCAN_BYTES) {
+      throw new HttpError(400, "PDF is too large (max 8MB)");
+    }
+    if (!pdf.subarray(0, 4).equals(Buffer.from("%PDF"))) {
+      throw new HttpError(400, "file must be a PDF");
+    }
+
+    await this.scanStore.save(id, pdf);
+    const record = await this.documentRepo.update(id, { imageUrl: "scan" });
+    return toPublicDocument(record, user.name);
+  }
+
+  async getScan(userId: number, id: number): Promise<{ buffer: Buffer; filename: string }> {
+    if (!this.scanStore) {
+      throw new HttpError(503, "scan storage not configured", "SCAN_UNAVAILABLE");
+    }
+    const user = await this.requireUser(userId);
+    const existing = await this.documentRepo.findById(id);
+    if (!existing) throw new HttpError(404, "document not found", "NOT_FOUND");
+    if (!this.canView(existing, user.familyId, user.id)) {
+      throw new HttpError(403, "forbidden", "FORBIDDEN");
+    }
+    if (existing.imageUrl !== "scan") {
+      throw new HttpError(404, "no scan stored", "NO_SCAN");
+    }
+    const buffer = await this.scanStore.read(id);
+    if (!buffer) {
+      throw new HttpError(404, "no scan stored", "NO_SCAN");
+    }
+    const safeName = existing.typeLabel.replace(/[^\w\u3000-\u9fff\uac00-\ud7af-]+/g, "_").slice(0, 40) || "document";
+    return { buffer, filename: `${safeName}.pdf` };
+  }
+
+  async removeScan(userId: number, id: number): Promise<PublicDocument> {
+    if (!this.scanStore) {
+      throw new HttpError(503, "scan storage not configured", "SCAN_UNAVAILABLE");
+    }
+    const user = await this.requireUser(userId);
+    const existing = await this.documentRepo.findById(id);
+    if (!existing) throw new HttpError(404, "document not found", "NOT_FOUND");
+    if (!this.canModify(existing, user.id)) {
+      throw new HttpError(403, "only the owner can delete a scan", "FORBIDDEN");
+    }
+    await this.scanStore.remove(id);
+    const record = await this.documentRepo.update(id, { imageUrl: null });
+    return toPublicDocument(record, user.name);
   }
 
   async revealFieldOptions(userId: number, id: number) {

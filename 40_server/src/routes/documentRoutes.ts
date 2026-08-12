@@ -1,7 +1,12 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { requireAuth, type AuthedRequest } from "../middleware/requireAuth.js";
 import { HttpError } from "../services/authService.js";
 import { DocumentService } from "../services/documentService.js";
+
+const pdfBodyParser = express.raw({
+  type: ["application/pdf", "application/octet-stream"],
+  limit: "8mb",
+});
 
 function sendError(res: import("express").Response, err: unknown): void {
   if (err instanceof HttpError) {
@@ -100,6 +105,52 @@ export function createDocumentRouter(service: DocumentService, jwtSecret: string
       }
       const revealed = await service.revealFields(req.userId!, id, req.body ?? {});
       res.json(revealed);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  router.put("/:id/scan", auth, pdfBodyParser, async (req: AuthedRequest, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        res.status(400).json({ error: "invalid id" });
+        return;
+      }
+      const body = req.body;
+      const pdf = Buffer.isBuffer(body) ? body : Buffer.from(body ?? []);
+      const updated = await service.uploadScan(req.userId!, id, pdf);
+      res.json(updated);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  router.get("/:id/scan", auth, async (req: AuthedRequest, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        res.status(400).json({ error: "invalid id" });
+        return;
+      }
+      const { buffer, filename } = await service.getScan(req.userId!, id);
+      res.setHeader("content-type", "application/pdf");
+      res.setHeader("content-disposition", `inline; filename="${encodeURIComponent(filename)}"`);
+      res.send(buffer);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  router.delete("/:id/scan", auth, async (req: AuthedRequest, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        res.status(400).json({ error: "invalid id" });
+        return;
+      }
+      const updated = await service.removeScan(req.userId!, id);
+      res.json(updated);
     } catch (err) {
       sendError(res, err);
     }
