@@ -1,10 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronRight, Copy, Fingerprint, Globe, LogOut, UserPlus, Users, CalendarDays } from "lucide-react";
+import { ChevronRight, Copy, Bell, Fingerprint, Globe, LogOut, UserPlus, Users, CalendarDays } from "lucide-react";
 import TopBar from "../components/TopBar";
 import HolidayPrefPicker, { parseHolidayPref, type HolidayPref } from "../components/HolidayPrefPicker";
 import { ApiError } from "../api/http";
 import { passkeyApi } from "../api/passkey";
+import {
+  disableHomeScreenPush,
+  enableHomeScreenPush,
+  isIosDevice,
+  isStandaloneDisplay,
+  pushApi,
+} from "../api/push";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../i18n/LanguageContext";
 
@@ -18,11 +25,51 @@ export default function SettingsPage() {
   const [passkeyMsg, setPasskeyMsg] = useState<string | null>(null);
   const [linkingPasskey, setLinkingPasskey] = useState(false);
   const [savingHolidayPref, setSavingHolidayPref] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushMsg, setPushMsg] = useState<string | null>(null);
   const holidayPref = parseHolidayPref(user?.countryPref);
+  const ios = isIosDevice();
+  const standalone = isStandaloneDisplay();
 
   const initial = (user?.name?.trim()?.charAt(0) || "?").toUpperCase();
   const memberCount = family?.members.length ?? 0;
   const isOwner = user?.role === "OWNER";
+
+  useEffect(() => {
+    if (!token) return;
+    void pushApi
+      .status(token)
+      .then((s) => setPushSubscribed(s.subscribed))
+      .catch(() => setPushSubscribed(false));
+  }, [token]);
+
+  async function togglePush() {
+    if (!token) return;
+    setPushBusy(true);
+    setPushMsg(null);
+    try {
+      if (pushSubscribed) {
+        await disableHomeScreenPush(token);
+        setPushSubscribed(false);
+        setPushMsg(t("settings.pushOff"));
+        return;
+      }
+      const result = await enableHomeScreenPush(token);
+      if (result === "ok") {
+        setPushSubscribed(true);
+        setPushMsg(t("settings.pushOn"));
+      } else if (result === "denied") {
+        setPushMsg(t("settings.pushDenied"));
+      } else {
+        setPushMsg(ios && !standalone ? t("settings.pushNeedHomeScreen") : t("settings.pushUnsupported"));
+      }
+    } catch (err) {
+      setPushMsg(err instanceof ApiError ? err.message : t("settings.pushUnsupported"));
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   async function changeHolidayPref(pref: HolidayPref) {
     if (pref === holidayPref) return;
@@ -192,6 +239,34 @@ export default function SettingsPage() {
                 disabled={savingHolidayPref}
               />
             </div>
+          </div>
+
+          <div className="px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Bell size={18} className="text-neutral-400" />
+                <div>
+                  <p className="text-sm font-medium text-neutral-800">{t("settings.push")}</p>
+                  <p className="text-[11px] text-neutral-400">
+                    {pushSubscribed ? t("settings.pushOnHint") : t("settings.pushHint")}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={pushBusy}
+                onClick={() => void togglePush()}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${
+                  pushSubscribed ? "bg-neutral-100 text-neutral-600" : "bg-indigo-50 text-indigo-600"
+                }`}
+              >
+                {pushBusy ? "…" : pushSubscribed ? t("settings.pushDisable") : t("settings.pushEnable")}
+              </button>
+            </div>
+            {ios && !standalone && (
+              <p className="mt-2 text-[11px] text-amber-600">{t("settings.pushNeedHomeScreen")}</p>
+            )}
+            {pushMsg && <p className="mt-2 text-[11px] text-neutral-500">{pushMsg}</p>}
           </div>
 
           <div className="px-4 py-3">

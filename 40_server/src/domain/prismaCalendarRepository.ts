@@ -21,6 +21,7 @@ function map(row: PrismaRow): CalendarEventRecord {
     sourceDocumentId: row.sourceDocumentId,
     reminderMinutesBefore: row.reminderMinutesBefore,
     isReminderSent: row.isReminderSent,
+    reminderSentFor: row.reminderSentFor,
     isShared: row.isShared,
     recurrence: parseRecurrence(row.recurrence),
     createdAt: row.createdAt,
@@ -99,12 +100,21 @@ export class PrismaCalendarRepository implements CalendarRepository {
         isAllDay: input.isAllDay,
         category: input.category,
         reminderMinutesBefore: input.reminderMinutesBefore,
+        isReminderSent: input.isReminderSent,
+        reminderSentFor: input.reminderSentFor,
         isShared: input.isShared,
         familyId: input.familyId,
         recurrence: recurrenceJson(input.recurrence),
       },
     });
     return map(row);
+  }
+
+  async listWithReminders(): Promise<CalendarEventRecord[]> {
+    const rows = await this.db.calendarEvent.findMany({
+      where: { reminderMinutesBefore: { not: null } },
+    });
+    return rows.map(map);
   }
 
   async remove(id: number): Promise<boolean> {

@@ -35,6 +35,10 @@ import type { RecurringDepositRepository } from "./domain/recurringDepositReposi
 import { MemoryCalendarRepository } from "./domain/memoryCalendarRepository.js";
 import { PrismaCalendarRepository } from "./domain/prismaCalendarRepository.js";
 import type { CalendarRepository } from "./domain/calendarRepository.js";
+import { MemoryPushRepository } from "./domain/memoryPushRepository.js";
+import { PrismaPushRepository } from "./domain/prismaPushRepository.js";
+import { loadOrCreateVapidKeys, PushService, WebPushSender } from "./services/pushService.js";
+import { ReminderDispatcher, startReminderScheduler } from "./services/reminderDispatcher.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -69,6 +73,17 @@ const recurringDepositRepo: RecurringDepositRepository = useMemoryAuth
 const calendarRepo: CalendarRepository = useMemoryAuth
   ? new MemoryCalendarRepository()
   : new PrismaCalendarRepository(prisma);
+const pushRepo = useMemoryAuth ? new MemoryPushRepository() : new PrismaPushRepository(prisma);
+const vapidSubject =
+  process.env.VAPID_SUBJECT ??
+  (process.env.WEBAUTHN_ORIGIN
+    ? `mailto:noreply@${new URL(process.env.WEBAUTHN_ORIGIN).hostname}`
+    : "mailto:noreply@localhost");
+const vapidKeys = loadOrCreateVapidKeys(
+  process.env.VAPID_FILE ?? resolve(__dirname, "../../30_data/vapid.json"),
+  vapidSubject,
+);
+const pushService = new PushService(pushRepo, vapidKeys, new WebPushSender(vapidKeys));
 const passkeyRepo = useMemoryAuth ? new MemoryPasskeyRepository() : new PrismaPasskeyRepository(prisma);
 const inviteTokenRepo = useMemoryAuth
   ? new MemoryInviteTokenRepository()
@@ -89,14 +104,18 @@ const app = createApp(store, {
   inviteTokenRepo,
   challengeStore,
   jwtSecret: JWT_SECRET,
+  pushService,
 });
 
 app.listen(PORT, () => {
   console.log(`[server] personal-app API listening on http://localhost:${PORT}`);
   console.log(`[server] persisting tasks to ${DATA_FILE}`);
   console.log(
-    `[server] auth/family/assets/subscriptions/checklists/documents/calendar/passkey routes enabled (JWT, store=${
+    `[server] auth/family/assets/subscriptions/checklists/documents/calendar/passkey/push routes enabled (JWT, store=${
       useMemoryAuth ? "memory" : "prisma"
     })`,
   );
+  const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
+  startReminderScheduler(dispatcher);
+  console.log("[server] calendar reminder dispatcher started");
 });

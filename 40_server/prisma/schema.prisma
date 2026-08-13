@@ -65,6 +65,7 @@ model User {
   calendarEvents   CalendarEvent[]
   checklists       Checklist[]
   recurringDeposits RecurringDeposit[]
+  pushSubscriptions PushSubscription[]
 
   @@index([familyId])
   @@map("users")
@@ -254,6 +255,8 @@ model CalendarEvent {
   sourceDocumentId      Int?     @map("source_document_id")
   reminderMinutesBefore Int?     @map("reminder_minutes_before")
   isReminderSent        Boolean  @default(false) @map("is_reminder_sent")
+  /// YYYY-MM-DD of the occurrence last notified (recurring events)
+  reminderSentFor       String?  @map("reminder_sent_for") @db.VarChar(32)
   isShared              Boolean  @default(false) @map("is_shared")
   /// RecurrenceRule JSON: { freq, interval, byWeekday?, monthMode?, bySetPos?, until?, count? }
   recurrence            Json?
@@ -343,4 +346,20 @@ model InviteToken {
   @@index([familyId])
   @@index([expiresAt])
   @@map("invite_tokens")
+}
+
+model PushSubscription {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  endpoint  String   @unique @db.Text
+  p256dh    String   @db.VarChar(255)
+  auth      String   @db.VarChar(255)
+  userAgent String?  @map("user_agent") @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }

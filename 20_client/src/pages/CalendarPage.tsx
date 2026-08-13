@@ -30,6 +30,7 @@ import {
   type PublicCalendarEvent,
 } from "../api/calendar";
 import { ApiError } from "../api/http";
+import { enableHomeScreenPush } from "../api/push";
 
 const ALL_CATEGORIES: CalendarCategory[] = [
   "personal",
@@ -163,13 +164,6 @@ function reminderLabel(
   if (minutes === 60) return t("calendar.reminder1h");
   if (minutes === 1440) return t("calendar.reminder1d");
   return t("calendar.reminderCustom", { n: minutes });
-}
-
-function eventStartMs(ev: PublicCalendarEvent): number {
-  const [y, m, d] = ev.date.split("-").map(Number);
-  if (ev.isAllDay || !ev.time) return new Date(y!, (m ?? 1) - 1, d ?? 1).getTime();
-  const [hh, mm] = ev.time.split(":").map(Number);
-  return new Date(y!, (m ?? 1) - 1, d ?? 1, hh ?? 0, mm ?? 0).getTime();
 }
 
 const REMINDER_CHOICES: Array<number | null> = [null, 10, 30, 60, 1440];
@@ -337,7 +331,6 @@ export default function CalendarPage() {
   const ignoreClick = useRef(false);
   const lastTap = useRef<{ key: string; at: number } | null>(null);
   const hasLoadedRef = useRef(false);
-  const reminderTimersRef = useRef<number[]>([]);
   const [pageWidth, setPageWidth] = useState(0);
 
   const today = todayKey();
@@ -366,36 +359,6 @@ export default function CalendarPage() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    reminderTimersRef.current.forEach((id) => window.clearTimeout(id));
-    reminderTimersRef.current = [];
-    if (typeof Notification === "undefined" || Notification.permission !== "granted") {
-      return () => undefined;
-    }
-    const now = Date.now();
-    for (const ev of events) {
-      if (ev.reminderMinutesBefore == null) continue;
-      const fireAt = eventStartMs(ev) - ev.reminderMinutesBefore * 60_000;
-      const delay = fireAt - now;
-      if (delay <= 0 || delay > 36 * 60 * 60 * 1000) continue;
-      const id = window.setTimeout(() => {
-        try {
-          new Notification(ev.title, {
-            body: ev.time ?? t("calendar.allDay"),
-            tag: ev.id,
-          });
-        } catch {
-          /* ignore */
-        }
-      }, delay);
-      reminderTimersRef.current.push(id);
-    }
-    return () => {
-      reminderTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-      reminderTimersRef.current = [];
-    };
-  }, [events, t]);
 
   useEffect(() => {
     cursorRef.current = cursor;
@@ -618,8 +581,8 @@ export default function CalendarPage() {
         recurrence: recurrenceFromDraft(repeatDraft, eventDate),
         reminderMinutesBefore: reminderMinutes,
       });
-      if (reminderMinutes != null && typeof Notification !== "undefined" && Notification.permission === "default") {
-        void Notification.requestPermission();
+      if (reminderMinutes != null) {
+        void enableHomeScreenPush(token);
       }
       setShowCreate(false);
       await load();
@@ -944,7 +907,7 @@ export default function CalendarPage() {
             </div>
             <p className="mb-3 text-[11px] text-neutral-400">{t("calendar.timeOptionalHint")}</p>
             <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.reminder")}</label>
-            <div className="mb-3 flex flex-wrap gap-2">
+            <div className="mb-2 flex flex-wrap gap-2">
               {REMINDER_CHOICES.map((mins) => (
                 <button
                   key={mins ?? "none"}
@@ -958,6 +921,7 @@ export default function CalendarPage() {
                 </button>
               ))}
             </div>
+            <p className="mb-3 text-[11px] text-neutral-400">{t("calendar.reminderHint")}</p>
             <RecurrencePicker startDate={eventDate} draft={repeatDraft} onChange={setRepeatDraft} t={t} />
             <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldMemo")}</label>
             <textarea

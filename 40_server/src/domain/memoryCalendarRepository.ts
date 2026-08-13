@@ -48,6 +48,7 @@ export class MemoryCalendarRepository implements CalendarRepository {
       sourceDocumentId: input.sourceDocumentId ?? null,
       reminderMinutesBefore: input.reminderMinutesBefore ?? null,
       isReminderSent: false,
+      reminderSentFor: null,
       isShared: input.isShared,
       recurrence: input.recurrence ?? null,
       createdAt: new Date(),
@@ -71,12 +72,22 @@ export class MemoryCalendarRepository implements CalendarRepository {
         input.reminderMinutesBefore === undefined
           ? existing.reminderMinutesBefore
           : input.reminderMinutesBefore,
+      isReminderSent:
+        input.isReminderSent === undefined ? existing.isReminderSent : input.isReminderSent,
+      reminderSentFor:
+        input.reminderSentFor === undefined ? existing.reminderSentFor : input.reminderSentFor,
       isShared: input.isShared === undefined ? existing.isShared : input.isShared,
       familyId: input.familyId === undefined ? existing.familyId : input.familyId,
       recurrence: input.recurrence === undefined ? existing.recurrence : input.recurrence,
     };
     this.rows.set(id, updated);
     return { ...updated };
+  }
+
+  async listWithReminders(): Promise<CalendarEventRecord[]> {
+    return [...this.rows.values()]
+      .filter((r) => r.reminderMinutesBefore != null)
+      .map((r) => ({ ...r }));
   }
 
   async remove(id: number): Promise<boolean> {

@@ -24,6 +24,8 @@ export interface UpdateCalendarEventInput {
   isAllDay?: boolean;
   category?: string;
   reminderMinutesBefore?: number | null;
+  isReminderSent?: boolean;
+  reminderSentFor?: string | null;
   isShared?: boolean;
   familyId?: number | null;
   recurrence?: RecurrenceRule | null;
@@ -39,6 +41,7 @@ export interface CalendarRepository {
   ): Promise<CalendarEventRecord[]>;
   create(input: CreateCalendarEventInput): Promise<CalendarEventRecord>;
   update(id: number, input: UpdateCalendarEventInput): Promise<CalendarEventRecord>;
+  listWithReminders(): Promise<CalendarEventRecord[]>;
   remove(id: number): Promise<boolean>;
   findBySourceDocumentId(sourceDocumentId: number): Promise<CalendarEventRecord | null>;
   removeBySourceDocumentId(sourceDocumentId: number): Promise<boolean>;

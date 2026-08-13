@@ -5,7 +5,12 @@ import App from "./App";
 import { AuthProvider } from "./context/AuthContext";
 import { LanguageProvider } from "./i18n/LanguageContext";
 import { CurrencyProvider } from "./context/CurrencyContext";
+import { registerPushWorker } from "./api/push";
 import "./index.css";
+
+if ("serviceWorker" in navigator) {
+  void registerPushWorker();
+}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

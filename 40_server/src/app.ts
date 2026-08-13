@@ -30,6 +30,8 @@ import { createRecurringDepositRouter } from "./routes/recurringDepositRoutes.js
 import type { CalendarRepository } from "./domain/calendarRepository.js";
 import { CalendarService } from "./services/calendarService.js";
 import { createCalendarRouter } from "./routes/calendarRoutes.js";
+import { PushService } from "./services/pushService.js";
+import { createPushRouter } from "./routes/pushRoutes.js";
 
 export interface AppDeps {
   authRepo?: AuthRepository;
@@ -40,6 +42,7 @@ export interface AppDeps {
   checklistRepo?: ChecklistRepository;
   documentRepo?: DocumentRepository;
   calendarRepo?: CalendarRepository;
+  pushService?: PushService;
   documentScanStore?: DocumentScanStore;
   passkeyRepo?: PasskeyRepository;
   inviteTokenRepo?: InviteTokenRepository;
@@ -163,6 +166,10 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
         deps.assetRepo ?? null,
       );
       app.use("/api/calendar", createCalendarRouter(calendarService, jwtSecret));
+    }
+
+    if (deps.pushService) {
+      app.use("/api/push", createPushRouter(deps.pushService, jwtSecret));
     }
 
     if (passkeyService) {

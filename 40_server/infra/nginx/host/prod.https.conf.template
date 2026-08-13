@@ -30,6 +30,11 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
+    location = /sw.js {
+        add_header Cache-Control "no-cache";
+        try_files $uri =404;
+    }
+
     # location /api/ {
     #     proxy_pass http://127.0.0.1:3001;
     #     proxy_http_version 1.1;

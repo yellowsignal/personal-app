@@ -23,6 +23,7 @@ export interface CalendarEventRecord {
   sourceDocumentId: number | null;
   reminderMinutesBefore: number | null;
   isReminderSent: boolean;
+  reminderSentFor: string | null;
   isShared: boolean;
   recurrence: RecurrenceRule | null;
   createdAt: Date;
