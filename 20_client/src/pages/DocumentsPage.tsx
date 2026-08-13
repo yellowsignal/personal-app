@@ -3,6 +3,7 @@ import { Camera, ChevronDown, Copy, Eye, EyeOff, FileDown, Maximize2, MoreHorizo
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
+import OverlayScrim from "../components/OverlayScrim";
 import DocumentShowMode from "../components/DocumentShowMode";
 import { useLanguage } from "../i18n/LanguageContext";
 import {
@@ -964,10 +965,14 @@ export default function DocumentsPage() {
       </div>
 
       {showCreate && (
-        <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/40 sm:items-center">
+        <OverlayScrim
+          className="fixed inset-0 z-30 flex items-end justify-center bg-black/40 sm:items-center"
+          onDismiss={closeCreate}
+          label={t("documents.cancel")}
+        >
           <form
             onSubmit={handleSubmit}
-            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">
@@ -1170,12 +1175,16 @@ export default function DocumentsPage() {
               {t("documents.save")}
             </button>
           </form>
-        </div>
+        </OverlayScrim>
       )}
 
       {scanWizard && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">
-          <div className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl">
+        <OverlayScrim
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center"
+          onDismiss={ocrBusy ? undefined : closeScanWizard}
+          label={t("documents.cancel")}
+        >
+          <div className="relative w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl">
             {ocrBusy ? (
               <>
                 <h2 className="text-base font-bold text-neutral-900">{t("documents.ocrProcessing")}</h2>
@@ -1309,12 +1318,16 @@ export default function DocumentsPage() {
               </>
             )}
           </div>
-        </div>
+        </OverlayScrim>
       )}
 
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+        <OverlayScrim
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onDismiss={() => setConfirmDelete(null)}
+          label={t("documents.cancel")}
+        >
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
             <h2 className="text-base font-bold text-neutral-900">{t("documents.deleteDocument")}</h2>
             <p className="mt-2 text-sm text-neutral-500">
               {t("documents.deleteConfirm", { name: confirmDelete.typeLabel })}
@@ -1337,12 +1350,16 @@ export default function DocumentsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </OverlayScrim>
       )}
 
       {exportDoc && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">
-          <div className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl">
+        <OverlayScrim
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center"
+          onDismiss={() => setExportDoc(null)}
+          label={t("documents.cancel")}
+        >
+          <div className="relative w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">{t("documents.exportPdfTitle")}</h2>
               <button type="button" onClick={() => setExportDoc(null)} className="rounded-full p-2">
@@ -1367,7 +1384,7 @@ export default function DocumentsPage() {
               {t("documents.exportSeparate")}
             </button>
           </div>
-        </div>
+        </OverlayScrim>
       )}
 
       {showModeDoc && token && (

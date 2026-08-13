@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
+import OverlayScrim from "../components/OverlayScrim";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../context/CurrencyContext";
 import { useAuth } from "../context/AuthContext";
@@ -550,10 +551,14 @@ export default function AssetsPage() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+        <OverlayScrim
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          onDismiss={closeForm}
+          label={t("assets.cancelAction")}
+        >
           <form
             onSubmit={handleSubmit}
-            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
+            className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">
@@ -760,12 +765,16 @@ export default function AssetsPage() {
               {submitting ? t("assets.saving") : t("assets.save")}
             </button>
           </form>
-        </div>
+        </OverlayScrim>
       )}
 
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+        <OverlayScrim
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onDismiss={() => setConfirmDelete(null)}
+          label={t("assets.cancelAction")}
+        >
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
             <h2 className="text-base font-bold text-neutral-900">{t("assets.delete")}</h2>
             <p className="mt-2 text-sm text-neutral-500">
               {t("assets.deleteConfirm", { name: confirmDelete.label })}
@@ -788,7 +797,7 @@ export default function AssetsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </OverlayScrim>
       )}
     </div>
   );

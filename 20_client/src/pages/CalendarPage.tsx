@@ -13,6 +13,7 @@ import { Bell, ChevronDown, ChevronLeft, ChevronRight, Plus, Repeat, Trash2, X }
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import YearMonthWheelPicker from "../components/YearMonthWheelPicker";
+import OverlayScrim from "../components/OverlayScrim";
 import RecurrencePicker, {
   emptyRecurrenceDraft,
   formatRecurrenceLabel,
@@ -690,10 +691,14 @@ export default function CalendarPage() {
       )}
 
       {showCreate && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">
+        <OverlayScrim
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center"
+          onDismiss={() => setShowCreate(false)}
+          label={t("calendar.cancel")}
+        >
           <form
             onSubmit={(e) => void handleCreate(e)}
-            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">{t("calendar.addEvent")}</h2>
@@ -812,7 +817,7 @@ export default function CalendarPage() {
               {t("calendar.save")}
             </button>
           </form>
-        </div>
+        </OverlayScrim>
       )}
     </div>
   );

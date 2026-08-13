@@ -3,6 +3,7 @@ import { ArrowLeft, Check, ListChecks, Pencil, Plus, Share2, Trash2, X } from "l
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
+import OverlayScrim from "../components/OverlayScrim";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -433,10 +434,17 @@ export default function ChecklistsPage() {
         </div>
 
         {editingItem && (
-          <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/40 sm:items-center">
+          <OverlayScrim
+            className="fixed inset-0 z-30 flex items-end justify-center bg-black/40 sm:items-center"
+            onDismiss={() => {
+              setEditingItem(null);
+              setEditDraft("");
+            }}
+            label={t("checklists.cancel")}
+          >
             <form
               onSubmit={(e) => void handleSaveEdit(e)}
-              className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+              className="relative w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
             >
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-base font-bold text-neutral-900">{t("checklists.editItem")}</h2>
@@ -465,7 +473,7 @@ export default function ChecklistsPage() {
                 {t("checklists.save")}
               </button>
             </form>
-          </div>
+          </OverlayScrim>
         )}
       </div>
     );
@@ -537,10 +545,14 @@ export default function ChecklistsPage() {
       </div>
 
       {showCreate && (
-        <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/40 sm:items-center">
+        <OverlayScrim
+          className="fixed inset-0 z-30 flex items-end justify-center bg-black/40 sm:items-center"
+          onDismiss={() => setShowCreate(false)}
+          label={t("checklists.cancel")}
+        >
           <form
             onSubmit={(e) => void handleCreateList(e)}
-            className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="relative w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">{t("checklists.newList")}</h2>
@@ -575,7 +587,7 @@ export default function ChecklistsPage() {
               {t("checklists.create")}
             </button>
           </form>
-        </div>
+        </OverlayScrim>
       )}
     </div>
   );

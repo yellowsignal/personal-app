@@ -10,6 +10,7 @@ import {
   type PublicTransaction,
 } from "../api/assets";
 import { ApiError } from "../api/http";
+import OverlayScrim from "../components/OverlayScrim";
 import { formatMoney } from "../utils/formatMoney";
 import { readBankCsvFile } from "../utils/readBankCsvFile";
 
@@ -350,10 +351,14 @@ export default function AssetStatementPage() {
       </div>
 
       {showBalanceEdit && asset && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">
+        <OverlayScrim
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center"
+          onDismiss={() => setShowBalanceEdit(false)}
+          label={t("assets.cancelAction")}
+        >
           <form
             onSubmit={(e) => void submitBalance(e)}
-            className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="relative w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">{t("assets.editBalance")}</h2>
@@ -379,14 +384,18 @@ export default function AssetStatementPage() {
               {t("assets.saveBalance")}
             </button>
           </form>
-        </div>
+        </OverlayScrim>
       )}
 
       {showRecurringForm && asset && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">
+        <OverlayScrim
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center"
+          onDismiss={() => setShowRecurringForm(false)}
+          label={t("assets.cancelAction")}
+        >
           <form
             onSubmit={(e) => void submitRecurring(e)}
-            className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="relative w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">{t("assets.recurringAdd")}</h2>
@@ -426,7 +435,7 @@ export default function AssetStatementPage() {
               {t("assets.recurringSave")}
             </button>
           </form>
-        </div>
+        </OverlayScrim>
       )}
     </div>
   );

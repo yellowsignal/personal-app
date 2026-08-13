@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
+import OverlayScrim from "./OverlayScrim";
 
 const ITEM_H = 44;
 const VISIBLE = 5;
@@ -138,8 +139,11 @@ export default function YearMonthWheelPicker({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
-      <button type="button" className="absolute inset-0 cursor-default" aria-label={t("calendar.cancel")} onClick={onCancel} />
+    <OverlayScrim
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center"
+      onDismiss={onCancel}
+      label={t("calendar.cancel")}
+    >
       <div className="relative w-full max-w-md rounded-t-2xl bg-white p-4 shadow-xl sm:rounded-2xl">
         <div className="mb-2 flex items-center justify-between">
           <button type="button" onClick={onCancel} className="px-1 text-sm font-semibold text-neutral-400">
@@ -159,6 +163,6 @@ export default function YearMonthWheelPicker({
           <WheelColumn options={monthOptions} value={month} onChange={setMonth} />
         </div>
       </div>
-    </div>
+    </OverlayScrim>
   );
 }
