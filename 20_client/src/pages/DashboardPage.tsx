@@ -33,6 +33,17 @@ function isoPlusDays(days: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function formatUpcomingWhen(e: PublicCalendarEvent): string {
+  const end = e.endDate && e.endDate > e.date ? e.endDate : e.date;
+  const datePart = end !== e.date ? `${e.date} ~ ${end}` : e.date;
+  if (e.time) {
+    const timePart =
+      e.endTime && e.endTime !== e.time ? `${e.time} ~ ${e.endTime}` : e.time;
+    return `${datePart} · ${timePart}`;
+  }
+  return datePart;
+}
+
 export default function DashboardPage() {
   const { lang, t } = useLanguage();
   const { currency: displayCurrency, setCurrency: setDisplayCurrency } = useCurrency();
