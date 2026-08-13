@@ -8,6 +8,7 @@ export interface PushPayload {
   title: string;
   body: string;
   url: string;
+  tag?: string;
 }
 
 export interface PushSender {
@@ -18,6 +19,34 @@ export interface VapidKeys {
   publicKey: string;
   privateKey: string;
   subject: string;
+}
+
+function appOrigin(): string {
+  const raw = (process.env.WEBAUTHN_ORIGIN ?? process.env.PUBLIC_APP_ORIGIN ?? "").trim().replace(/\/$/, "");
+  return raw || "http://localhost:5173";
+}
+
+/** Declarative Web Push JSON (iOS 18.4+) with legacy fields for older service workers. */
+export function toPushWirePayload(payload: PushPayload): Record<string, unknown> {
+  const path = payload.url.startsWith("http")
+    ? payload.url
+    : `${appOrigin()}${payload.url.startsWith("/") ? payload.url : `/${payload.url}`}`;
+  const tag = payload.tag?.trim() || "calendar-reminder";
+  return {
+    web_push: 8030,
+    notification: {
+      title: payload.title,
+      body: payload.body,
+      navigate: path,
+      silent: false,
+      tag,
+      renotify: true,
+    },
+    title: payload.title,
+    body: payload.body,
+    url: payload.url,
+    tag,
+  };
 }
 
 export function loadOrCreateVapidKeys(filePath: string, subject: string): VapidKeys {
@@ -49,9 +78,17 @@ export class WebPushSender implements PushSender {
 
   async send(sub: PushSubscriptionRecord, payload: PushPayload): Promise<"ok" | "gone"> {
     try {
+      const topic = (payload.tag ?? "calendar-reminder")
+        .replace(/[^A-Za-z0-9_-]/g, "-")
+        .slice(0, 32);
       await webpush.sendNotification(
         { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-        JSON.stringify(payload),
+        JSON.stringify(toPushWirePayload(payload)),
+        {
+          urgency: "high",
+          TTL: 60 * 60,
+          topic: topic || "calendar-reminder",
+        },
       );
       return "ok";
     } catch (err) {
@@ -115,5 +152,16 @@ export class PushService {
       sent += 1;
     }
     return sent;
+  }
+
+  async sendTest(userId: number): Promise<{ sent: number }> {
+    const sent = await this.sendToUsers([userId], {
+      title: "MyFamily Hub",
+      body: "알림 테스트 · 소리가 나면 설정이 된 거예요",
+      url: "/calendar",
+      tag: `push-test-${Date.now()}`,
+    });
+    if (sent < 1) throw new HttpError(400, "no push subscription on this account", "PUSH_NOT_SUBSCRIBED");
+    return { sent };
   }
 }

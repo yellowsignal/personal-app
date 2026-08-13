@@ -71,6 +71,20 @@ export default function SettingsPage() {
     }
   }
 
+  async function sendTestPush() {
+    if (!token) return;
+    setPushBusy(true);
+    setPushMsg(null);
+    try {
+      await pushApi.test(token);
+      setPushMsg(t("settings.pushTestOk"));
+    } catch (err) {
+      setPushMsg(err instanceof ApiError ? err.message : t("settings.pushTestFail"));
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
   async function changeHolidayPref(pref: HolidayPref) {
     if (pref === holidayPref) return;
     setSavingHolidayPref(true);
@@ -265,6 +279,19 @@ export default function SettingsPage() {
             </div>
             {ios && !standalone && (
               <p className="mt-2 text-[11px] text-amber-600">{t("settings.pushNeedHomeScreen")}</p>
+            )}
+            {pushSubscribed && (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  disabled={pushBusy}
+                  onClick={() => void sendTestPush()}
+                  className="rounded-full bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-700 disabled:opacity-60"
+                >
+                  {t("settings.pushTest")}
+                </button>
+                <p className="mt-2 text-[11px] text-neutral-400">{t("settings.pushTestHint")}</p>
+              </div>
             )}
             {pushMsg && <p className="mt-2 text-[11px] text-neutral-500">{pushMsg}</p>}
           </div>

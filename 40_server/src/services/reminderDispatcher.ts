@@ -30,6 +30,7 @@ export class ReminderDispatcher {
           title: ev.title,
           body,
           url: "/calendar",
+          tag: `cal-${ev.id}-${key}`,
         });
         await this.calendarRepo.update(ev.id, {
           isReminderSent: ev.recurrence ? ev.isReminderSent : true,

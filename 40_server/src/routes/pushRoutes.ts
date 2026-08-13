@@ -50,5 +50,13 @@ export function createPushRouter(service: PushService, jwtSecret: string): Route
     }
   });
 
+  router.post("/test", auth, async (req: AuthedRequest, res) => {
+    try {
+      res.json(await service.sendTest(req.userId!));
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
   return router;
 }

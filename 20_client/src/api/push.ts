@@ -49,6 +49,13 @@ export const pushApi = {
       body: JSON.stringify({ endpoint }),
     });
   },
+  test(token: string) {
+    return apiFetch<{ sent: number }>("/api/push/test", {
+      method: "POST",
+      token,
+      body: "{}",
+    });
+  },
 };
 
 export async function enableHomeScreenPush(token: string): Promise<"ok" | "denied" | "unsupported"> {

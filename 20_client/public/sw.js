@@ -1,22 +1,55 @@
 self.addEventListener("push", (event) => {
-  let data = { title: "MyFamily Hub", body: "", url: "/calendar" };
-  try {
-    if (event.data) data = { ...data, ...event.data.json() };
-  } catch {
-    /* ignore */
-  }
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
-      data: { url: data.url || "/calendar" },
-    }),
+    (async () => {
+      let raw = {};
+      try {
+        if (event.data) raw = event.data.json();
+      } catch {
+        /* ignore */
+      }
+
+      const declarative = raw && raw.web_push === 8030 && raw.notification ? raw.notification : null;
+      const title = (declarative && declarative.title) || raw.title || "MyFamily Hub";
+      const body = (declarative && declarative.body) || raw.body || "";
+      const navigate = (declarative && declarative.navigate) || raw.url || "/calendar";
+      const tag = (declarative && declarative.tag) || raw.tag || "calendar-reminder";
+      const silent = Boolean(declarative && declarative.silent);
+
+      await self.registration.showNotification(title, {
+        body,
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        tag,
+        renotify: true,
+        silent,
+        vibrate: silent ? undefined : [180, 80, 180],
+        requireInteraction: false,
+        data: { url: navigate },
+      });
+    })(),
   );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || "/calendar";
-  event.waitUntil(self.clients.openWindow(url));
+  const target = event.notification.data?.url || "/calendar";
+  event.waitUntil(
+    (async () => {
+      const clientsList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of clientsList) {
+        if ("focus" in client) {
+          await client.focus();
+          if ("navigate" in client && typeof client.navigate === "function") {
+            try {
+              await client.navigate(target);
+              return;
+            } catch {
+              /* fall through */
+            }
+          }
+        }
+      }
+      await self.clients.openWindow(target);
+    })(),
+  );
 });
