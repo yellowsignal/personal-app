@@ -8,7 +8,8 @@ export interface RecurrenceRule {
   interval: number;
   byWeekday?: number[];
   monthMode?: RecurrenceMonthMode;
-  bySetPos?: number;
+  /** One or more of 1–4 or -1 (last). Single number kept for older clients. */
+  bySetPos?: number | number[];
   until?: string;
   count?: number;
 }
@@ -66,14 +67,30 @@ export function nthWeekdayInMonth(
   return new Date(Date.UTC(year, month0, day));
 }
 
-function monthOccurrence(dtstart: Date, year: number, month0: number, rule: RecurrenceRule): Date | null {
+export function normalizeBySetPosList(
+  value: number | number[] | undefined,
+  fallback: number,
+): number[] {
+  const raw = Array.isArray(value) ? value : value != null ? [value] : [fallback];
+  const allowed = new Set([-1, 1, 2, 3, 4]);
+  const out = [...new Set(raw.filter((n) => allowed.has(n)))];
+  return out.length ? out.sort((a, b) => (a === -1 ? 1 : b === -1 ? -1 : a - b)) : [fallback];
+}
+
+function monthOccurrences(dtstart: Date, year: number, month0: number, rule: RecurrenceRule): Date[] {
   if (rule.monthMode === "BY_NTH_WEEKDAY") {
     const weekday = (rule.byWeekday && rule.byWeekday[0] != null ? rule.byWeekday[0] : dtstart.getUTCDay()) as number;
-    const pos = rule.bySetPos ?? inferBySetPos(dtstart);
-    return nthWeekdayInMonth(year, month0, weekday, pos);
+    const positions = normalizeBySetPosList(rule.bySetPos, inferBySetPos(dtstart));
+    const dates: Date[] = [];
+    for (const pos of positions) {
+      const occ = nthWeekdayInMonth(year, month0, weekday, pos);
+      if (occ) dates.push(occ);
+    }
+    dates.sort((a, b) => a.getTime() - b.getTime());
+    return dates;
   }
   const day = Math.min(dtstart.getUTCDate(), lastDayOfMonth(year, month0));
-  return new Date(Date.UTC(year, month0, day));
+  return [new Date(Date.UTC(year, month0, day))];
 }
 
 function yearOccurrence(dtstart: Date, year: number): Date | null {
@@ -112,8 +129,17 @@ export function parseRecurrence(raw: unknown): RecurrenceRule | null {
   if (body.monthMode === "BY_MONTHDAY" || body.monthMode === "BY_NTH_WEEKDAY") {
     rule.monthMode = body.monthMode;
   }
-  const pos = typeof body.bySetPos === "number" ? body.bySetPos : Number(body.bySetPos);
-  if (pos === -1 || pos === 1 || pos === 2 || pos === 3 || pos === 4) rule.bySetPos = pos;
+  if (Array.isArray(body.bySetPos)) {
+    const list = normalizeBySetPosList(
+      body.bySetPos.map((n) => Number(n)),
+      1,
+    ).filter((n) => n === -1 || n === 1 || n === 2 || n === 3 || n === 4);
+    if (list.length === 1) rule.bySetPos = list[0];
+    else if (list.length > 1) rule.bySetPos = list;
+  } else {
+    const pos = typeof body.bySetPos === "number" ? body.bySetPos : Number(body.bySetPos);
+    if (pos === -1 || pos === 1 || pos === 2 || pos === 3 || pos === 4) rule.bySetPos = pos;
+  }
 
   if (isDateKey(body.until)) rule.until = body.until;
   const count = typeof body.count === "number" ? body.count : Number(body.count);
@@ -131,7 +157,8 @@ export function normalizeRecurrence(raw: unknown, dtstart: Date): RecurrenceRule
     parsed.monthMode = parsed.monthMode ?? "BY_MONTHDAY";
     if (parsed.monthMode === "BY_NTH_WEEKDAY") {
       parsed.byWeekday = parsed.byWeekday?.length ? [parsed.byWeekday[0]!] : [dtstart.getUTCDay()];
-      parsed.bySetPos = parsed.bySetPos ?? inferBySetPos(dtstart);
+      const list = normalizeBySetPosList(parsed.bySetPos, inferBySetPos(dtstart));
+      parsed.bySetPos = list.length === 1 ? list[0]! : list;
     }
   }
   return parsed;
@@ -189,12 +216,15 @@ function* iterateOccurrences(rule: RecurrenceRule, dtstart: Date, rangeTo: Date)
         if (y > end.getUTCFullYear() + 1) break;
         continue;
       }
-      const occ = monthOccurrence(start, y, m, rule);
-      if (occ && occ >= start && occ <= end) {
-        yield occ;
-        emitted += 1;
+      const occs = monthOccurrences(start, y, m, rule);
+      for (const occ of occs) {
+        if (occ >= start && occ <= end) {
+          yield occ;
+          emitted += 1;
+          if (emitted >= maxCount) break;
+        }
       }
-      if (occ && occ > end) break;
+      if (occs.some((occ) => occ > end)) break;
       m += 1;
       if (m > 11) {
         m = 0;

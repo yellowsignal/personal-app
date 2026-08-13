@@ -87,6 +87,25 @@ test("monthly nth weekday uses last Thursday", () => {
   assert.deepEqual(dates, ["2026-08-27", "2026-09-24", "2026-10-29"]);
 });
 
+test("monthly 1st and 3rd Wednesday expands both days", () => {
+  // 2026-08: Wed 5 (1st), Wed 19 (3rd)
+  const start = parseDateKey("2026-08-05");
+  const dates = expandRecurrence(
+    {
+      freq: "MONTHLY",
+      interval: 1,
+      monthMode: "BY_NTH_WEEKDAY",
+      byWeekday: [3],
+      bySetPos: [1, 3],
+      count: 4,
+    },
+    start,
+    parseDateKey("2026-08-01"),
+    parseDateKey("2026-09-30"),
+  ).map(toDateKey);
+  assert.deepEqual(dates, ["2026-08-05", "2026-08-19", "2026-09-02", "2026-09-16"]);
+});
+
 test("yearly and count stop expansion", () => {
   const start = parseDateKey("2024-02-29");
   const dates = expandRecurrence(

@@ -9,6 +9,8 @@ export interface RecurrenceDraft {
   interval: number;
   weekdays: number[];
   monthMode: RecurrenceMonthMode;
+  /** 1–4 or -1 (last). Multiple = e.g. 1st + 3rd Wednesday. */
+  bySetPosList: number[];
   end: RepeatEnd;
   until: string;
   count: number;
@@ -17,6 +19,7 @@ export interface RecurrenceDraft {
 const PRESETS: RepeatPreset[] = ["none", "daily", "weekdays", "weekly", "monthly", "yearly", "custom"];
 const FREQS: RecurrenceFreq[] = ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"];
 const ENDS: RepeatEnd[] = ["never", "until", "count"];
+const NTH_OPTIONS = [1, 2, 3, 4, -1] as const;
 
 export function weekdayFromKey(key: string): number {
   const [y, m, d] = key.split("-").map(Number);
@@ -39,6 +42,13 @@ export function inferBySetPos(key: string): number {
   return Math.min(Math.max(nth, 1), 4);
 }
 
+function normalizeBySetPosList(value: number | number[] | undefined, fallback: number): number[] {
+  const raw = Array.isArray(value) ? value : value != null ? [value] : [fallback];
+  const allowed = new Set([-1, 1, 2, 3, 4]);
+  const out = [...new Set(raw.filter((n) => allowed.has(n)))];
+  return out.length ? out.sort((a, b) => (a === -1 ? 1 : b === -1 ? -1 : a - b)) : [fallback];
+}
+
 export function emptyRecurrenceDraft(startDate: string): RecurrenceDraft {
   return {
     preset: "none",
@@ -46,6 +56,7 @@ export function emptyRecurrenceDraft(startDate: string): RecurrenceDraft {
     interval: 1,
     weekdays: [weekdayFromKey(startDate)],
     monthMode: "BY_MONTHDAY",
+    bySetPosList: [inferBySetPos(startDate)],
     end: "never",
     until: startDate,
     count: 10,
@@ -81,6 +92,7 @@ export function draftFromRecurrence(
     interval,
     weekdays,
     monthMode,
+    bySetPosList: normalizeBySetPosList(rule.bySetPos, inferBySetPos(startDate)),
     end,
     until: rule.until ?? startDate,
     count: rule.count ?? 10,
@@ -94,7 +106,7 @@ export function recurrenceFromDraft(draft: RecurrenceDraft, startDate: string): 
   let interval = 1;
   let byWeekday: number[] | undefined;
   let monthMode: RecurrenceMonthMode | undefined;
-  let bySetPos: number | undefined;
+  let bySetPos: number | number[] | undefined;
 
   if (draft.preset === "daily") {
     freq = "DAILY";
@@ -119,8 +131,11 @@ export function recurrenceFromDraft(draft: RecurrenceDraft, startDate: string): 
   }
 
   if (freq === "MONTHLY" && monthMode === "BY_NTH_WEEKDAY") {
-    byWeekday = [startWeekday];
-    bySetPos = inferBySetPos(startDate);
+    byWeekday = draft.weekdays.length
+      ? [...new Set(draft.weekdays)].sort((a, b) => a - b).slice(0, 1)
+      : [startWeekday];
+    const list = normalizeBySetPosList(draft.bySetPosList, inferBySetPos(startDate));
+    bySetPos = list.length === 1 ? list[0]! : list;
   }
 
   const rule: RecurrenceRule = { freq, interval };
@@ -171,12 +186,13 @@ export function formatRecurrenceLabel(
     else core = n === 1 ? t("calendar.repeatSummaryWeekly", { days }) : t("calendar.repeatEveryWeek", { n, days });
   } else if (rule.freq === "MONTHLY") {
     if (rule.monthMode === "BY_NTH_WEEKDAY") {
-      const pos = rule.bySetPos ?? inferBySetPos(startDate);
+      const positions = normalizeBySetPosList(rule.bySetPos, inferBySetPos(startDate));
+      const nthLabel = positions.map((pos) => t(nthKey(pos))).join("·");
       const weekday = weekdayNames[rule.byWeekday?.[0] ?? weekdayFromKey(startDate)] ?? "";
       core =
         n === 1
-          ? t("calendar.repeatSummaryMonthlyWeekday", { nth: t(nthKey(pos)), weekday })
-          : t("calendar.repeatEveryMonthWeekday", { n, nth: t(nthKey(pos)), weekday });
+          ? t("calendar.repeatSummaryMonthlyWeekday", { nth: nthLabel, weekday })
+          : t("calendar.repeatEveryMonthWeekday", { n, nth: nthLabel, weekday });
     } else {
       core = n === 1 ? t("calendar.repeatSummaryMonthlyDate", { day }) : t("calendar.repeatEveryMonthDate", { n, day });
     }
@@ -357,15 +373,82 @@ export default function RecurrencePicker({
           </button>
           <button
             type="button"
-            onClick={() => onChange({ ...draft, monthMode: "BY_NTH_WEEKDAY" })}
+            onClick={() =>
+              onChange({
+                ...draft,
+                monthMode: "BY_NTH_WEEKDAY",
+                bySetPosList: draft.bySetPosList.length ? draft.bySetPosList : [nth],
+                weekdays: draft.weekdays.length ? [draft.weekdays[0]!] : [weekdayFromKey(startDate)],
+              })
+            }
             className={`rounded-xl px-3 py-2 text-left text-sm ${
               draft.monthMode === "BY_NTH_WEEKDAY"
                 ? "bg-indigo-50 font-semibold text-indigo-700 ring-1 ring-indigo-200"
                 : "bg-neutral-50 text-neutral-600"
             }`}
           >
-            {t("calendar.repeatMonthByWeekday", { nth: t(nthKey(nth)), weekday: startWeekdayName })}
+            {t("calendar.repeatMonthByWeekday", {
+              nth: (draft.monthMode === "BY_NTH_WEEKDAY" && draft.bySetPosList.length
+                ? draft.bySetPosList
+                : [nth]
+              )
+                .map((pos) => t(nthKey(pos)))
+                .join("·"),
+              weekday:
+                weekdayNames[
+                  draft.monthMode === "BY_NTH_WEEKDAY" && draft.weekdays[0] != null
+                    ? draft.weekdays[0]
+                    : weekdayFromKey(startDate)
+                ] ?? startWeekdayName,
+            })}
           </button>
+          {draft.monthMode === "BY_NTH_WEEKDAY" && (
+            <>
+              <p className="mt-1 text-[11px] font-semibold text-neutral-500">{t("calendar.repeatPickNthMulti")}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {NTH_OPTIONS.map((pos) => {
+                  const selected = draft.bySetPosList.includes(pos);
+                  return (
+                    <button
+                      key={pos}
+                      type="button"
+                      onClick={() => {
+                        const next = selected
+                          ? draft.bySetPosList.filter((p) => p !== pos)
+                          : [...draft.bySetPosList, pos].sort((a, b) =>
+                              a === -1 ? 1 : b === -1 ? -1 : a - b,
+                            );
+                        onChange({
+                          ...draft,
+                          bySetPosList: next.length ? next : [nth],
+                        });
+                      }}
+                      className={chipClass(selected)}
+                    >
+                      {t(nthKey(pos))}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1 text-[11px] font-semibold text-neutral-500">{t("calendar.repeatPickWeekday")}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {weekdayNames.map((label, day) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => onChange({ ...draft, weekdays: [day] })}
+                    className={`h-8 w-8 rounded-full text-xs font-semibold ${
+                      draft.weekdays[0] === day
+                        ? "bg-indigo-600 text-white"
+                        : "bg-neutral-100 text-neutral-600"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 

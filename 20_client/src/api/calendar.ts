@@ -17,7 +17,7 @@ export interface RecurrenceRule {
   interval: number;
   byWeekday?: number[];
   monthMode?: RecurrenceMonthMode;
-  bySetPos?: number;
+  bySetPos?: number | number[];
   until?: string;
   count?: number;
 }
