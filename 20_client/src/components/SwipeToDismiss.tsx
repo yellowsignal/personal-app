@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   SHEET_MOVE_TOLERANCE_PX,
   settleSheetDismiss,
@@ -15,6 +15,7 @@ function findScrollParent(start: HTMLElement | null, root: HTMLElement): HTMLEle
     }
     node = node.parentElement;
   }
+  if (root.scrollHeight > root.clientHeight + 1) return root;
   return root;
 }
 
@@ -120,6 +121,25 @@ export default function SwipeToDismiss({
     setSheetOffset(0);
   }
 
+  // Block native touch scroll while pulling the sheet down to dismiss.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const onTouchMove = (e: TouchEvent) => {
+      if (mode.current === "dismiss") {
+        e.preventDefault();
+        return;
+      }
+      if (mode.current !== "undecided" || !e.touches[0]) return;
+      const dy = e.touches[0].clientY - start.current.y;
+      if (dy > 0 && (start.current.fromHandle || start.current.scrollTop <= 0)) {
+        e.preventDefault();
+      }
+    };
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => el.removeEventListener("touchmove", onTouchMove);
+  }, []);
+
   return (
     <div
       ref={rootRef}
@@ -127,7 +147,8 @@ export default function SwipeToDismiss({
       style={{
         transform: `translate3d(0, ${Math.max(0, offset)}px, 0)`,
         transition: dragging ? "none" : "transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1)",
-        touchAction: "pan-y",
+        touchAction: dragging ? "none" : "pan-y",
+        overscrollBehavior: "contain",
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -137,6 +158,7 @@ export default function SwipeToDismiss({
       <div
         data-sheet-handle
         className="absolute inset-x-0 top-0 z-20 flex h-7 cursor-grab items-start justify-center pt-2 active:cursor-grabbing"
+        style={{ touchAction: "none" }}
         aria-hidden
       >
         <div className="h-1 w-10 rounded-full bg-neutral-300" />
