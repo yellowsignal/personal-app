@@ -38,7 +38,7 @@ export interface CreateCalendarEventInput {
 export const categoryColor: Record<CalendarCategory, string> = {
   personal: "#5B5BF6",
   family: "#34C759",
-  holiday: "#FF9F0A",
+  holiday: "#EF4444",
   document_expiry: "#FF3B30",
   subscription_billing: "#AF52DE",
   recurring_deposit: "#0A84FF",

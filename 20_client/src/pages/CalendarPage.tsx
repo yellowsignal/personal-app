@@ -55,22 +55,18 @@ function buildMonthGrid(year: number, month: number) {
   const cells: (number | null)[] = [];
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-  while (cells.length % 7 !== 0) cells.push(null);
+  while (cells.length < 42) cells.push(null);
   return cells;
 }
 
-type MonthCursor = { year: number; month: number };
-
-function shiftMonth(cursor: MonthCursor, delta: number): MonthCursor {
-  const d = new Date(cursor.year, cursor.month + delta, 1);
-  return { year: d.getFullYear(), month: d.getMonth() };
+function sortDayEvents(events: PublicCalendarEvent[]): PublicCalendarEvent[] {
+  return [...events].sort((a, b) => {
+    const rank = (c: CalendarCategory) => (c === "holiday" ? 0 : 1);
+    return rank(a.category) - rank(b.category) || (a.time ?? "").localeCompare(b.time ?? "") || a.title.localeCompare(b.title);
+  });
 }
 
-function clampSelectedDate(selected: string, cursor: MonthCursor): string {
-  const day = Number(selected.slice(8, 10));
-  const last = new Date(cursor.year, cursor.month + 1, 0).getDate();
-  return toKey(cursor.year, cursor.month, Math.min(Number.isFinite(day) && day > 0 ? day : 1, last));
-}
+const MAX_GRID_PILLS = 3;
 
 function MonthGrid({
   year,
@@ -89,41 +85,73 @@ function MonthGrid({
 }) {
   const cells = useMemo(() => buildMonthGrid(year, month), [year, month]);
   return (
-    <div className="mt-1 grid grid-cols-7 gap-y-1 text-center" style={{ minHeight: "18rem" }}>
+    <div className="mt-1 grid grid-cols-7 gap-px overflow-hidden rounded-lg bg-neutral-100">
       {cells.map((day, idx) => {
-        if (day === null) return <div key={idx} className="h-12" />;
+        const weekday = idx % 7;
+        if (day === null) {
+          return <div key={idx} className="min-h-[5.5rem] bg-white" />;
+        }
         const key = toKey(year, month, day);
-        const dayEvents = eventsByDate.get(key) ?? [];
+        const dayEvents = sortDayEvents(eventsByDate.get(key) ?? []);
+        const visible = dayEvents.slice(0, MAX_GRID_PILLS);
+        const extra = dayEvents.length - visible.length;
         const isToday = key === today;
         const isSelected = key === selectedDate;
+        const hasHoliday = dayEvents.some((e) => e.category === "holiday");
+        const dateColor = isSelected
+          ? "bg-indigo-600 text-white"
+          : isToday
+            ? "text-indigo-600 ring-1 ring-indigo-600"
+            : hasHoliday || weekday === 0
+              ? "text-red-500"
+              : weekday === 6
+                ? "text-blue-500"
+                : "text-neutral-800";
         return (
           <button
             key={key}
             type="button"
             onClick={() => onSelectDay(key)}
-            className="flex h-12 flex-col items-center justify-start gap-1 pt-0.5"
+            className={`flex min-h-[5.5rem] flex-col items-stretch px-[2px] pb-0.5 pt-0.5 text-left ${
+              isSelected ? "bg-indigo-50" : "bg-white"
+            }`}
           >
-            <span
-              className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
-                isSelected ? "bg-indigo-600 text-white" : isToday ? "text-indigo-600" : "text-neutral-700"
-              }`}
-            >
+            <span className={`mb-0.5 flex h-5 w-5 items-center justify-center self-center rounded-full text-[11px] font-semibold ${dateColor}`}>
               {day}
             </span>
-            <div className="flex gap-0.5">
-              {dayEvents.slice(0, 3).map((ev) => (
+            <div className="flex min-w-0 flex-1 flex-col gap-px">
+              {visible.map((ev) => (
                 <span
                   key={ev.id}
-                  className="h-1 w-1 rounded-full"
+                  title={ev.title}
+                  className="block truncate rounded-[3px] px-[3px] text-[9px] font-semibold leading-[13px] text-white"
                   style={{ backgroundColor: categoryColor[ev.category] }}
-                />
+                >
+                  {ev.title}
+                </span>
               ))}
+              {extra > 0 && (
+                <span className="px-[2px] text-[9px] font-semibold leading-3 text-neutral-400">+{extra}</span>
+              )}
             </div>
           </button>
         );
       })}
     </div>
   );
+}
+
+type MonthCursor = { year: number; month: number };
+
+function shiftMonth(cursor: MonthCursor, delta: number): MonthCursor {
+  const d = new Date(cursor.year, cursor.month + delta, 1);
+  return { year: d.getFullYear(), month: d.getMonth() };
+}
+
+function clampSelectedDate(selected: string, cursor: MonthCursor): string {
+  const day = Number(selected.slice(8, 10));
+  const last = new Date(cursor.year, cursor.month + 1, 0).getDate();
+  return toKey(cursor.year, cursor.month, Math.min(Number.isFinite(day) && day > 0 ? day : 1, last));
 }
 
 export default function CalendarPage() {
@@ -503,9 +531,14 @@ export default function CalendarPage() {
                     <p className="px-8 text-center text-sm font-bold text-neutral-900">
                       {t("calendar.monthYear", { year: pane.year, month: pane.month + 1 })}
                     </p>
-                    <div className="mt-3 grid grid-cols-7 text-center text-[11px] font-semibold text-neutral-300">
-                      {weekdays.map((w) => (
-                        <div key={w}>{w}</div>
+                    <div className="mt-3 grid grid-cols-7 text-center text-[11px] font-semibold">
+                      {weekdays.map((w, i) => (
+                        <div
+                          key={w}
+                          className={i === 0 ? "text-red-400" : i === 6 ? "text-blue-400" : "text-neutral-400"}
+                        >
+                          {w}
+                        </div>
                       ))}
                     </div>
                     <MonthGrid

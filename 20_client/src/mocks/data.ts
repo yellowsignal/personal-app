@@ -146,6 +146,6 @@ export const calendarEvents: CalendarEvent[] = [
 export const categoryColor: Record<CalendarEvent["category"], string> = {
   personal: "#5B5BF6",
   family: "#34C759",
-  holiday: "#FF9F0A",
+  holiday: "#EF4444",
   document_expiry: "#FF3B30",
 };
