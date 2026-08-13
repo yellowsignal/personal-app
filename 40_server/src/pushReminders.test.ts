@@ -115,3 +115,78 @@ test("web push subscribe and due calendar reminder is dispatched", async () => {
     server.close();
   }
 });
+
+test("all-day reminder still fires when created after the ideal fire time", async () => {
+  const authRepo = new MemoryAuthRepository();
+  const calendarRepo = new MemoryCalendarRepository();
+  const pushRepo = new MemoryPushRepository();
+  const delivered: PushPayload[] = [];
+  const keys = { ...webpush.generateVAPIDKeys(), subject: "mailto:test@example.com" };
+  const pushService = new PushService(pushRepo, keys, {
+    async send(_sub, payload) {
+      delivered.push(payload);
+      return "ok";
+    },
+  });
+
+  const app = createApp(tmpStore(), {
+    authRepo,
+    calendarRepo,
+    pushService,
+    passkeyRepo: new MemoryPasskeyRepository(),
+    inviteTokenRepo: new MemoryInviteTokenRepository(),
+    challengeStore: new ChallengeStore(),
+    jwtSecret: "test-secret",
+  });
+
+  const { server, base } = await listen(app);
+  try {
+    const register = await fetch(`${base}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "allday-reminder@example.com",
+        password: "password123",
+        name: "민호",
+        familyName: "최가네",
+      }),
+    });
+    assert.equal(register.status, 201);
+    const owner = (await register.json()) as { token: string };
+
+    await fetch(`${base}/api/push/subscribe`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        endpoint: "https://push.example/device-allday",
+        keys: { p256dh: "p256", auth: "auth-token" },
+      }),
+    });
+
+    // Afternoon on the event day — old logic (UTC midnight − 1h + 2h grace) would miss this.
+    const now = new Date(Date.UTC(2026, 7, 14, 15, 0, 0));
+    const created = await fetch(`${base}/api/calendar/events`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        title: "ダンボールごみ捨て",
+        date: "2026-08-14",
+        reminderMinutesBefore: 60,
+      }),
+    });
+    assert.equal(created.status, 201);
+
+    const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
+    const sent = await dispatcher.tick(now);
+    assert.equal(sent, 1);
+    assert.equal(delivered[0]?.title, "ダンボールごみ捨て");
+  } finally {
+    server.close();
+  }
+});

@@ -1,11 +1,34 @@
 import type { AuthRepository } from "../domain/authRepository.js";
 import type { CalendarRepository } from "../domain/calendarRepository.js";
+import type { CalendarEventRecord } from "../domain/calendarTypes.js";
 import { toDateKey } from "../domain/calendarTypes.js";
 import { expandRecurrence, shiftDateTime } from "../domain/recurrence.js";
 import { utcDateOnly } from "../domain/recurringDepositTypes.js";
 import type { PushService } from "./pushService.js";
 
-const GRACE_MS = 2 * 60 * 60 * 1000;
+/** Still deliver if we missed the exact fire minute (scheduler lag / create-after-fire). */
+const CATCHUP_AFTER_START_MS = 2 * 60 * 60 * 1000;
+/** All-day reminders are anchored to this floating clock on the occurrence day. */
+const ALL_DAY_ANCHOR_HOUR_UTC = 9;
+
+export function reminderFireAt(start: Date, minutesBefore: number, isAllDay: boolean): Date {
+  if (!isAllDay) {
+    return new Date(start.getTime() - minutesBefore * 60_000);
+  }
+  // All-day: treat "1 hour before" as 08:00 on the day (09:00 anchor − 60m), not 23:00 previous UTC day.
+  const anchor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate(), ALL_DAY_ANCHOR_HOUR_UTC, 0, 0, 0));
+  return new Date(anchor.getTime() - minutesBefore * 60_000);
+}
+
+export function reminderLatestAt(start: Date, end: Date, isAllDay: boolean): Date {
+  if (isAllDay) return end;
+  return new Date(start.getTime() + CATCHUP_AFTER_START_MS);
+}
+
+export function isReminderDue(now: Date, fireAt: Date, latestAt: Date): boolean {
+  const t = now.getTime();
+  return t >= fireAt.getTime() && t <= latestAt.getTime();
+}
 
 export class ReminderDispatcher {
   constructor(
@@ -26,47 +49,55 @@ export class ReminderDispatcher {
         const body = ev.isAllDay
           ? ev.title
           : `${String(start.getUTCHours()).padStart(2, "0")}:${String(start.getUTCMinutes()).padStart(2, "0")} · ${ev.title}`;
-        await this.pushService.sendToUsers(recipients, {
+        const delivered = await this.pushService.sendToUsers(recipients, {
           title: ev.title,
           body,
           url: "/calendar",
           tag: `cal-${ev.id}-${key}`,
         });
+        if (delivered < 1) {
+          console.warn(`[reminders] no push endpoint for event ${ev.id} (${ev.title}) recipients=${recipients.join(",")}`);
+          continue;
+        }
         await this.calendarRepo.update(ev.id, {
           isReminderSent: ev.recurrence ? ev.isReminderSent : true,
           reminderSentFor: key,
         });
         ev.reminderSentFor = key;
         sent += 1;
+        console.log(`[reminders] sent event=${ev.id} occ=${key} title=${ev.title}`);
       }
     }
     return sent;
   }
 
   private dueOccurrenceKeys(
-    ev: Awaited<ReturnType<CalendarRepository["listWithReminders"]>>[number],
+    ev: CalendarEventRecord,
     now: Date,
   ): Array<{ key: string; start: Date }> {
     const minutes = ev.reminderMinutesBefore ?? 0;
-    const nowMs = now.getTime();
     const out: Array<{ key: string; start: Date }> = [];
 
     if (!ev.recurrence) {
-      const fireAt = ev.startTime.getTime() - minutes * 60_000;
-      if (nowMs >= fireAt && nowMs <= fireAt + GRACE_MS) {
+      const fireAt = reminderFireAt(ev.startTime, minutes, ev.isAllDay);
+      const latestAt = reminderLatestAt(ev.startTime, ev.endTime, ev.isAllDay);
+      if (isReminderDue(now, fireAt, latestAt)) {
         out.push({ key: toDateKey(ev.startTime), start: ev.startTime });
       }
       return out;
     }
 
     const startDay = utcDateOnly(ev.startTime);
-    const from = new Date(nowMs - GRACE_MS - minutes * 60_000);
-    const to = new Date(nowMs + minutes * 60_000 + 24 * 60 * 60 * 1000);
+    // Look far enough back that a "1 day before" all-day reminder can still catch up on the day.
+    const from = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000 - minutes * 60_000);
+    const to = new Date(now.getTime() + minutes * 60_000 + 24 * 60 * 60 * 1000);
     const occs = expandRecurrence(ev.recurrence, startDay, from, to);
     for (const occ of occs) {
       const start = shiftDateTime(ev.startTime, startDay, occ);
-      const fireAt = start.getTime() - minutes * 60_000;
-      if (nowMs >= fireAt && nowMs <= fireAt + GRACE_MS) {
+      const end = shiftDateTime(ev.endTime, startDay, occ);
+      const fireAt = reminderFireAt(start, minutes, ev.isAllDay);
+      const latestAt = reminderLatestAt(start, end, ev.isAllDay);
+      if (isReminderDue(now, fireAt, latestAt)) {
         out.push({ key: toDateKey(occ), start });
       }
     }
