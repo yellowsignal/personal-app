@@ -52,6 +52,41 @@ export function emptyRecurrenceDraft(startDate: string): RecurrenceDraft {
   };
 }
 
+export function draftFromRecurrence(
+  rule: RecurrenceRule | null | undefined,
+  startDate: string,
+): RecurrenceDraft {
+  const base = emptyRecurrenceDraft(startDate);
+  if (!rule) return base;
+  const interval = Math.min(99, Math.max(1, Math.floor(rule.interval) || 1));
+  const weekdays = rule.byWeekday?.length ? [...rule.byWeekday].sort((a, b) => a - b) : [weekdayFromKey(startDate)];
+  const monthMode = rule.monthMode ?? "BY_MONTHDAY";
+  const end: RepeatEnd = rule.until ? "until" : rule.count != null ? "count" : "never";
+  let preset: RepeatPreset = "custom";
+  if (interval === 1) {
+    if (rule.freq === "DAILY" && !rule.byWeekday?.length) preset = "daily";
+    else if (
+      rule.freq === "WEEKLY" &&
+      weekdays.length === 5 &&
+      [1, 2, 3, 4, 5].every((d) => weekdays.includes(d))
+    ) {
+      preset = "weekdays";
+    } else if (rule.freq === "WEEKLY") preset = "weekly";
+    else if (rule.freq === "MONTHLY") preset = "monthly";
+    else if (rule.freq === "YEARLY") preset = "yearly";
+  }
+  return {
+    preset,
+    freq: rule.freq,
+    interval,
+    weekdays,
+    monthMode,
+    end,
+    until: rule.until ?? startDate,
+    count: rule.count ?? 10,
+  };
+}
+
 export function recurrenceFromDraft(draft: RecurrenceDraft, startDate: string): RecurrenceRule | null {
   if (draft.preset === "none") return null;
   const startWeekday = weekdayFromKey(startDate);

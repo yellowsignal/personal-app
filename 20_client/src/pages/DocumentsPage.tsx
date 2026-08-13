@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Camera, ChevronDown, Copy, Eye, EyeOff, FileDown, Maximize2, MoreHorizontal, Pencil, Plus, Star, Trash2, X } from "lucide-react";
+import { Camera, ChevronDown, Copy, Eye, EyeOff, FileDown, Maximize2, Plus, Star, Trash2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
 import OverlayScrim from "../components/OverlayScrim";
+import SwipeableRow from "../components/SwipeableRow";
+import ItemDetailSheet, { DetailRow } from "../components/ItemDetailSheet";
 import DocumentShowMode from "../components/DocumentShowMode";
 import { useLanguage } from "../i18n/LanguageContext";
 import {
@@ -68,7 +70,8 @@ export default function DocumentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<PublicDocument | null>(null);
-  const [menuId, setMenuId] = useState<number | null>(null);
+  const [swipeId, setSwipeId] = useState<number | null>(null);
+  const [detailDoc, setDetailDoc] = useState<PublicDocument | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<PublicDocument | null>(null);
 
   const [typeLabel, setTypeLabel] = useState("");
@@ -178,8 +181,14 @@ export default function DocumentsPage() {
     setPinnedIds(togglePinnedDocumentId(docId));
   }
 
+  function openDetail(doc: PublicDocument) {
+    setSwipeId(null);
+    setDetailDoc(doc);
+  }
+
   function openShowMode(doc: PublicDocument) {
-    setMenuId(null);
+    setSwipeId(null);
+    setDetailDoc(null);
     setShowModeDoc(doc);
   }
 
@@ -203,7 +212,8 @@ export default function DocumentsPage() {
 
   function openCreate() {
     resetForm();
-    setMenuId(null);
+    setSwipeId(null);
+    setDetailDoc(null);
     setShowCreate(true);
   }
 
@@ -226,7 +236,8 @@ export default function DocumentsPage() {
     setIsShared(doc.isShared);
     setCreateScanFront(null);
     setCreateScanBack(null);
-    setMenuId(null);
+    setSwipeId(null);
+    setDetailDoc(null);
     setShowCreate(true);
   }
 
@@ -604,6 +615,7 @@ export default function DocumentsPage() {
     try {
       await documentsApi.remove(token, confirmDelete.id);
       setConfirmDelete(null);
+      setDetailDoc(null);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("documents.deleteError"));
@@ -712,7 +724,8 @@ export default function DocumentsPage() {
               <p className="text-sm font-medium text-neutral-600">{t("documents.empty")}</p>
             </div>
           ) : (
-            groupedDocuments.map((group) => {
+            <>
+              {groupedDocuments.map((group) => {
               const collapsed = collapsedCategories.has(group.category);
               return (
                 <section key={group.category}>
@@ -733,184 +746,180 @@ export default function DocumentsPage() {
                   {!collapsed && (
                     <div className="mt-2 flex flex-col gap-3">
                       {group.items.map((d) => {
-              const dLeft = daysLeft(d.expiryDate);
-              const urgent = d.expiryDate !== null && dLeft <= 30;
-              const docRevealed = Boolean(revealedByDoc[d.id]);
-              const canManage = user?.id === d.userId;
-              return (
-                <div key={d.id} className="relative rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[11px] font-semibold text-neutral-400">{d.ownerName}</p>
-                      <p className="mt-0.5 text-sm font-bold text-neutral-900">
-                        {localizeDocumentTypeLabel(d.typeLabel, t)}
-                      </p>
-                      {d.memo && (
-                        <p className="mt-1 text-xs text-neutral-500">{d.memo}</p>
-                      )}
-                      {d.hasScan && (
-                        <p className="mt-0.5 text-[10px] font-medium text-indigo-500">
-                          {d.hasScanBack ? t("documents.scanBothSaved") : t("documents.scanFrontSaved")}
-                        </p>
-                      )}
+                        const dLeft = daysLeft(d.expiryDate);
+                        const urgent = d.expiryDate !== null && dLeft <= 30;
+                        const canManage = user?.id === d.userId;
+                        return (
+                          <SwipeableRow
+                            key={d.id}
+                            canDelete={canManage}
+                            deleteLabel={t("documents.deleteDocument")}
+                            actionOpen={swipeId === d.id}
+                            onActionOpenChange={(open) => setSwipeId(open ? d.id : null)}
+                            onPress={() => openDetail(d)}
+                            onLongPress={() => openDetail(d)}
+                            onDelete={() => {
+                              setSwipeId(null);
+                              setConfirmDelete(d);
+                            }}
+                          >
+                            <div className="p-4">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-[11px] font-semibold text-neutral-400">{d.ownerName}</p>
+                                  <p className="mt-0.5 text-sm font-bold text-neutral-900">
+                                    {localizeDocumentTypeLabel(d.typeLabel, t)}
+                                  </p>
+                                  {d.memo && (
+                                    <p className="mt-1 line-clamp-1 text-xs text-neutral-500">{d.memo}</p>
+                                  )}
+                                  {d.hasScan && (
+                                    <p className="mt-0.5 text-[10px] font-medium text-indigo-500">
+                                      {d.hasScanBack ? t("documents.scanBothSaved") : t("documents.scanFrontSaved")}
+                                    </p>
+                                  )}
+                                  {d.hasSecrets && (
+                                    <p className="mt-0.5 text-[10px] font-medium text-amber-600">
+                                      {t("documents.hasSecrets")}
+                                    </p>
+                                  )}
+                                  {d.fields.length > 0 && (
+                                    <p className="mt-0.5 text-[10px] text-neutral-400">
+                                      {t("documents.fieldCount", { n: d.fields.length })}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex shrink-0 items-center gap-1">
+                                  {d.expiryDate && (
+                                    <span
+                                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                        urgent ? "bg-rose-50 text-rose-500" : "bg-neutral-100 text-neutral-500"
+                                      }`}
+                                    >
+                                      D-{dLeft}
+                                    </span>
+                                  )}
+                                  <SharedBadge isShared={d.isShared} />
+                                  {d.hasScan && (
+                                    <button
+                                      type="button"
+                                      data-swipe-ignore
+                                      onClick={() => togglePin(d.id)}
+                                      className="rounded-full p-2 text-neutral-400 hover:bg-neutral-50"
+                                      aria-label={pinnedIds.includes(d.id) ? t("documents.unpin") : t("documents.pin")}
+                                    >
+                                      <Star
+                                        size={18}
+                                        className={pinnedIds.includes(d.id) ? "fill-amber-400 text-amber-400" : ""}
+                                      />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </SwipeableRow>
+                        );
+                      })}
                     </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      {d.hasScan && (
-                        <button
-                          type="button"
-                          onClick={() => togglePin(d.id)}
-                          className="rounded-full p-2 text-neutral-400 hover:bg-neutral-50"
-                          aria-label={pinnedIds.includes(d.id) ? t("documents.unpin") : t("documents.pin")}
-                        >
-                          <Star
-                            size={18}
-                            className={pinnedIds.includes(d.id) ? "fill-amber-400 text-amber-400" : ""}
-                          />
-                        </button>
-                      )}
-                      {d.hasSecrets && (
-                        <button
-                          type="button"
-                          onClick={() => void handleReveal(d)}
-                          disabled={revealBusyId === d.id}
-                          className="rounded-full p-2 text-neutral-400 hover:bg-neutral-50"
-                          aria-label={docRevealed ? t("documents.hideSecrets") : t("documents.revealSecrets")}
-                        >
-                          {revealBusyId === d.id ? (
-                            <span className="block h-[18px] w-[18px] animate-pulse rounded-full bg-neutral-200" />
-                          ) : docRevealed ? (
-                            <EyeOff size={18} />
-                          ) : (
-                            <Eye size={18} />
-                          )}
-                        </button>
-                      )}
-                      <SharedBadge isShared={d.isShared} />
-                      {(canManage || d.hasScan) && (
-                        <button
-                          type="button"
-                          aria-label={t("documents.more")}
-                          onClick={() => setMenuId((id) => (id === d.id ? null : d.id))}
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-50"
-                        >
-                          <MoreHorizontal size={18} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {menuId === d.id && (
-                    <>
-                      <button
-                        type="button"
-                        className="fixed inset-0 z-40"
-                        aria-label="close menu"
-                        onClick={() => setMenuId(null)}
-                      />
-                      <div className="absolute right-3 top-12 z-50 min-w-[168px] overflow-hidden rounded-xl bg-white py-1 shadow-lg ring-1 ring-black/10">
-                        {d.hasScan && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMenuId(null);
-                              openShowMode(d);
-                            }}
-                            disabled={scanBusyId === d.id}
-                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
-                          >
-                            <Maximize2 size={14} />{" "}
-                            {d.category === "medical"
-                              ? t("documents.showAtHospital")
-                              : t("documents.showCard")}
-                          </button>
-                        )}
-                        {d.hasScan && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMenuId(null);
-                              openExportOptions(d);
-                            }}
-                            disabled={scanBusyId === d.id}
-                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
-                          >
-                            <FileDown size={14} /> {t("documents.openPdf")}
-                          </button>
-                        )}
-                        {canManage && d.hasScan && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMenuId(null);
-                              openScanWizard({ kind: "document", docId: d.id });
-                            }}
-                            disabled={scanBusyId === d.id}
-                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
-                          >
-                            <Camera size={14} /> {t("documents.rescan")}
-                          </button>
-                        )}
-                        {canManage && !d.hasScan && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMenuId(null);
-                              openScanWizard({ kind: "document", docId: d.id });
-                            }}
-                            disabled={scanBusyId === d.id}
-                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
-                          >
-                            <Camera size={14} />{" "}
-                            {scanBusyId === d.id ? t("documents.scanUploading") : t("documents.captureScanBoth")}
-                          </button>
-                        )}
-                        {canManage && (
-                          <>
-                            <div className="my-1 border-t border-neutral-100" />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setMenuId(null);
-                                openEdit(d);
-                              }}
-                              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
-                            >
-                              <Pencil size={14} /> {t("documents.editDocument")}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setMenuId(null);
-                                setConfirmDelete(d);
-                              }}
-                              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-rose-600 hover:bg-rose-50"
-                            >
-                              <Trash2 size={14} /> {t("documents.deleteDocument")}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </>
                   )}
+                </section>
+              );
+            })}
+              <p className="text-center text-[11px] text-neutral-400">{t("common.rowHint")}</p>
+            </>
+          )}
+        </div>
+      </div>
 
-                  <div className="mt-3 space-y-2">
-                    {d.fields.map((field) => {
-                      const display = displayFieldValue(d.id, field);
-                      const copyKey = `${d.id}-${field.id}`;
-                      const showCopy = field.isSecret ? isFieldRevealed(d.id, field.id) && display !== "—" : display !== "—";
-                      return (
-                        <div key={field.id} className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-[11px] font-medium text-neutral-400">
-                              {localizeDocumentFieldLabel(field.label, t)}
-                            </p>
-                            <p className="mt-0.5 break-all font-mono text-xs text-neutral-600">{display}</p>
-                          </div>
+      {detailDoc && (() => {
+        const d = detailDoc;
+        const canManage = user?.id === d.userId;
+        const docRevealed = Boolean(revealedByDoc[d.id]);
+        const dLeft = daysLeft(d.expiryDate);
+        const urgent = d.expiryDate !== null && dLeft <= 30;
+        return (
+          <ItemDetailSheet
+            title={localizeDocumentTypeLabel(d.typeLabel, t)}
+            onClose={() => setDetailDoc(null)}
+            closeLabel={t("documents.cancel")}
+            editLabel={t("documents.editDocument")}
+            deleteLabel={t("documents.deleteDocument")}
+            canManage={canManage}
+            onEdit={() => openEdit(d)}
+            onDelete={() => {
+              setConfirmDelete(d);
+              setDetailDoc(null);
+            }}
+          >
+            <DetailRow label={t("documents.fieldCategory")}>
+              {t(`documents.category.${d.category}`)}
+            </DetailRow>
+            {d.memo ? (
+              <DetailRow label={t("documents.fieldMemo")}>{d.memo}</DetailRow>
+            ) : null}
+            {d.expiryDate ? (
+              <DetailRow label={t("documents.hasExpiry")}>
+                <span className="inline-flex items-center gap-2">
+                  {t("documents.expiryLabel", { date: d.expiryDate })}
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                      urgent ? "bg-rose-50 text-rose-500" : "bg-neutral-100 text-neutral-500"
+                    }`}
+                  >
+                    D-{dLeft}
+                  </span>
+                </span>
+              </DetailRow>
+            ) : null}
+            <DetailRow label={t("documents.shareWithFamily")}>
+              {d.isShared ? t("scope.family") : t("scope.personal")}
+              {` · ${d.ownerName}`}
+            </DetailRow>
+
+            {d.fields.length > 0 && (
+              <div className="mt-4 border-t border-neutral-100 pt-2">
+                <div className="flex items-center justify-between gap-2 py-2">
+                  <p className="text-xs font-semibold text-neutral-500">{t("documents.fieldItems")}</p>
+                  {d.hasSecrets && (
+                    <button
+                      type="button"
+                      onClick={() => void handleReveal(d)}
+                      disabled={revealBusyId === d.id}
+                      className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 disabled:opacity-50"
+                    >
+                      {revealBusyId === d.id ? (
+                        <span className="block h-3.5 w-3.5 animate-pulse rounded-full bg-neutral-200" />
+                      ) : docRevealed ? (
+                        <EyeOff size={14} />
+                      ) : (
+                        <Eye size={14} />
+                      )}
+                      {docRevealed ? t("documents.hideSecrets") : t("documents.revealSecrets")}
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {d.fields.map((field) => {
+                    const display = displayFieldValue(d.id, field);
+                    const copyKey = `${d.id}-${field.id}`;
+                    const showCopy =
+                      field.isSecret
+                        ? isFieldRevealed(d.id, field.id) && display !== "—"
+                        : display !== "—";
+                    return (
+                      <div key={field.id} className="flex items-start justify-between gap-2 rounded-xl bg-neutral-50 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-medium text-neutral-400">
+                            {localizeDocumentFieldLabel(field.label, t)}
+                          </p>
+                          <p className="mt-0.5 break-all font-mono text-xs text-neutral-600">{display}</p>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
                           {showCopy && (
                             <button
                               type="button"
                               onClick={() => void handleCopy(display, copyKey)}
-                              className="shrink-0 rounded-full p-1.5 text-neutral-400 hover:bg-neutral-50"
+                              className="rounded-full p-1.5 text-neutral-400 hover:bg-white"
                               aria-label={t("documents.copy")}
                             >
                               <Copy size={14} />
@@ -920,49 +929,68 @@ export default function DocumentsPage() {
                             <span className="text-[10px] text-indigo-500">{t("documents.copied")}</span>
                           )}
                         </div>
-                      );
-                    })}
-                  </div>
-
-                  {d.expiryDate && (
-                    <div className="mt-3 flex items-center justify-between border-t border-neutral-100 pt-3">
-                      <span className="text-xs text-neutral-400">
-                        {t("documents.expiryLabel", { date: d.expiryDate })}
-                      </span>
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-xs font-bold ${
-                          urgent ? "bg-rose-50 text-rose-500" : "bg-neutral-100 text-neutral-500"
-                        }`}
-                      >
-                        D-{dLeft}
-                      </span>
-                    </div>
-                  )}
-
-                  {d.hasScan && d.category === "medical" && (
-                    <div className="mt-3 border-t border-neutral-100 pt-3">
-                      <button
-                        type="button"
-                        onClick={() => openShowMode(d)}
-                        disabled={scanBusyId === d.id}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
-                      >
-                        <Maximize2 size={14} />
-                        {t("documents.showAtHospital")}
-                      </button>
-                    </div>
-                  )}
+                      </div>
+                    );
+                  })}
                 </div>
-                      );
-                      })}
-                    </div>
-                  )}
-                </section>
-              );
-            })
-          )}
-        </div>
-      </div>
+              </div>
+            )}
+
+            {d.hasScan && (
+              <button
+                type="button"
+                onClick={() => togglePin(d.id)}
+                className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl border border-neutral-200 py-2.5 text-sm font-semibold text-neutral-700"
+              >
+                <Star
+                  size={14}
+                  className={pinnedIds.includes(d.id) ? "fill-amber-400 text-amber-400" : ""}
+                />
+                {pinnedIds.includes(d.id) ? t("documents.unpin") : t("documents.pin")}
+              </button>
+            )}
+            {d.hasScan && (
+              <button
+                type="button"
+                onClick={() => openShowMode(d)}
+                disabled={scanBusyId === d.id}
+                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                <Maximize2 size={14} />
+                {d.category === "medical" ? t("documents.showAtHospital") : t("documents.showCard")}
+              </button>
+            )}
+            {d.hasScan && (
+              <button
+                type="button"
+                onClick={() => openExportOptions(d)}
+                disabled={scanBusyId === d.id}
+                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-neutral-100 py-2.5 text-sm font-semibold text-neutral-700 disabled:opacity-50"
+              >
+                <FileDown size={14} /> {t("documents.openPdf")}
+              </button>
+            )}
+            {canManage && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDetailDoc(null);
+                  openScanWizard({ kind: "document", docId: d.id });
+                }}
+                disabled={scanBusyId === d.id}
+                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-neutral-200 py-2.5 text-sm font-semibold text-neutral-700 disabled:opacity-50"
+              >
+                <Camera size={14} />
+                {d.hasScan
+                  ? t("documents.rescan")
+                  : scanBusyId === d.id
+                    ? t("documents.scanUploading")
+                    : t("documents.captureScanBoth")}
+              </button>
+            )}
+          </ItemDetailSheet>
+        );
+      })()}
 
       {showCreate && (
         <OverlayScrim

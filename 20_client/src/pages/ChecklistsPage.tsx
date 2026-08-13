@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { ArrowLeft, Check, ListChecks, Pencil, Plus, Share2, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, ListChecks, Plus, Share2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
 import OverlayScrim from "../components/OverlayScrim";
+import SwipeableRow from "../components/SwipeableRow";
+import ItemDetailSheet, { DetailRow } from "../components/ItemDetailSheet";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -59,8 +61,16 @@ export default function ChecklistsPage() {
   const [editingItem, setEditingItem] = useState<PublicChecklistItem | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [busy, setBusy] = useState(false);
-  // UX: completed "root-only" subtrees are collapsed by default.
   const [showCompletedRoots, setShowCompletedRoots] = useState(false);
+  const [swipeListId, setSwipeListId] = useState<number | null>(null);
+  const [swipeItemId, setSwipeItemId] = useState<number | null>(null);
+  const [listMeta, setListMeta] = useState<PublicChecklist | null>(null);
+  const [itemMeta, setItemMeta] = useState<TreeNode | null>(null);
+  const [confirmDeleteList, setConfirmDeleteList] = useState<PublicChecklist | PublicChecklistDetail | null>(null);
+  const [confirmDeleteItem, setConfirmDeleteItem] = useState<PublicChecklistItem | null>(null);
+  const [editingList, setEditingList] = useState<PublicChecklist | PublicChecklistDetail | null>(null);
+  const [listTitleDraft, setListTitleDraft] = useState("");
+  const [listSharedDraft, setListSharedDraft] = useState(false);
 
   const loadLists = useCallback(async () => {
     if (!token) return;
@@ -86,6 +96,8 @@ export default function ChecklistsPage() {
         setDetail(data);
         setActiveId(id);
         setShowCompletedRoots(false);
+        setListMeta(null);
+        setSwipeListId(null);
       } catch (err) {
         setError(err instanceof ApiError ? err.message : t("checklists.errorLoad"));
       }
@@ -129,6 +141,26 @@ export default function ChecklistsPage() {
       setNewShared(false);
       await loadLists();
       await loadDetail(created.id);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("checklists.errorSave"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveListEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!token || !editingList || !listTitleDraft.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await checklistsApi.update(token, editingList.id, {
+        title: listTitleDraft.trim(),
+        isShared: listSharedDraft,
+      });
+      setEditingList(null);
+      await loadLists();
+      if (activeId === editingList.id) await loadDetail(editingList.id);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("checklists.errorSave"));
     } finally {
@@ -194,18 +226,19 @@ export default function ChecklistsPage() {
     }
   }
 
-  async function handleDeleteItem(item: PublicChecklistItem) {
-    if (!token || !activeId || busy) return;
-    if (!window.confirm(t("checklists.confirmDeleteItem"))) return;
+  async function handleDeleteItemConfirmed() {
+    if (!token || !activeId || !confirmDeleteItem || busy) return;
     setBusy(true);
     setError(null);
     try {
-      await checklistsApi.removeItem(token, activeId, item.id);
-      if (parentForAdd?.id === item.id) setParentForAdd(null);
-      if (editingItem?.id === item.id) {
+      await checklistsApi.removeItem(token, activeId, confirmDeleteItem.id);
+      if (parentForAdd?.id === confirmDeleteItem.id) setParentForAdd(null);
+      if (editingItem?.id === confirmDeleteItem.id) {
         setEditingItem(null);
         setEditDraft("");
       }
+      setConfirmDeleteItem(null);
+      setItemMeta(null);
       await loadDetail(activeId);
       await loadLists();
     } catch (err) {
@@ -234,14 +267,17 @@ export default function ChecklistsPage() {
     }
   }
 
-  async function handleDeleteList() {
-    if (!token || !activeId || busy) return;
-    if (!window.confirm(t("checklists.confirmDeleteList"))) return;
+  async function handleDeleteListConfirmed() {
+    if (!token || !confirmDeleteList || busy) return;
     setBusy(true);
     try {
-      await checklistsApi.remove(token, activeId);
-      setActiveId(null);
-      setDetail(null);
+      await checklistsApi.remove(token, confirmDeleteList.id);
+      if (activeId === confirmDeleteList.id) {
+        setActiveId(null);
+        setDetail(null);
+      }
+      setConfirmDeleteList(null);
+      setListMeta(null);
       await loadLists();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("checklists.errorSave"));
@@ -250,69 +286,56 @@ export default function ChecklistsPage() {
     }
   }
 
+  function openEditList(list: PublicChecklist | PublicChecklistDetail) {
+    setEditingList(list);
+    setListTitleDraft(list.title);
+    setListSharedDraft(list.isShared);
+    setListMeta(null);
+  }
+
   function renderNode(node: TreeNode, depth: number) {
     const done = Boolean(node.completedAt);
     return (
-      <li key={node.id}>
-        <div
-          className="group flex items-stretch gap-0.5"
-          style={{ paddingLeft: `${depth * 16}px` }}
-        >
-          <button
-            type="button"
-            onClick={() => void handleToggleComplete(node)}
-            disabled={busy}
-            className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-3 text-left transition active:bg-neutral-50"
-            aria-label={done ? t("checklists.markIncomplete") : t("checklists.markComplete")}
-          >
-            <span
-              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${
-                done
-                  ? "border-teal-500 bg-teal-500 text-white"
-                  : "border-neutral-300 bg-white text-transparent"
-              }`}
-            >
-              <Check size={12} strokeWidth={3} />
-            </span>
-            <span
-              className={`min-w-0 flex-1 text-sm font-medium ${
-                done ? "text-neutral-400 line-through" : "text-neutral-800"
-              }`}
-            >
-              {node.title}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setEditingItem(node);
-              setEditDraft(node.title);
+      <li key={node.id} className={depth > 0 ? "mt-1" : undefined}>
+        <div style={{ paddingLeft: `${depth * 12}px` }}>
+          <SwipeableRow
+            canDelete
+            deleteLabel={t("checklists.deleteItem")}
+            actionOpen={swipeItemId === node.id}
+            onActionOpenChange={(open) => setSwipeItemId(open ? node.id : null)}
+            onPress={() => void handleToggleComplete(node)}
+            onLongPress={() => {
+              setSwipeItemId(null);
+              setItemMeta(node);
             }}
-            disabled={busy}
-            className="flex h-11 w-9 shrink-0 items-center justify-center rounded-xl text-neutral-400 active:bg-neutral-100"
-            aria-label={t("checklists.editItem")}
+            onDelete={() => {
+              setSwipeItemId(null);
+              setConfirmDeleteItem(node);
+            }}
+            className="rounded-xl"
           >
-            <Pencil size={15} />
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleDeleteItem(node)}
-            disabled={busy}
-            className="flex h-11 w-9 shrink-0 items-center justify-center rounded-xl text-rose-400 active:bg-rose-50"
-            aria-label={t("checklists.deleteItem")}
-          >
-            <Trash2 size={15} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setParentForAdd(node)}
-            disabled={busy}
-            className="flex h-11 w-9 shrink-0 items-center justify-center rounded-xl text-indigo-500 active:bg-indigo-50"
-            aria-label={t("checklists.addChild")}
-            title={t("checklists.addChild")}
-          >
-            <Plus size={16} />
-          </button>
+            <div className="flex items-center gap-3 px-3 py-3">
+              <span
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 ${
+                  done
+                    ? "border-teal-500 bg-teal-500 text-white"
+                    : "border-neutral-300 bg-white text-transparent"
+                }`}
+              >
+                <Check size={12} strokeWidth={3} />
+              </span>
+              <span
+                className={`min-w-0 flex-1 text-sm font-medium ${
+                  done ? "text-neutral-400 line-through" : "text-neutral-800"
+                }`}
+              >
+                {node.title}
+              </span>
+              {node.children.length > 0 && (
+                <span className="text-[10px] font-semibold text-neutral-400">{node.children.length}</span>
+              )}
+            </div>
+          </SwipeableRow>
         </div>
         {node.children.length > 0 && (
           <ul className="mt-0.5">{node.children.map((c) => renderNode(c, depth + 1))}</ul>
@@ -328,32 +351,22 @@ export default function ChecklistsPage() {
           title={detail.title}
           subtitle={t("checklists.detailSubtitle")}
           right={
-            <div className="flex items-center gap-1">
-              {detail.userId === user?.id && (
-                <button
-                  type="button"
-                  onClick={() => void handleDeleteList()}
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-rose-500 active:bg-rose-50"
-                  aria-label={t("checklists.deleteList")}
-                >
-                  <Trash2 size={18} />
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveId(null);
-                  setDetail(null);
-                  setParentForAdd(null);
-                  setItemDraft("");
-                  setEditingItem(null);
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-neutral-600"
-                aria-label={t("checklists.back")}
-              >
-                <ArrowLeft size={18} />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveId(null);
+                setDetail(null);
+                setParentForAdd(null);
+                setItemDraft("");
+                setEditingItem(null);
+                setItemMeta(null);
+                setSwipeItemId(null);
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-neutral-600"
+              aria-label={t("checklists.back")}
+            >
+              <ArrowLeft size={18} />
+            </button>
           }
         />
 
@@ -377,7 +390,7 @@ export default function ChecklistsPage() {
               <p className="mt-2 text-sm text-neutral-500">{t("checklists.emptyItems")}</p>
             </div>
           ) : (
-            <ul className="rounded-2xl bg-white py-1 shadow-sm ring-1 ring-black/5">
+            <ul className="flex flex-col gap-2">
               {visibleRoots.map((n) => renderNode(n, 0))}
 
               {!showCompletedRoots && completedRootCount > 0 && (
@@ -385,7 +398,7 @@ export default function ChecklistsPage() {
                   <button
                     type="button"
                     onClick={() => setShowCompletedRoots(true)}
-                    className="mt-1 flex w-full items-center justify-center gap-2 px-4 py-3 text-sm font-semibold text-indigo-600 active:bg-indigo-50"
+                    className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-indigo-600 shadow-sm ring-1 ring-black/5 active:bg-indigo-50"
                   >
                     {t("checklists.showCompletedRoots", { n: completedRootCount })}
                   </button>
@@ -433,6 +446,40 @@ export default function ChecklistsPage() {
           </form>
         </div>
 
+        {itemMeta && (
+          <ItemDetailSheet
+            title={itemMeta.title}
+            onClose={() => setItemMeta(null)}
+            closeLabel={t("checklists.cancel")}
+            editLabel={t("checklists.editItem")}
+            deleteLabel={t("checklists.deleteItem")}
+            canManage
+            onEdit={() => {
+              setEditingItem(itemMeta);
+              setEditDraft(itemMeta.title);
+              setItemMeta(null);
+            }}
+            onDelete={() => {
+              setConfirmDeleteItem(itemMeta);
+              setItemMeta(null);
+            }}
+          >
+            <DetailRow label={t("checklists.itemStatus")}>
+              {itemMeta.completedAt ? t("checklists.statusDone") : t("checklists.statusTodo")}
+            </DetailRow>
+            <button
+              type="button"
+              onClick={() => {
+                setParentForAdd(itemMeta);
+                setItemMeta(null);
+              }}
+              className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl bg-indigo-50 py-2.5 text-sm font-semibold text-indigo-600"
+            >
+              <Plus size={16} /> {t("checklists.addChild")}
+            </button>
+          </ItemDetailSheet>
+        )}
+
         {editingItem && (
           <OverlayScrim
             className="fixed inset-0 z-30 flex items-end justify-center bg-black/40 sm:items-center"
@@ -473,6 +520,36 @@ export default function ChecklistsPage() {
                 {t("checklists.save")}
               </button>
             </form>
+          </OverlayScrim>
+        )}
+
+        {confirmDeleteItem && (
+          <OverlayScrim
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            onDismiss={() => setConfirmDeleteItem(null)}
+            label={t("checklists.cancel")}
+          >
+            <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+              <h2 className="text-base font-bold text-neutral-900">{t("checklists.deleteItem")}</h2>
+              <p className="mt-2 text-sm text-neutral-500">{t("checklists.confirmDeleteItem")}</p>
+              <div className="mt-5 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteItem(null)}
+                  className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-semibold text-neutral-600"
+                >
+                  {t("checklists.cancel")}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleDeleteItemConfirmed()}
+                  className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {t("checklists.deleteItem")}
+                </button>
+              </div>
+            </div>
           </OverlayScrim>
         )}
       </div>
@@ -519,30 +596,77 @@ export default function ChecklistsPage() {
           </div>
         ) : (
           <ul className="mt-4 flex flex-col gap-3">
-            {lists.map((list) => (
-              <li key={list.id}>
-                <button
-                  type="button"
-                  onClick={() => void loadDetail(list.id)}
-                  className="flex w-full items-center gap-3 rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-black/5 active:bg-neutral-50"
-                >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-50">
-                    <ListChecks size={18} className="text-teal-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-neutral-900">{list.title}</p>
-                    <p className="mt-0.5 text-[11px] text-neutral-400">
-                      {list.ownerName} · {t("checklists.itemCount", { n: list.itemCount })} ·{" "}
-                      {t("checklists.completedCount", { n: list.completedCount })}
-                    </p>
-                  </div>
-                  <SharedBadge isShared={list.isShared} />
-                </button>
-              </li>
-            ))}
+            {lists.map((list) => {
+              const canManage = user?.id === list.userId;
+              return (
+                <li key={list.id}>
+                  <SwipeableRow
+                    canDelete={canManage}
+                    deleteLabel={t("checklists.deleteList")}
+                    actionOpen={swipeListId === list.id}
+                    onActionOpenChange={(open) => setSwipeListId(open ? list.id : null)}
+                    onPress={() => void loadDetail(list.id)}
+                    onLongPress={() => {
+                      setSwipeListId(null);
+                      setListMeta(list);
+                    }}
+                    onDelete={() => {
+                      setSwipeListId(null);
+                      setConfirmDeleteList(list);
+                    }}
+                  >
+                    <div className="flex items-center gap-3 p-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-50">
+                        <ListChecks size={18} className="text-teal-600" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold text-neutral-900">{list.title}</p>
+                        <p className="mt-0.5 text-[11px] text-neutral-400">
+                          {list.ownerName} · {t("checklists.itemCount", { n: list.itemCount })} ·{" "}
+                          {t("checklists.completedCount", { n: list.completedCount })}
+                        </p>
+                      </div>
+                      <SharedBadge isShared={list.isShared} />
+                    </div>
+                  </SwipeableRow>
+                </li>
+              );
+            })}
+            <p className="text-center text-[11px] text-neutral-400">{t("common.rowHint")}</p>
           </ul>
         )}
       </div>
+
+      {listMeta && (
+        <ItemDetailSheet
+          title={listMeta.title}
+          onClose={() => setListMeta(null)}
+          closeLabel={t("checklists.cancel")}
+          editLabel={t("checklists.editList")}
+          deleteLabel={t("checklists.deleteList")}
+          canManage={user?.id === listMeta.userId}
+          onEdit={() => openEditList(listMeta)}
+          onDelete={() => {
+            setConfirmDeleteList(listMeta);
+            setListMeta(null);
+          }}
+        >
+          <DetailRow label={t("checklists.itemCount", { n: listMeta.itemCount })}>
+            {t("checklists.completedCount", { n: listMeta.completedCount })}
+          </DetailRow>
+          <DetailRow label={t("checklists.shareWithFamily")}>
+            {listMeta.isShared ? t("scope.family") : t("scope.personal")}
+            {` · ${listMeta.ownerName}`}
+          </DetailRow>
+          <button
+            type="button"
+            onClick={() => void loadDetail(listMeta.id)}
+            className="mt-4 w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white"
+          >
+            {t("checklists.openList")}
+          </button>
+        </ItemDetailSheet>
+      )}
 
       {showCreate && (
         <OverlayScrim
@@ -587,6 +711,81 @@ export default function ChecklistsPage() {
               {t("checklists.create")}
             </button>
           </form>
+        </OverlayScrim>
+      )}
+
+      {editingList && (
+        <OverlayScrim
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center"
+          onDismiss={() => setEditingList(null)}
+          label={t("checklists.cancel")}
+        >
+          <form
+            onSubmit={(e) => void handleSaveListEdit(e)}
+            className="relative w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-bold text-neutral-900">{t("checklists.editList")}</h2>
+              <button type="button" onClick={() => setEditingList(null)} aria-label={t("checklists.cancel")}>
+                <X size={20} className="text-neutral-400" />
+              </button>
+            </div>
+            <input
+              value={listTitleDraft}
+              onChange={(e) => setListTitleDraft(e.target.value)}
+              className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+              autoFocus
+            />
+            {family && (
+              <label className="mt-3 flex items-center gap-2 text-sm text-neutral-700">
+                <input
+                  type="checkbox"
+                  checked={listSharedDraft}
+                  onChange={(e) => setListSharedDraft(e.target.checked)}
+                  className="rounded border-neutral-300"
+                />
+                <Share2 size={14} className="text-indigo-500" />
+                {t("checklists.shareWithFamily")}
+              </label>
+            )}
+            <button
+              type="submit"
+              disabled={busy || !listTitleDraft.trim()}
+              className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white disabled:opacity-40"
+            >
+              {t("checklists.save")}
+            </button>
+          </form>
+        </OverlayScrim>
+      )}
+
+      {confirmDeleteList && (
+        <OverlayScrim
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onDismiss={() => setConfirmDeleteList(null)}
+          label={t("checklists.cancel")}
+        >
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+            <h2 className="text-base font-bold text-neutral-900">{t("checklists.deleteList")}</h2>
+            <p className="mt-2 text-sm text-neutral-500">{t("checklists.confirmDeleteList")}</p>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteList(null)}
+                className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-semibold text-neutral-600"
+              >
+                {t("checklists.cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void handleDeleteListConfirmed()}
+                className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {t("checklists.deleteList")}
+              </button>
+            </div>
+          </div>
         </OverlayScrim>
       )}
     </div>

@@ -9,12 +9,15 @@ import {
   type PointerEvent as ReactPointerEvent,
   type TransitionEvent as ReactTransitionEvent,
 } from "react";
-import { Bell, ChevronDown, ChevronLeft, ChevronRight, Plus, Repeat, Trash2, X } from "lucide-react";
+import { Bell, ChevronDown, ChevronLeft, ChevronRight, Plus, Repeat, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import YearMonthWheelPicker from "../components/YearMonthWheelPicker";
 import OverlayScrim from "../components/OverlayScrim";
+import SwipeableRow from "../components/SwipeableRow";
+import ItemDetailSheet, { DetailRow } from "../components/ItemDetailSheet";
 import RecurrencePicker, {
+  draftFromRecurrence,
   emptyRecurrenceDraft,
   formatRecurrenceLabel,
   recurrenceFromDraft,
@@ -307,6 +310,10 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<PublicCalendarEvent | null>(null);
+  const [detailEvent, setDetailEvent] = useState<PublicCalendarEvent | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<PublicCalendarEvent | null>(null);
+  const [swipeId, setSwipeId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [memo, setMemo] = useState("");
   const [eventDate, setEventDate] = useState(todayKey());
@@ -535,6 +542,9 @@ export default function CalendarPage() {
 
   function openCreate(date?: string) {
     const start = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : selectedDate;
+    setEditingEvent(null);
+    setDetailEvent(null);
+    setSwipeId(null);
     setTitle("");
     setMemo("");
     setEventDate(start);
@@ -546,6 +556,38 @@ export default function CalendarPage() {
     setRepeatDraft(emptyRecurrenceDraft(start));
     setReminderMinutes(60);
     setShowCreate(true);
+  }
+
+  function openDetail(ev: PublicCalendarEvent) {
+    setSwipeId(null);
+    setDetailEvent(ev);
+  }
+
+  function openEdit(ev: PublicCalendarEvent) {
+    if (!ev.editable || user?.id !== ev.userId) return;
+    const cat =
+      ev.category === "family" || ev.category === "holiday" || ev.category === "personal"
+        ? ev.category
+        : "personal";
+    setEditingEvent(ev);
+    setDetailEvent(null);
+    setSwipeId(null);
+    setTitle(ev.title);
+    setMemo(ev.description ?? "");
+    setEventDate(ev.date);
+    setEventEndDate(ev.endDate || ev.date);
+    setEventTime(ev.time ?? "");
+    setEventEndTime(ev.endTime ?? "");
+    setEventCategory(cat);
+    setIsShared(ev.isShared);
+    setRepeatDraft(draftFromRecurrence(ev.recurrence, ev.date));
+    setReminderMinutes(ev.reminderMinutesBefore ?? null);
+    setShowCreate(true);
+  }
+
+  function closeForm() {
+    setShowCreate(false);
+    setEditingEvent(null);
   }
 
   function handleDayTap(key: string) {
@@ -562,29 +604,35 @@ export default function CalendarPage() {
     setSelectedDate(key);
   }
 
-  async function handleCreate(e: FormEvent) {
+  async function handleSaveEvent(e: FormEvent) {
     e.preventDefault();
     if (!token || !title.trim()) return;
     setSubmitting(true);
     setError(null);
+    const payload = {
+      title: title.trim(),
+      description: memo.trim() || null,
+      date: eventDate,
+      endDate: eventEndDate || eventDate,
+      time: eventTime || null,
+      endTime: eventEndTime || null,
+      isAllDay: !eventTime && !eventEndTime,
+      category: eventCategory,
+      isShared: isShared || eventCategory === "family" || eventCategory === "holiday",
+      recurrence: recurrenceFromDraft(repeatDraft, eventDate),
+      reminderMinutesBefore: reminderMinutes,
+    };
     try {
-      await calendarApi.create(token, {
-        title: title.trim(),
-        description: memo.trim() || null,
-        date: eventDate,
-        endDate: eventEndDate || eventDate,
-        time: eventTime || null,
-        endTime: eventEndTime || null,
-        isAllDay: !eventTime && !eventEndTime,
-        category: eventCategory,
-        isShared: isShared || eventCategory === "family" || eventCategory === "holiday",
-        recurrence: recurrenceFromDraft(repeatDraft, eventDate),
-        reminderMinutesBefore: reminderMinutes,
-      });
+      if (editingEvent) {
+        const id = editingEvent.seriesId ?? editingEvent.id.split(":")[0] ?? editingEvent.id;
+        await calendarApi.update(token, id, payload);
+      } else {
+        await calendarApi.create(token, payload);
+      }
       if (reminderMinutes != null) {
         void enableHomeScreenPush(token);
       }
-      setShowCreate(false);
+      closeForm();
       await load();
       setSelectedDate(eventDate);
     } catch (err) {
@@ -594,15 +642,34 @@ export default function CalendarPage() {
     }
   }
 
-  async function handleDelete(ev: PublicCalendarEvent) {
-    if (!token || !ev.editable) return;
+  async function handleDeleteConfirmed() {
+    if (!token || !confirmDelete || !confirmDelete.editable) return;
+    setSubmitting(true);
     setError(null);
     try {
-      await calendarApi.remove(token, ev.seriesId ?? ev.id.split(":")[0] ?? ev.id);
+      await calendarApi.remove(
+        token,
+        confirmDelete.seriesId ?? confirmDelete.id.split(":")[0] ?? confirmDelete.id,
+      );
+      setConfirmDelete(null);
+      setDetailEvent(null);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("calendar.errorDelete"));
+    } finally {
+      setSubmitting(false);
     }
+  }
+
+  function eventTimeLabel(ev: PublicCalendarEvent): string {
+    if (ev.endDate && ev.endDate !== ev.date) {
+      return `${ev.date.slice(5).replace("-", "/")} ~ ${ev.endDate.slice(5).replace("-", "/")}`;
+    }
+    if (ev.time) {
+      if (ev.endTime && ev.endTime !== ev.time) return `${ev.time} ~ ${ev.endTime}`;
+      return ev.time;
+    }
+    return t("calendar.allDay");
   }
 
   return (
@@ -747,69 +814,106 @@ export default function CalendarPage() {
                 {t("calendar.noEvents")}
               </p>
             )}
-            {selectedEvents.map((ev) => (
-              <div
-                key={ev.id}
-                className="flex items-start gap-3 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-black/5"
-              >
-                <span
-                  className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: categoryColor[ev.category] }}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-neutral-800">{ev.title}</p>
-                  <p className="text-[11px] text-neutral-400">
-                    {ev.endDate && ev.endDate !== ev.date
-                      ? `${ev.date.slice(5).replace("-", "/")} ~ ${ev.endDate.slice(5).replace("-", "/")}`
-                      : ev.time
-                        ? ev.endTime && ev.endTime !== ev.time
-                          ? `${ev.time} ~ ${ev.endTime}`
-                          : ev.time
-                        : t("calendar.allDay")}{" "}
-                    · {t(`category.${ev.category}`)}
-                    {ev.isShared ? ` · ${ev.ownerName}` : ""}
-                    {ev.reminderMinutesBefore != null ? ` · ${reminderLabel(ev.reminderMinutesBefore, t)}` : ""}
-                  </p>
-                  {ev.recurrence ? (
-                    <p className="mt-0.5 flex items-center gap-1 text-[11px] text-indigo-500">
-                      <Repeat size={11} />
-                      {formatRecurrenceLabel(ev.recurrence, ev.date, t, weekdays)}
-                    </p>
-                  ) : null}
-                  {ev.description ? (
-                    <p className="mt-1 whitespace-pre-wrap break-words text-xs text-neutral-500">{ev.description}</p>
-                  ) : null}
-                </div>
-                {(ev.category === "document_expiry" ||
-                  ev.category === "subscription_billing" ||
-                  ev.category === "recurring_deposit" ||
-                  ev.reminderMinutesBefore != null) && (
-                  <Bell
-                    size={14}
-                    className={
-                      ev.category === "document_expiry" ||
+            {selectedEvents.map((ev) => {
+              const canManage = Boolean(ev.editable && user?.id === ev.userId);
+              return (
+                <SwipeableRow
+                  key={ev.id}
+                  canDelete={canManage}
+                  deleteLabel={t("calendar.deleteEvent")}
+                  actionOpen={swipeId === ev.id}
+                  onActionOpenChange={(open) => setSwipeId(open ? ev.id : null)}
+                  onPress={() => openDetail(ev)}
+                  onLongPress={() => openDetail(ev)}
+                  onDelete={() => {
+                    setSwipeId(null);
+                    setConfirmDelete(ev);
+                  }}
+                >
+                  <div className="flex items-start gap-3 px-4 py-3">
+                    <span
+                      className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: categoryColor[ev.category] }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-neutral-800">{ev.title}</p>
+                      <p className="text-[11px] text-neutral-400">
+                        {eventTimeLabel(ev)} · {t(`category.${ev.category}`)}
+                        {ev.isShared ? ` · ${ev.ownerName}` : ""}
+                        {ev.reminderMinutesBefore != null
+                          ? ` · ${reminderLabel(ev.reminderMinutesBefore, t)}`
+                          : ""}
+                      </p>
+                      {ev.recurrence ? (
+                        <p className="mt-0.5 flex items-center gap-1 text-[11px] text-indigo-500">
+                          <Repeat size={11} />
+                          {formatRecurrenceLabel(ev.recurrence, ev.date, t, weekdays)}
+                        </p>
+                      ) : null}
+                    </div>
+                    {(ev.category === "document_expiry" ||
                       ev.category === "subscription_billing" ||
-                      ev.category === "recurring_deposit"
-                        ? "text-rose-400"
-                        : "text-amber-500"
-                    }
-                  />
-                )}
-                {ev.editable && user?.id === ev.userId && (
-                  <button
-                    type="button"
-                    onClick={() => void handleDelete(ev)}
-                    className="rounded-full p-2 text-neutral-400 hover:bg-neutral-50"
-                    aria-label={t("calendar.deleteEvent")}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
-            ))}
+                      ev.category === "recurring_deposit" ||
+                      ev.reminderMinutesBefore != null) && (
+                      <Bell
+                        size={14}
+                        className={
+                          ev.category === "document_expiry" ||
+                          ev.category === "subscription_billing" ||
+                          ev.category === "recurring_deposit"
+                            ? "text-rose-400"
+                            : "text-amber-500"
+                        }
+                      />
+                    )}
+                  </div>
+                </SwipeableRow>
+              );
+            })}
+            {selectedEvents.length > 0 && (
+              <p className="text-center text-[11px] text-neutral-400">{t("common.rowHint")}</p>
+            )}
           </div>
         </section>
       </div>
+
+      {detailEvent && (
+        <ItemDetailSheet
+          title={detailEvent.title}
+          onClose={() => setDetailEvent(null)}
+          closeLabel={t("calendar.cancelAction")}
+          editLabel={t("calendar.editEvent")}
+          deleteLabel={t("calendar.deleteEvent")}
+          canManage={Boolean(detailEvent.editable && user?.id === detailEvent.userId)}
+          onEdit={() => openEdit(detailEvent)}
+          onDelete={() => {
+            setConfirmDelete(detailEvent);
+            setDetailEvent(null);
+          }}
+        >
+          <DetailRow label={t("calendar.fieldDateFrom")}>{eventTimeLabel(detailEvent)}</DetailRow>
+          <DetailRow label={t("calendar.fieldCategory")}>{t(`category.${detailEvent.category}`)}</DetailRow>
+          {detailEvent.recurrence ? (
+            <DetailRow label={t("calendar.repeat")}>
+              {formatRecurrenceLabel(detailEvent.recurrence, detailEvent.date, t, weekdays)}
+            </DetailRow>
+          ) : null}
+          {detailEvent.reminderMinutesBefore != null ? (
+            <DetailRow label={t("calendar.reminder")}>
+              {reminderLabel(detailEvent.reminderMinutesBefore, t)}
+            </DetailRow>
+          ) : null}
+          {detailEvent.description ? (
+            <DetailRow label={t("calendar.fieldMemo")}>
+              <span className="whitespace-pre-wrap break-words text-left">{detailEvent.description}</span>
+            </DetailRow>
+          ) : null}
+          <DetailRow label={t("calendar.shareWithFamily")}>
+            {detailEvent.isShared ? t("scope.family") : t("scope.personal")}
+            {` · ${detailEvent.ownerName}`}
+          </DetailRow>
+        </ItemDetailSheet>
+      )}
 
       {showMonthPicker && (
         <YearMonthWheelPicker
@@ -825,16 +929,18 @@ export default function CalendarPage() {
       {showCreate && (
         <OverlayScrim
           className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center"
-          onDismiss={() => setShowCreate(false)}
-          label={t("calendar.cancel")}
+          onDismiss={closeForm}
+          label={t("calendar.cancelAction")}
         >
           <form
-            onSubmit={(e) => void handleCreate(e)}
+            onSubmit={(e) => void handleSaveEvent(e)}
             className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-bold text-neutral-900">{t("calendar.addEvent")}</h2>
-              <button type="button" onClick={() => setShowCreate(false)} className="rounded-full p-2">
+              <h2 className="text-base font-bold text-neutral-900">
+                {editingEvent ? t("calendar.editEvent") : t("calendar.addEvent")}
+              </h2>
+              <button type="button" onClick={closeForm} className="rounded-full p-2">
                 <X size={18} className="text-neutral-400" />
               </button>
             </div>
@@ -965,6 +1071,38 @@ export default function CalendarPage() {
               {t("calendar.save")}
             </button>
           </form>
+        </OverlayScrim>
+      )}
+
+      {confirmDelete && (
+        <OverlayScrim
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onDismiss={() => setConfirmDelete(null)}
+          label={t("calendar.cancelAction")}
+        >
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+            <h2 className="text-base font-bold text-neutral-900">{t("calendar.deleteEvent")}</h2>
+            <p className="mt-2 text-sm text-neutral-500">
+              {t("calendar.deleteConfirm", { name: confirmDelete.title })}
+            </p>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-semibold text-neutral-600"
+              >
+                {t("calendar.cancelAction")}
+              </button>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => void handleDeleteConfirmed()}
+                className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {t("calendar.deleteEvent")}
+              </button>
+            </div>
+          </div>
         </OverlayScrim>
       )}
     </div>
