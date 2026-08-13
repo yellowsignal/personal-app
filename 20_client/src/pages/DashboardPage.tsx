@@ -7,17 +7,10 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../context/CurrencyContext";
 import { useAuth } from "../context/AuthContext";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
-import {
-  currentUser,
-  documents,
-  exchangeRates,
-  familyInfo,
-  familyMembers,
-  subscriptions,
-  type Currency,
-} from "../mocks/data";
+import { currentUser, exchangeRates, familyInfo, familyMembers, type Currency } from "../mocks/data";
 import { assetsApi, type PublicAsset } from "../api/assets";
 import { calendarApi, categoryColor, type PublicCalendarEvent } from "../api/calendar";
+import { documentsApi, type PublicDocument } from "../api/documents";
 import { formatMoney } from "../utils/formatMoney";
 
 const CURRENCIES: Currency[] = ["KRW", "JPY", "USD"];
@@ -34,6 +27,14 @@ function isoPlusDays(days: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function daysUntilIso(isoDate: string | null | undefined): number | null {
+  if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
+  const expiry = new Date(`${isoDate}T00:00:00.000Z`);
+  const now = new Date();
+  const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return Math.ceil((expiry.getTime() - todayUtc.getTime()) / (24 * 60 * 60 * 1000));
+}
+
 function formatUpcomingWhen(e: PublicCalendarEvent): string {
   const end = e.endDate && e.endDate > e.date ? e.endDate : e.date;
   const datePart = end !== e.date ? `${e.date} ~ ${end}` : e.date;
@@ -45,13 +46,19 @@ function formatUpcomingWhen(e: PublicCalendarEvent): string {
   return datePart;
 }
 
+function formatDaysLeftLabel(days: number): string {
+  return `D-${days}`;
+}
+
 export default function DashboardPage() {
   const { lang, t } = useLanguage();
   const { currency: displayCurrency, setCurrency: setDisplayCurrency } = useCurrency();
   const { token, user, family } = useAuth();
   const [scope, setScope] = useState<ViewScope>("all");
   const [assets, setAssets] = useState<PublicAsset[]>([]);
+  const [docs, setDocs] = useState<PublicDocument[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<PublicCalendarEvent[]>([]);
+  const [nextBilling, setNextBilling] = useState<PublicCalendarEvent | null>(null);
   useBodyScrollLock(true);
 
   const loadAssets = useCallback(async () => {
@@ -64,12 +71,30 @@ export default function DashboardPage() {
     }
   }, [token]);
 
+  const loadDocuments = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await documentsApi.list(token, "all");
+      setDocs(data);
+    } catch {
+      setDocs([]);
+    }
+  }, [token]);
+
   const loadUpcoming = useCallback(async () => {
     if (!token) return;
     try {
       const items = await calendarApi.listEvents(token, isoToday(), isoPlusDays(60), "all");
-      setUpcomingEvents(items.filter((e) => e.category !== "holiday").slice(0, 3));
+      const billing = items.find((e) => e.category === "subscription_billing") ?? null;
+      setNextBilling(billing);
+      // Subscription billing stays on the top card only — keep calendar itself unchanged.
+      setUpcomingEvents(
+        items
+          .filter((e) => e.category !== "holiday" && e.category !== "subscription_billing")
+          .slice(0, 3),
+      );
     } catch {
+      setNextBilling(null);
       setUpcomingEvents([]);
     }
   }, [token]);
@@ -77,6 +102,10 @@ export default function DashboardPage() {
   useEffect(() => {
     void loadAssets();
   }, [loadAssets]);
+
+  useEffect(() => {
+    void loadDocuments();
+  }, [loadDocuments]);
 
   useEffect(() => {
     void loadUpcoming();
@@ -111,8 +140,15 @@ export default function DashboardPage() {
   );
   const displayedTotal = totalKRW / exchangeRates[displayCurrency];
 
-  const upcomingExpiry = [...documents].sort((a, b) => a.daysLeft - b.daysLeft)[0];
-  const nextBilling = [...subscriptions].sort((a, b) => a.billingDate - b.billingDate)[0];
+  const upcomingExpiry = useMemo(() => {
+    const withExpiry = docs
+      .map((doc) => ({ doc, days: daysUntilIso(doc.expiryDate) }))
+      .filter((x): x is { doc: PublicDocument; days: number } => x.days != null)
+      .sort((a, b) => a.days - b.days);
+    return withExpiry[0] ?? null;
+  }, [docs]);
+
+  const nextBillingDays = nextBilling ? daysUntilIso(nextBilling.date) : null;
 
   const scopeLabel = t(scope === "all" ? "scope.all" : scope === "personal" ? "scope.personal" : "scope.family");
 
@@ -172,18 +208,25 @@ export default function DashboardPage() {
           >
             <Bell size={18} className="text-rose-500" />
             <p className="mt-2 text-xs text-neutral-400">{t("dashboard.upcomingExpiry")}</p>
-            <p className="mt-0.5 text-sm font-bold text-neutral-900">
-              {t(`documentType.${upcomingExpiry.docType}`)} D-{upcomingExpiry.daysLeft}
+            <p className="mt-0.5 truncate text-sm font-bold text-neutral-900">
+              {upcomingExpiry
+                ? `${upcomingExpiry.doc.typeLabel} ${formatDaysLeftLabel(upcomingExpiry.days)}`
+                : t("dashboard.noExpiry")}
             </p>
           </Link>
           <Link
             to="/subscriptions"
             className="rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-black/5"
           >
-            <div className="h-[18px] w-[18px] rounded-full" style={{ backgroundColor: nextBilling.color }} />
+            <div
+              className="h-[18px] w-[18px] rounded-full"
+              style={{ backgroundColor: categoryColor.subscription_billing }}
+            />
             <p className="mt-2 text-xs text-neutral-400">{t("dashboard.nextBilling")}</p>
-            <p className="mt-0.5 text-sm font-bold text-neutral-900">
-              {nextBilling.serviceName[lang]} {t("dashboard.billingDaySuffix", { d: nextBilling.billingDate })}
+            <p className="mt-0.5 truncate text-sm font-bold text-neutral-900">
+              {nextBilling && nextBillingDays != null
+                ? `${nextBilling.title} ${formatDaysLeftLabel(nextBillingDays)}`
+                : t("dashboard.noBilling")}
             </p>
           </Link>
         </section>
