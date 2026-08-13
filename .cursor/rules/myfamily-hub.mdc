@@ -20,3 +20,10 @@ alwaysApply: true
 - Update `10_docs/작업내용.md` (checkboxes, blockers, next steps, date).
 - Keep changes scoped; put deep design in dedicated docs (`DB_스키마.md`, `인증_가족_API.md`, infra checklist).
 - Cross-tool baseline also lives in root `AGENTS.md` — keep it consistent when instructions change.
+- **Always end the user-facing reply** with the dig deploy one-liner the user can copy-run (Cloud Agent cannot SSH-deploy for them):
+
+```bash
+bash ~/personal-app/40_server/infra/scripts/deploy-dig.sh
+```
+
+  Include it after client/server/migration work. For docs/rules-only turns, still including it is fine for habit.
