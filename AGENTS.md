@@ -18,11 +18,23 @@
 
 ## 작업 원칙
 
-- 사용자 메인 환경은 **아이폰** — PC 전제(PowerShell 경로, 로컬 SSH 키 필수 등)를 기본으로 잡지 말 것
+- 사용자 메인 환경은 **아이폰** — PC 전제(PowerShell 경로, 로컬 SSH 키 필수 등)을 기본으로 잡지 말 것
 - 비밀값(DuckDNS token, SSH key, JWT/DB 비밀번호)을 커밋·채팅에 남기지 말 것
 - 목업 UI와 실 API를 섞을 때: 인증은 API 연동됨, 자산/구독 등은 아직 mock — 문서와 코드 주석을 맞출 것
 - 불필요한 대규모 리팩터·문서 남발 금지. `10_docs/작업내용.md`와 관련 전용 문서만 갱신
 - PR/브랜치 작업 시 기존 Cloud Agent 브랜치 규칙을 존중하고, 의미 있는 단위로 커밋
+
+## 응답 마무리 (필수)
+
+클라이언트·서버·마이그레이션 등 **배포가 필요한 변경**을 한 턴의 마지막 사용자 응답에는, 본문과 별도로 **복사해 실행할 dig 배포 명령을 반드시 한 줄로 붙인다.**
+
+```bash
+bash ~/personal-app/40_server/infra/scripts/deploy-dig.sh
+```
+
+- Cloud Agent는 SSH/`90_secret`이 없어 서버 배포를 대신 실행하지 못한다. 민호가 서버(또는 dig 환경)에서 위 명령을 실행한다.
+- 문서-only / 규칙-only처럼 dig 재배포가 불필요해도, 습관 유지를 위해 같은 명령을 끝에 적어도 된다.
+- prod promote는 dig 검증 후 `deploy-static.sh prod` 등 별도 절차를 따른다 (`10_docs/prod_dev_이중배포.md`).
 
 ## Cursor
 
