@@ -4,11 +4,24 @@ import BottomNav from "../components/BottomNav";
 export default function AppLayout() {
   const { pathname } = useLocation();
   const hideBottomNav = /^\/assets\/\d+\/statement\/?$/.test(pathname);
+  const isHome = pathname === "/";
 
   return (
-    <div className="flex min-h-screen justify-center bg-neutral-200">
-      <div className="relative flex min-h-screen w-full max-w-md flex-col bg-[#f2f2f7] shadow-2xl">
-        <div className={hideBottomNav ? "flex-1" : "flex-1 pb-24"}>
+    <div className={`flex justify-center bg-neutral-200 ${isHome ? "h-[100dvh] overflow-hidden" : "min-h-screen"}`}>
+      <div
+        className={`relative flex w-full max-w-md flex-col bg-[#f2f2f7] shadow-2xl ${
+          isHome ? "h-[100dvh] max-h-[100dvh] overflow-hidden" : "min-h-screen"
+        }`}
+      >
+        <div
+          className={
+            hideBottomNav
+              ? "flex-1"
+              : isHome
+                ? "flex min-h-0 flex-1 flex-col overflow-hidden pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]"
+                : "flex-1 pb-24"
+          }
+        >
           <Outlet />
         </div>
         {!hideBottomNav && <BottomNav />}

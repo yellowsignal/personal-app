@@ -6,6 +6,7 @@ import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../context/CurrencyContext";
 import { useAuth } from "../context/AuthContext";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import {
   currentUser,
   documents,
@@ -51,6 +52,7 @@ export default function DashboardPage() {
   const [scope, setScope] = useState<ViewScope>("all");
   const [assets, setAssets] = useState<PublicAsset[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<PublicCalendarEvent[]>([]);
+  useBodyScrollLock(true);
 
   const loadAssets = useCallback(async () => {
     if (!token) return;
@@ -115,7 +117,7 @@ export default function DashboardPage() {
   const scopeLabel = t(scope === "all" ? "scope.all" : scope === "personal" ? "scope.personal" : "scope.family");
 
   return (
-    <div className="pb-4">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden overscroll-none" style={{ touchAction: "none" }}>
       <TopBar
         title={t("dashboard.greeting", { name: displayName })}
         subtitle={t("dashboard.familySubtitle", { family: displayFamily })}
@@ -134,10 +136,10 @@ export default function DashboardPage() {
         }
       />
 
-      <div className="mx-auto max-w-md px-4 pt-4">
+      <div className="mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col overflow-hidden px-4 pt-3">
         <ScopeToggle value={scope} onChange={setScope} />
 
-        <section className="mt-4 rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-500 p-5 text-white">
+        <section className="mt-3 shrink-0 rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-500 p-4 text-white">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium text-indigo-100">{t("dashboard.totalAssets", { scope: scopeLabel })}</p>
             <div className="flex gap-1 rounded-full bg-white/15 p-0.5">
@@ -154,7 +156,7 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
-          <p className="mt-2 text-3xl font-bold tracking-tight">
+          <p className="mt-1.5 text-3xl font-bold tracking-tight">
             {CURRENCY_SYMBOL[displayCurrency]}
             {formatMoney(displayedTotal, displayCurrency)}
           </p>
@@ -163,10 +165,10 @@ export default function DashboardPage() {
           </p>
         </section>
 
-        <section className="mt-4 grid grid-cols-2 gap-3">
+        <section className="mt-3 grid shrink-0 grid-cols-2 gap-3">
           <Link
             to="/documents"
-            className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"
+            className="rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-black/5"
           >
             <Bell size={18} className="text-rose-500" />
             <p className="mt-2 text-xs text-neutral-400">{t("dashboard.upcomingExpiry")}</p>
@@ -176,7 +178,7 @@ export default function DashboardPage() {
           </Link>
           <Link
             to="/subscriptions"
-            className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"
+            className="rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-black/5"
           >
             <div className="h-[18px] w-[18px] rounded-full" style={{ backgroundColor: nextBilling.color }} />
             <p className="mt-2 text-xs text-neutral-400">{t("dashboard.nextBilling")}</p>
@@ -186,14 +188,14 @@ export default function DashboardPage() {
           </Link>
         </section>
 
-        <section className="mt-5">
-          <div className="flex items-center justify-between px-1">
+        <section className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex shrink-0 items-center justify-between px-1">
             <h2 className="text-sm font-bold text-neutral-900">{t("dashboard.upcomingEvents")}</h2>
             <Link to="/calendar" className="flex items-center text-xs text-indigo-500">
               {t("dashboard.viewAll")} <ChevronRight size={14} />
             </Link>
           </div>
-          <div className="mt-2 divide-y divide-neutral-100 rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+          <div className="mt-2 min-h-0 flex-1 divide-y divide-neutral-100 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
             {upcomingEvents.length === 0 && (
               <p className="px-4 py-6 text-center text-xs text-neutral-400">{t("calendar.noEvents")}</p>
             )}
@@ -215,10 +217,10 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <section className="mt-5 grid grid-cols-2 gap-3">
+        <section className="mt-3 mb-1 grid shrink-0 grid-cols-2 gap-3">
           <Link
             to="/checklists"
-            className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"
+            className="flex items-center gap-3 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-black/5"
           >
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-50">
               <ListChecks size={18} className="text-teal-600" />
@@ -227,7 +229,7 @@ export default function DashboardPage() {
           </Link>
           <Link
             to="/photos"
-            className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"
+            className="flex items-center gap-3 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-black/5"
           >
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-50">
               <Images size={18} className="text-amber-500" />
@@ -236,7 +238,7 @@ export default function DashboardPage() {
           </Link>
           <Link
             to="/documents"
-            className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"
+            className="flex items-center gap-3 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-black/5"
           >
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-50">
               <IdCard size={18} className="text-sky-500" />
@@ -245,7 +247,7 @@ export default function DashboardPage() {
           </Link>
           <Link
             to="/settings"
-            className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"
+            className="flex items-center gap-3 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-black/5"
           >
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100">
               <Settings size={18} className="text-neutral-500" />
