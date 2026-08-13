@@ -4,6 +4,8 @@ import { Bell, ChevronRight, IdCard, Images, ListChecks, Settings, Users, X } fr
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import OverlayScrim from "../components/OverlayScrim";
+import ItemDetailSheet, { DetailRow } from "../components/ItemDetailSheet";
+import { formatRecurrenceLabel } from "../components/RecurrencePicker";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../context/CurrencyContext";
 import { useAuth } from "../context/AuthContext";
@@ -17,6 +19,7 @@ import {
   type FamilyActivitySummary,
   type PublicFamilyActivity,
 } from "../api/familyActivity";
+import { ApiError } from "../api/http";
 import { formatMoney } from "../utils/formatMoney";
 
 const CURRENCIES: Currency[] = ["KRW", "JPY", "USD"];
@@ -52,6 +55,18 @@ function formatUpcomingWhen(e: PublicCalendarEvent): string {
   return datePart;
 }
 
+function reminderLabel(
+  minutes: number | null | undefined,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string {
+  if (minutes == null) return t("calendar.reminderNone");
+  if (minutes === 10) return t("calendar.reminder10m");
+  if (minutes === 30) return t("calendar.reminder30m");
+  if (minutes === 60) return t("calendar.reminder1h");
+  if (minutes === 1440) return t("calendar.reminder1d");
+  return t("calendar.reminderCustom", { n: minutes });
+}
+
 function formatDaysLeftLabel(days: number): string {
   return `D-${days}`;
 }
@@ -85,7 +100,12 @@ export default function DashboardPage() {
   });
   const [activityOpen, setActivityOpen] = useState(false);
   const [activityList, setActivityList] = useState<PublicFamilyActivity[]>([]);
+  const [detailEvent, setDetailEvent] = useState<PublicCalendarEvent | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<PublicCalendarEvent | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const weekdays = t("calendar.weekdays").split(",");
 
   useEffect(() => {
     bodyScrollRef.current?.scrollTo(0, 0);
@@ -180,6 +200,36 @@ export default function DashboardPage() {
     }
     setActivityOpen(false);
     navigate(item.path);
+  }
+
+  function openUpcomingDetail(ev: PublicCalendarEvent) {
+    setDetailEvent(ev);
+  }
+
+  function editUpcomingFromDetail(ev: PublicCalendarEvent) {
+    setDetailEvent(null);
+    navigate("/calendar", {
+      state: { editEventId: ev.id, focusDate: ev.date },
+    });
+  }
+
+  async function handleDeleteUpcomingConfirmed() {
+    if (!token || !confirmDelete || !confirmDelete.editable) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await calendarApi.remove(
+        token,
+        confirmDelete.seriesId ?? confirmDelete.id.split(":")[0] ?? confirmDelete.id,
+      );
+      setConfirmDelete(null);
+      setDetailEvent(null);
+      await loadUpcoming();
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : t("calendar.errorDelete"));
+    } finally {
+      setDeleting(false);
+    }
   }
 
   const displayName = user?.name || currentUser.name[lang];
@@ -323,7 +373,12 @@ export default function DashboardPage() {
               <p className="px-4 py-6 text-center text-xs text-neutral-400">{t("calendar.noEvents")}</p>
             )}
             {upcomingEvents.map((e) => (
-              <div key={e.id} className="flex items-center gap-3 px-4 py-3">
+              <button
+                key={e.id}
+                type="button"
+                onClick={() => openUpcomingDetail(e)}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-neutral-50"
+              >
                 <span
                   className="h-2 w-2 shrink-0 rounded-full"
                   style={{ backgroundColor: categoryColor[e.category] }}
@@ -335,7 +390,7 @@ export default function DashboardPage() {
                 <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500">
                   {t(`category.${e.category}`)}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         </section>
@@ -437,6 +492,82 @@ export default function DashboardPage() {
                 ))}
               </ul>
             )}
+          </div>
+        </OverlayScrim>
+      )}
+
+      {detailEvent && (
+        <ItemDetailSheet
+          title={detailEvent.title}
+          onClose={() => setDetailEvent(null)}
+          closeLabel={t("calendar.cancelAction")}
+          editLabel={t("calendar.editEvent")}
+          deleteLabel={t("calendar.deleteEvent")}
+          canManage={Boolean(detailEvent.editable && user?.id === detailEvent.userId)}
+          onEdit={() => editUpcomingFromDetail(detailEvent)}
+          onDelete={() => {
+            setConfirmDelete(detailEvent);
+            setDetailEvent(null);
+            setDeleteError(null);
+          }}
+        >
+          <DetailRow label={t("calendar.fieldDateFrom")}>{formatUpcomingWhen(detailEvent)}</DetailRow>
+          <DetailRow label={t("calendar.fieldCategory")}>{t(`category.${detailEvent.category}`)}</DetailRow>
+          {detailEvent.recurrence ? (
+            <DetailRow label={t("calendar.repeat")}>
+              {formatRecurrenceLabel(detailEvent.recurrence, detailEvent.date, t, weekdays)}
+            </DetailRow>
+          ) : null}
+          {detailEvent.reminderMinutesBefore != null ? (
+            <DetailRow label={t("calendar.reminder")}>
+              {reminderLabel(detailEvent.reminderMinutesBefore, t)}
+            </DetailRow>
+          ) : null}
+          {detailEvent.description ? (
+            <DetailRow label={t("calendar.fieldMemo")}>
+              <span className="whitespace-pre-wrap break-words text-left">{detailEvent.description}</span>
+            </DetailRow>
+          ) : null}
+          <DetailRow label={t("calendar.shareWithFamily")}>
+            {detailEvent.isShared ? t("scope.family") : t("scope.personal")}
+            {` · ${detailEvent.ownerName}`}
+          </DetailRow>
+        </ItemDetailSheet>
+      )}
+
+      {confirmDelete && (
+        <OverlayScrim
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onDismiss={() => {
+            if (!deleting) setConfirmDelete(null);
+          }}
+          label={t("calendar.cancelAction")}
+          swipeToDismiss={false}
+        >
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+            <h2 className="text-base font-bold text-neutral-900">{t("calendar.deleteEvent")}</h2>
+            <p className="mt-2 text-sm text-neutral-500">
+              {t("calendar.deleteConfirm", { name: confirmDelete.title })}
+            </p>
+            {deleteError ? <p className="mt-2 text-xs text-rose-500">{deleteError}</p> : null}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-semibold text-neutral-700 disabled:opacity-40"
+              >
+                {t("calendar.cancelAction")}
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => void handleDeleteUpcomingConfirmed()}
+                className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+              >
+                {t("calendar.deleteEvent")}
+              </button>
+            </div>
           </div>
         </OverlayScrim>
       )}

@@ -10,6 +10,7 @@ import {
   type TransitionEvent as ReactTransitionEvent,
 } from "react";
 import { Bell, ChevronDown, ChevronLeft, ChevronRight, Plus, Repeat, X } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import YearMonthWheelPicker from "../components/YearMonthWheelPicker";
@@ -356,6 +357,8 @@ function clampSelectedDate(selected: string, cursor: MonthCursor): string {
 export default function CalendarPage() {
   const { t } = useLanguage();
   const { token, user, family } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const weekdays = t("calendar.weekdays").split(",");
   const now = new Date();
   const [cursor, setCursor] = useState({ year: now.getFullYear(), month: now.getMonth() });
@@ -394,6 +397,7 @@ export default function CalendarPage() {
   const ignoreClick = useRef(false);
   const lastTap = useRef<{ key: string; at: number } | null>(null);
   const hasLoadedRef = useRef(false);
+  const [pendingEdit, setPendingEdit] = useState<{ id: string; date: string } | null>(null);
   const [pageWidth, setPageWidth] = useState(0);
 
   const today = todayKey();
@@ -422,6 +426,20 @@ export default function CalendarPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const st = location.state as { editEventId?: string; focusDate?: string } | null;
+    if (!st?.editEventId) return;
+    const focusDate = st.focusDate && /^\d{4}-\d{2}-\d{2}$/.test(st.focusDate) ? st.focusDate : todayKey();
+    setPendingEdit({ id: st.editEventId, date: focusDate });
+    const y = Number(focusDate.slice(0, 4));
+    const m = Number(focusDate.slice(5, 7)) - 1;
+    if (Number.isFinite(y) && Number.isFinite(m) && m >= 0 && m <= 11) {
+      setCursor({ year: y, month: m });
+    }
+    setSelectedDate(focusDate);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, navigate]);
 
   useEffect(() => {
     cursorRef.current = cursor;
@@ -641,6 +659,25 @@ export default function CalendarPage() {
     setReminderMinutes(ev.reminderMinutesBefore ?? null);
     setShowCreate(true);
   }
+
+  useEffect(() => {
+    if (!pendingEdit || loading) return;
+    const rootId = pendingEdit.id.split(":")[0] ?? pendingEdit.id;
+    const match =
+      events.find((e) => e.id === pendingEdit.id) ??
+      events.find(
+        (e) => e.date === pendingEdit.date && (e.seriesId === rootId || e.id === rootId),
+      );
+    setPendingEdit(null);
+    if (!match) return;
+    if (match.editable && user?.id === match.userId) {
+      openEdit(match);
+    } else {
+      openDetail(match, pendingEdit.date);
+    }
+    // One-shot deep link from dashboard; openEdit/openDetail close over latest setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingEdit, events, loading, user?.id]);
 
   function closeForm() {
     setShowCreate(false);
