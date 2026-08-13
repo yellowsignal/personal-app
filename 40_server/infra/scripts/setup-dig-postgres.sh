@@ -57,7 +57,7 @@ fi
 
 sudo tee /etc/systemd/system/myfamilyhub-dev-api.service >/dev/null <<EOF
 [Unit]
-Description=MyFamily Hub DEV API (Postgres)
+Description=すみっチョぐらし DEV API (Postgres)
 After=network.target docker.service
 Wants=docker.service
 
@@ -69,6 +69,7 @@ EnvironmentFile=${ENV_FILE}
 Environment=PORT=3002
 Environment=WEBAUTHN_RP_ID=sumicchogurashi-dev.duckdns.org
 Environment=WEBAUTHN_ORIGIN=https://sumicchogurashi-dev.duckdns.org
+Environment=WEBAUTHN_RP_NAME=すみっチョぐらし
 Environment=DATA_FILE=${REPO_ROOT}/30_data/tasks-dev.json
 Environment=DOCUMENT_SCAN_DIR=${REPO_ROOT}/30_data/document-scans
 # MEMORY_AUTH intentionally unset — use Prisma/Postgres

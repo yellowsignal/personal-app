@@ -115,7 +115,7 @@ export default function LoginPage() {
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600">
             <House size={30} color="white" strokeWidth={2.2} />
           </div>
-          <h1 className="mt-4 text-2xl font-bold text-neutral-900">MyFamily Hub</h1>
+          <h1 className="mt-4 text-2xl font-bold text-neutral-900">{t("app.name")}</h1>
           <p className="mt-1 text-sm text-neutral-400">
             {mode === "login" ? t("login.tagline.login") : t("login.tagline.signup")}
           </p>

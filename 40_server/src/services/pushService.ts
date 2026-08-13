@@ -156,7 +156,7 @@ export class PushService {
 
   async sendTest(userId: number): Promise<{ sent: number }> {
     const sent = await this.sendToUsers([userId], {
-      title: "MyFamily Hub",
+      title: "すみっチョぐらし",
       body: "알림 테스트 · 소리가 나면 설정이 된 거예요",
       url: "/calendar",
       tag: `push-test-${Date.now()}`,

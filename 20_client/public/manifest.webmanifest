@@ -1,7 +1,7 @@
 {
-  "name": "MyFamily Hub",
-  "short_name": "MyFamily",
-  "description": "가족 자산·구독·일정 통합",
+  "name": "すみっチョぐらし",
+  "short_name": "すみっチョぐらし",
+  "description": "家族の資産・サブスク・予定をひとつに",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

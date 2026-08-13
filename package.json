@@ -2,7 +2,7 @@
   "name": "personal-app",
   "private": true,
   "version": "0.1.0",
-  "description": "MyFamily Hub — React + Vite client, Express + TypeScript API.",
+  "description": "すみっチョぐらし — React + Vite client, Express + TypeScript API.",
   "workspaces": [
     "20_client",
     "40_server"

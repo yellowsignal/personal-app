@@ -9,7 +9,7 @@ self.addEventListener("push", (event) => {
       }
 
       const declarative = raw && raw.web_push === 8030 && raw.notification ? raw.notification : null;
-      const title = (declarative && declarative.title) || raw.title || "MyFamily Hub";
+      const title = (declarative && declarative.title) || raw.title || "すみっチョぐらし";
       const body = (declarative && declarative.body) || raw.body || "";
       const navigate = (declarative && declarative.navigate) || raw.url || "/calendar";
       const tag = (declarative && declarative.tag) || raw.tag || "calendar-reminder";

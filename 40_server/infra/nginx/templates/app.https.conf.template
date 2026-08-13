@@ -22,7 +22,7 @@ server {
     # Temporary landing page until the app container is wired up.
     location / {
         default_type text/plain;
-        return 200 'MyFamily Hub HTTPS is up (${DOMAIN}). App container not deployed yet.\n';
+        return 200 'すみっチョぐらし HTTPS is up (${DOMAIN}). App container not deployed yet.\n';
     }
 
     # When the app container is ready, replace the block above with:

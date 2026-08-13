@@ -11,6 +11,8 @@ export function pick(text: LocalText, lang: Lang): string {
 
 export const dict: Record<Lang, Record<string, string>> = {
   ko: {
+    "app.name": "すみっチョぐらし",
+
     "nav.home": "홈",
     "nav.assets": "자산",
     "nav.documents": "카드 · 증명서",
@@ -77,7 +79,7 @@ export const dict: Record<Lang, Record<string, string>> = {
     "settings.pushUnsupported": "이 브라우저는 홈 화면 알림을 지원하지 않아요",
     "settings.pushTest": "테스트 알림",
     "settings.pushTestHint": "잠금 화면·알림음은 아이폰 설정(알림·집중 모드)을 따릅니다. LINE처럼 전용 벨소리는 웹 앱에서는 불가하고, 시스템 기본 알림음으로 옵니다",
-    "settings.pushTestOk": "테스트 알림을 보냈어요. 소리가 안 나면 아이폰 설정 → 알림에서 MyFamily Hub를 확인해 주세요",
+    "settings.pushTestOk": "테스트 알림을 보냈어요. 소리가 안 나면 아이폰 설정 → 알림에서 すみっチョぐらし를 확인해 주세요",
     "settings.pushTestFail": "테스트 알림을 보내지 못했어요. 알림을 먼저 켜 주세요",
 
     "dashboard.greeting": "안녕하세요, {name}님",
@@ -519,6 +521,8 @@ export const dict: Record<Lang, Record<string, string>> = {
     "checklists.errorSave": "저장에 실패했어요",
   },
   ja: {
+    "app.name": "すみっチョぐらし",
+
     "nav.home": "ホーム",
     "nav.assets": "資産",
     "nav.documents": "カード・証明書",
@@ -585,7 +589,7 @@ export const dict: Record<Lang, Record<string, string>> = {
     "settings.pushUnsupported": "このブラウザはホーム画面通知に対応していません",
     "settings.pushTest": "テスト通知",
     "settings.pushTestHint": "ロック画面・通知音はiPhoneの設定（通知・集中モード）に従います。LINEのような専用着信音はWebアプリでは使えず、システムの標準通知音になります",
-    "settings.pushTestOk": "テスト通知を送りました。音が鳴らない場合はiPhone設定 → 通知でMyFamily Hubを確認してください",
+    "settings.pushTestOk": "テスト通知を送りました。音が鳴らない場合はiPhone設定 → 通知ですみっチョぐらしを確認してください",
     "settings.pushTestFail": "テスト通知を送れませんでした。先に通知をオンにしてください",
 
     "dashboard.greeting": "こんにちは、{name}さん",

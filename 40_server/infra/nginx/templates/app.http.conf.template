@@ -9,6 +9,6 @@ server {
 
     location / {
         default_type text/plain;
-        return 200 'MyFamily Hub server is up (${DOMAIN}). App container not deployed yet.\n';
+        return 200 'すみっチョぐらし server is up (${DOMAIN}). App container not deployed yet.\n';
     }
 }
