@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { Bell, ChevronLeft, ChevronRight, Plus, Trash2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
+import HolidayPrefPicker, { parseHolidayPref, type HolidayPref } from "../components/HolidayPrefPicker";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -50,7 +51,7 @@ function buildMonthGrid(year: number, month: number) {
 
 export default function CalendarPage() {
   const { t } = useLanguage();
-  const { token, user, family } = useAuth();
+  const { token, user, family, updateMe } = useAuth();
   const weekdays = t("calendar.weekdays").split(",");
   const now = new Date();
   const [cursor, setCursor] = useState({ year: now.getFullYear(), month: now.getMonth() });
@@ -67,6 +68,7 @@ export default function CalendarPage() {
   const [eventCategory, setEventCategory] = useState<"personal" | "family" | "holiday">("personal");
   const [isShared, setIsShared] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [savingHolidayPref, setSavingHolidayPref] = useState(false);
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
   const pointerStart = useRef<{ x: number; y: number; id: number } | null>(null);
@@ -74,6 +76,7 @@ export default function CalendarPage() {
 
   const cells = useMemo(() => buildMonthGrid(cursor.year, cursor.month), [cursor]);
   const today = todayKey();
+  const holidayPref = parseHolidayPref(user?.countryPref);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -112,6 +115,20 @@ export default function CalendarPage() {
   const selectedEvents = (eventsByDate.get(selectedDate) ?? []).sort((a, b) =>
     (a.time ?? "").localeCompare(b.time ?? ""),
   );
+
+  async function changeHolidayPref(pref: HolidayPref) {
+    if (pref === holidayPref) return;
+    setSavingHolidayPref(true);
+    setError(null);
+    try {
+      await updateMe({ countryPref: pref });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("calendar.errorSave"));
+    } finally {
+      setSavingHolidayPref(false);
+    }
+  }
 
   function toggleCategory(cat: CalendarCategory) {
     setActiveCats((prev) => {
@@ -238,6 +255,12 @@ export default function CalendarPage() {
 
       <div className="mx-auto max-w-md px-4 pt-4 pb-8">
         <ScopeToggle value={scope} onChange={setScope} />
+
+        <div className="mt-3">
+          <p className="mb-1.5 px-1 text-[11px] font-semibold text-neutral-400">{t("calendar.holidayPref")}</p>
+          <HolidayPrefPicker value={holidayPref} onChange={(v) => void changeHolidayPref(v)} disabled={savingHolidayPref} />
+          <p className="mt-1.5 px-1 text-[10px] text-neutral-300">{t("calendar.holidayPrefHint")}</p>
+        </div>
 
         {error && (
           <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</p>

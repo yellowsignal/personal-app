@@ -40,6 +40,7 @@ interface AuthContextValue {
   logout: () => void;
   refresh: () => Promise<void>;
   applySession: (session: AuthResponse) => void;
+  updateMe: (patch: Partial<{ languagePref: string; currencyPref: string; countryPref: string; name: string }>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -123,6 +124,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(timer);
   }, [currency, lang, token, user]);
 
+  const updateMe = useCallback(
+    async (patch: Partial<{ languagePref: string; currencyPref: string; countryPref: string; name: string }>) => {
+      if (!token) return;
+      const res = await authApi.updateMe(token, patch);
+      setUser(res.user);
+    },
+    [token],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       token,
@@ -132,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       applySession,
       logout,
       refresh,
+      updateMe,
       login: async (email, password) => {
         const session = await authApi.login({ email, password });
         applySession(session);
@@ -157,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         applySession(session);
       },
     }),
-    [applySession, currency, family, lang, loading, logout, refresh, token, user],
+    [applySession, currency, family, lang, loading, logout, refresh, token, updateMe, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

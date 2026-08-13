@@ -127,6 +127,51 @@ test("calendar CRUD and derived document expiry / subscription billing", async (
       headers: { authorization: `Bearer ${owner.token}` },
     });
     assert.equal(del.status, 204);
+
+    const jpHolidays = await fetch(
+      `${base}/api/calendar/events?from=2026-08-01&to=2026-08-31&scope=all`,
+      { headers: { authorization: `Bearer ${owner.token}` } },
+    );
+    assert.equal(jpHolidays.status, 200);
+    const jpEvents = (await jpHolidays.json()) as Array<{ category: string; date: string; title: string }>;
+    assert.ok(jpEvents.some((e) => e.category === "holiday" && e.date === "2026-08-11"));
+    assert.ok(!jpEvents.some((e) => e.category === "holiday" && e.date === "2026-08-15"));
+
+    const patch = await fetch(`${base}/api/auth/me`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ countryPref: "KR" }),
+    });
+    assert.equal(patch.status, 200);
+
+    const krHolidays = await fetch(
+      `${base}/api/calendar/events?from=2026-08-01&to=2026-08-31&scope=all`,
+      { headers: { authorization: `Bearer ${owner.token}` } },
+    );
+    const krEvents = (await krHolidays.json()) as Array<{ category: string; date: string }>;
+    assert.ok(krEvents.some((e) => e.category === "holiday" && e.date === "2026-08-15"));
+    assert.ok(krEvents.some((e) => e.category === "holiday" && e.date === "2026-08-17"));
+    assert.ok(!krEvents.some((e) => e.category === "holiday" && e.date === "2026-08-11"));
+
+    const both = await fetch(`${base}/api/auth/me`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ countryPref: "BOTH" }),
+    });
+    assert.equal(both.status, 200);
+    const bothHolidays = await fetch(
+      `${base}/api/calendar/events?from=2026-08-01&to=2026-08-31&scope=all`,
+      { headers: { authorization: `Bearer ${owner.token}` } },
+    );
+    const bothEvents = (await bothHolidays.json()) as Array<{ category: string; date: string }>;
+    assert.ok(bothEvents.some((e) => e.category === "holiday" && e.date === "2026-08-11"));
+    assert.ok(bothEvents.some((e) => e.category === "holiday" && e.date === "2026-08-15"));
   } finally {
     server.close();
   }

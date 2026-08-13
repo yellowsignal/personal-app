@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronRight, Copy, Fingerprint, Globe, LogOut, UserPlus, Users } from "lucide-react";
+import { ChevronRight, Copy, Fingerprint, Globe, LogOut, UserPlus, Users, CalendarDays } from "lucide-react";
 import TopBar from "../components/TopBar";
+import HolidayPrefPicker, { parseHolidayPref, type HolidayPref } from "../components/HolidayPrefPicker";
 import { ApiError } from "../api/http";
 import { passkeyApi } from "../api/passkey";
 import { useAuth } from "../context/AuthContext";
@@ -9,17 +10,29 @@ import { useLanguage } from "../i18n/LanguageContext";
 
 export default function SettingsPage() {
   const navigate = useNavigate();
-  const { user, family, logout, token } = useAuth();
+  const { user, family, logout, token, updateMe } = useAuth();
   const { lang, toggleLang, t } = useLanguage();
   const [copied, setCopied] = useState(false);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [creatingInvite, setCreatingInvite] = useState(false);
   const [passkeyMsg, setPasskeyMsg] = useState<string | null>(null);
   const [linkingPasskey, setLinkingPasskey] = useState(false);
+  const [savingHolidayPref, setSavingHolidayPref] = useState(false);
+  const holidayPref = parseHolidayPref(user?.countryPref);
 
   const initial = (user?.name?.trim()?.charAt(0) || "?").toUpperCase();
   const memberCount = family?.members.length ?? 0;
   const isOwner = user?.role === "OWNER";
+
+  async function changeHolidayPref(pref: HolidayPref) {
+    if (pref === holidayPref) return;
+    setSavingHolidayPref(true);
+    try {
+      await updateMe({ countryPref: pref });
+    } finally {
+      setSavingHolidayPref(false);
+    }
+  }
 
   async function copyInvite() {
     if (!family?.inviteCode) return;
@@ -163,6 +176,23 @@ export default function SettingsPage() {
               <ChevronRight size={16} />
             </span>
           </button>
+
+          <div className="px-4 py-3">
+            <div className="flex items-center gap-3">
+              <CalendarDays size={18} className="text-neutral-400" />
+              <div>
+                <p className="text-sm font-medium text-neutral-800">{t("settings.holidays")}</p>
+                <p className="text-[11px] text-neutral-400">{t("settings.holidaysHint")}</p>
+              </div>
+            </div>
+            <div className="mt-3">
+              <HolidayPrefPicker
+                value={holidayPref}
+                onChange={(v) => void changeHolidayPref(v)}
+                disabled={savingHolidayPref}
+              />
+            </div>
+          </div>
 
           <div className="px-4 py-3">
             <div className="flex items-center justify-between">

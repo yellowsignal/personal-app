@@ -8,10 +8,15 @@ import {
   parseDateKey,
   toDateKey,
   toPublicCalendarEvent,
-  type CalendarCategory,
   type PublicCalendarEvent,
   type ViewScope,
 } from "../domain/calendarTypes.js";
+import {
+  holidayCountries,
+  holidayTitle,
+  listPublicHolidays,
+  parseHolidayPref,
+} from "../domain/holidays.js";
 import { listDueDates, utcDateOnly } from "../domain/recurringDepositTypes.js";
 import { HttpError } from "./authService.js";
 
@@ -211,7 +216,32 @@ export class CalendarService {
     }
 
     out.sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? "") || a.id.localeCompare(b.id));
-    return this.filterScope(out, scope, user.id);
+    const scoped = this.filterScope(out, scope, user.id);
+
+    const pref = parseHolidayPref(user.countryPref);
+    const holidays = listPublicHolidays(toDateKey(from), toDateKey(to), holidayCountries(pref));
+    const lang = user.languagePref === "ja" ? "ja" : "ko";
+    for (const h of holidays) {
+      scoped.push({
+        id: `holiday-${h.country}-${h.date}-${h.code}`,
+        userId: user.id,
+        title: holidayTitle(h, lang),
+        description: h.country === "KR" ? "KR" : "JP",
+        date: h.date,
+        time: null,
+        endDate: h.date,
+        isAllDay: true,
+        category: "holiday",
+        isShared: true,
+        editable: false,
+        sourceDocumentId: null,
+        ownerName:
+          h.country === "KR" ? (lang === "ja" ? "韓国" : "한국") : lang === "ja" ? "日本" : "일본",
+      });
+    }
+
+    scoped.sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? "") || a.id.localeCompare(b.id));
+    return scoped;
   }
 
   async create(userId: number, body: Record<string, unknown>): Promise<PublicCalendarEvent> {
@@ -342,4 +372,4 @@ export class CalendarService {
   }
 }
 
-export type { CalendarCategory };
+export type { CalendarCategory } from "../domain/calendarTypes.js";

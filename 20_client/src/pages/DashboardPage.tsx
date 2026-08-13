@@ -55,7 +55,7 @@ export default function DashboardPage() {
     if (!token) return;
     try {
       const items = await calendarApi.listEvents(token, isoToday(), isoPlusDays(60), "all");
-      setUpcomingEvents(items.slice(0, 3));
+      setUpcomingEvents(items.filter((e) => e.category !== "holiday").slice(0, 3));
     } catch {
       setUpcomingEvents([]);
     }

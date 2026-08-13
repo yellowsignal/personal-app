@@ -4,6 +4,7 @@ import { signAuthToken } from "../auth/token.js";
 import type { AuthRepository } from "../domain/authRepository.js";
 import type { FamilySummary, PublicUser } from "../domain/types.js";
 import { toPublicUser } from "../domain/types.js";
+import { parseHolidayPref } from "../domain/holidays.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CURRENCIES = new Set(["KRW", "JPY", "USD"]);
@@ -82,9 +83,7 @@ export class AuthService {
     const password = normalizePassword(body.password);
     const name = normalizeName(body.name);
     const languagePref = pickPref(body.languagePref, LANGS, "ko");
-    const countryPref = typeof body.countryPref === "string" && body.countryPref.trim()
-      ? body.countryPref.trim().toUpperCase()
-      : "JP";
+    const countryPref = parseHolidayPref(body.countryPref, "JP");
     const currencyPref = pickPref(body.currencyPref, CURRENCIES, "JPY");
     const inviteCode =
       typeof body.inviteCode === "string" && body.inviteCode.trim()
@@ -204,9 +203,7 @@ export class AuthService {
     } = {};
     if (body.languagePref !== undefined) patch.languagePref = pickPref(body.languagePref, LANGS, "ko");
     if (body.currencyPref !== undefined) patch.currencyPref = pickPref(body.currencyPref, CURRENCIES, "JPY");
-    if (typeof body.countryPref === "string" && body.countryPref.trim()) {
-      patch.countryPref = body.countryPref.trim().toUpperCase();
-    }
+    if (body.countryPref !== undefined) patch.countryPref = parseHolidayPref(body.countryPref, "JP");
     if (typeof body.name === "string" && body.name.trim()) patch.name = body.name.trim();
     const user = await this.repo.updateUser(userId, patch);
     return { user: toPublicUser(user) };
