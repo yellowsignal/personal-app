@@ -5,6 +5,8 @@ import type { DocumentRepository } from "../domain/documentRepository.js";
 import type { RecurringDepositRepository } from "../domain/recurringDepositRepository.js";
 import type { SubscriptionRepository } from "../domain/subscriptionRepository.js";
 import {
+  eventTimesFromRange,
+  isDateKey,
   parseDateKey,
   toDateKey,
   toPublicCalendarEvent,
@@ -253,20 +255,13 @@ export class CalendarService {
     if (!USER_CATEGORIES.has(category)) {
       throw new HttpError(400, "category must be personal, family, or holiday");
     }
-    if (typeof body.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
+    if (!isDateKey(body.date)) {
       throw new HttpError(400, "date must be YYYY-MM-DD");
     }
 
-    const isAllDay = body.isAllDay !== false && !body.time;
-    let startTime = parseDateKey(body.date);
-    let endTime = parseDateKey(body.date);
-    if (!isAllDay && typeof body.time === "string" && /^\d{2}:\d{2}$/.test(body.time)) {
-      const [hh, mm] = body.time.split(":").map(Number);
-      startTime = new Date(Date.UTC(startTime.getUTCFullYear(), startTime.getUTCMonth(), startTime.getUTCDate(), hh, mm));
-      endTime = new Date(startTime.getTime() + 60 * 60 * 1000);
-    } else {
-      endTime.setUTCHours(23, 59, 59, 999);
-    }
+    const endDate = isDateKey(body.endDate) ? body.endDate : body.date;
+    const time = typeof body.time === "string" && /^\d{2}:\d{2}$/.test(body.time) ? body.time : null;
+    const { startTime, endTime, isAllDay } = eventTimesFromRange(body.date, endDate, time);
 
     const isShared = body.isShared === true || category === "family" || category === "holiday";
     if (isShared && !user.familyId) {
@@ -300,25 +295,18 @@ export class CalendarService {
     let endTime = existing.endTime;
     let isAllDay = existing.isAllDay;
 
-    if (typeof body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
-      const base = parseDateKey(body.date);
+    if (isDateKey(body.date) || isDateKey(body.endDate)) {
+      const publicExisting = toPublicCalendarEvent(existing, "");
+      const date = isDateKey(body.date) ? body.date : publicExisting.date;
+      const endDate = isDateKey(body.endDate) ? body.endDate : publicExisting.endDate;
       const time =
         typeof body.time === "string" && /^\d{2}:\d{2}$/.test(body.time)
           ? body.time
-          : existing.isAllDay
-            ? null
-            : toPublicCalendarEvent(existing, "").time;
-      if (time) {
-        const [hh, mm] = time.split(":").map(Number);
-        startTime = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), hh, mm));
-        endTime = new Date(startTime.getTime() + 60 * 60 * 1000);
-        isAllDay = false;
-      } else {
-        startTime = base;
-        endTime = new Date(base);
-        endTime.setUTCHours(23, 59, 59, 999);
-        isAllDay = true;
-      }
+          : publicExisting.time;
+      const next = eventTimesFromRange(date, endDate, time);
+      startTime = next.startTime;
+      endTime = next.endTime;
+      isAllDay = next.isAllDay;
     }
 
     const category =

@@ -51,6 +51,34 @@ export function parseDateKey(key: string): Date {
   return new Date(Date.UTC(y!, m! - 1, d!, 0, 0, 0, 0));
 }
 
+const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function isDateKey(value: unknown): value is string {
+  return typeof value === "string" && DATE_KEY_RE.test(value);
+}
+
+/** Inclusive calendar-day range. If time is set on a single day, end is +1 hour. */
+export function eventTimesFromRange(
+  date: string,
+  endDate: string | null | undefined,
+  time: string | null | undefined,
+): { startTime: Date; endTime: Date; isAllDay: boolean } {
+  const startKey = endDate && endDate < date ? endDate : date;
+  const endKey = endDate && endDate > date ? endDate : date;
+  const isAllDay = !(typeof time === "string" && /^\d{2}:\d{2}$/.test(time));
+  const startTime = parseDateKey(startKey);
+  const endTime = parseDateKey(endKey);
+  if (!isAllDay && typeof time === "string") {
+    const [hh, mm] = time.split(":").map(Number);
+    startTime.setUTCHours(hh!, mm, 0, 0);
+    if (startKey === endKey) {
+      return { startTime, endTime: new Date(startTime.getTime() + 60 * 60 * 1000), isAllDay: false };
+    }
+  }
+  endTime.setUTCHours(23, 59, 59, 999);
+  return { startTime, endTime, isAllDay };
+}
+
 export function timeFromDate(d: Date, isAllDay: boolean): string | null {
   if (isAllDay) return null;
   const hh = String(d.getUTCHours()).padStart(2, "0");

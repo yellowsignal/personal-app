@@ -28,6 +28,7 @@ export interface PublicCalendarEvent {
 export interface CreateCalendarEventInput {
   title: string;
   date: string;
+  endDate?: string | null;
   time?: string | null;
   isAllDay?: boolean;
   category?: "personal" | "family" | "holiday";

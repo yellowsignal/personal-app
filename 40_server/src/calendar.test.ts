@@ -81,6 +81,25 @@ test("calendar CRUD and derived document expiry / subscription billing", async (
     assert.equal(created.title, "치과");
     assert.equal(created.time, "14:00");
 
+    const rangeRes = await fetch(`${base}/api/calendar/events`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        title: "육아휴직",
+        date: "2026-08-17",
+        endDate: "2026-08-22",
+        category: "family",
+        isShared: true,
+      }),
+    });
+    assert.equal(rangeRes.status, 201);
+    const ranged = (await rangeRes.json()) as { title: string; date: string; endDate: string };
+    assert.equal(ranged.date, "2026-08-17");
+    assert.equal(ranged.endDate, "2026-08-22");
+
     const docRes = await fetch(`${base}/api/documents`, {
       method: "POST",
       headers: {

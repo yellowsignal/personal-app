@@ -12,7 +12,6 @@ import {
 import { Bell, ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
-import HolidayPrefPicker, { parseHolidayPref, type HolidayPref } from "../components/HolidayPrefPicker";
 import YearMonthWheelPicker from "../components/YearMonthWheelPicker";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
@@ -40,6 +39,12 @@ function todayKey(): string {
 
 function toKey(y: number, m: number, d: number) {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function addOneDay(key: string): string {
+  const [y, m, d] = key.split("-").map(Number);
+  const dt = new Date(y!, m! - 1, d! + 1);
+  return toKey(dt.getFullYear(), dt.getMonth(), dt.getDate());
 }
 
 function monthBounds(year: number, month: number): { from: string; to: string } {
@@ -113,7 +118,7 @@ function MonthGrid({
             key={key}
             type="button"
             onClick={() => onSelectDay(key)}
-            className={`flex min-h-[5.5rem] flex-col items-stretch px-[2px] pb-0.5 pt-0.5 text-left ${
+            className={`flex min-h-[5.5rem] flex-col items-stretch px-[2px] pb-0.5 pt-0.5 text-left touch-manipulation ${
               isSelected ? "bg-indigo-50" : "bg-white"
             }`}
           >
@@ -157,7 +162,7 @@ function clampSelectedDate(selected: string, cursor: MonthCursor): string {
 
 export default function CalendarPage() {
   const { t } = useLanguage();
-  const { token, user, family, updateMe } = useAuth();
+  const { token, user, family } = useAuth();
   const weekdays = t("calendar.weekdays").split(",");
   const now = new Date();
   const [cursor, setCursor] = useState({ year: now.getFullYear(), month: now.getMonth() });
@@ -170,11 +175,11 @@ export default function CalendarPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState("");
   const [eventDate, setEventDate] = useState(todayKey());
+  const [eventEndDate, setEventEndDate] = useState(todayKey());
   const [eventTime, setEventTime] = useState("");
   const [eventCategory, setEventCategory] = useState<"personal" | "family" | "holiday">("personal");
   const [isShared, setIsShared] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [savingHolidayPref, setSavingHolidayPref] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -186,11 +191,11 @@ export default function CalendarPage() {
   const pointerStart = useRef<{ x: number; y: number; id: number } | null>(null);
   const axisRef = useRef<"x" | "y" | null>(null);
   const ignoreClick = useRef(false);
+  const lastTap = useRef<{ key: string; at: number } | null>(null);
   const hasLoadedRef = useRef(false);
   const [pageWidth, setPageWidth] = useState(0);
 
   const today = todayKey();
-  const holidayPref = parseHolidayPref(user?.countryPref);
   const prevMonth = useMemo(() => shiftMonth(cursor, -1), [cursor]);
   const nextMonth = useMemo(() => shiftMonth(cursor, 1), [cursor]);
   const monthPanes = useMemo(() => [prevMonth, cursor, nextMonth], [prevMonth, cursor, nextMonth]);
@@ -255,8 +260,12 @@ export default function CalendarPage() {
   const eventsByDate = useMemo(() => {
     const map = new Map<string, PublicCalendarEvent[]>();
     for (const e of filteredEvents) {
-      if (!map.has(e.date)) map.set(e.date, []);
-      map.get(e.date)!.push(e);
+      const end = e.endDate && e.endDate > e.date ? e.endDate : e.date;
+      let guard = 0;
+      for (let key = e.date; key <= end && guard < 366; key = addOneDay(key), guard += 1) {
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(e);
+      }
     }
     return map;
   }, [filteredEvents]);
@@ -264,20 +273,6 @@ export default function CalendarPage() {
   const selectedEvents = (eventsByDate.get(selectedDate) ?? []).sort((a, b) =>
     (a.time ?? "").localeCompare(b.time ?? ""),
   );
-
-  async function changeHolidayPref(pref: HolidayPref) {
-    if (pref === holidayPref) return;
-    setSavingHolidayPref(true);
-    setError(null);
-    try {
-      await updateMe({ countryPref: pref });
-      await load();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("calendar.errorSave"));
-    } finally {
-      setSavingHolidayPref(false);
-    }
-  }
 
   function toggleCategory(cat: CalendarCategory) {
     setActiveCats((prev) => {
@@ -400,13 +395,29 @@ export default function CalendarPage() {
     }
   }
 
-  function openCreate() {
+  function openCreate(date?: string) {
+    const start = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : selectedDate;
     setTitle("");
-    setEventDate(selectedDate);
+    setEventDate(start);
+    setEventEndDate(start);
     setEventTime("");
     setEventCategory("personal");
     setIsShared(false);
     setShowCreate(true);
+  }
+
+  function handleDayTap(key: string) {
+    if (ignoreClick.current) return;
+    const nowMs = Date.now();
+    const prev = lastTap.current;
+    if (prev && prev.key === key && nowMs - prev.at < 340) {
+      lastTap.current = null;
+      setSelectedDate(key);
+      openCreate(key);
+      return;
+    }
+    lastTap.current = { key, at: nowMs };
+    setSelectedDate(key);
   }
 
   async function handleCreate(e: FormEvent) {
@@ -418,6 +429,7 @@ export default function CalendarPage() {
       await calendarApi.create(token, {
         title: title.trim(),
         date: eventDate,
+        endDate: eventEndDate || eventDate,
         time: eventTime || null,
         isAllDay: !eventTime,
         category: eventCategory,
@@ -448,11 +460,10 @@ export default function CalendarPage() {
     <div>
       <TopBar
         title={t("calendar.title")}
-        subtitle={t("calendar.subtitle")}
         right={
           <button
             type="button"
-            onClick={openCreate}
+            onClick={() => openCreate()}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-white"
             aria-label={t("calendar.addEvent")}
           >
@@ -461,20 +472,14 @@ export default function CalendarPage() {
         }
       />
 
-      <div className="mx-auto max-w-md px-4 pt-4 pb-8">
+      <div className="mx-auto max-w-md px-4 pt-2 pb-8">
         <ScopeToggle value={scope} onChange={setScope} />
 
-        <div className="mt-3">
-          <p className="mb-1.5 px-1 text-[11px] font-semibold text-neutral-400">{t("calendar.holidayPref")}</p>
-          <HolidayPrefPicker value={holidayPref} onChange={(v) => void changeHolidayPref(v)} disabled={savingHolidayPref} />
-          <p className="mt-1.5 px-1 text-[10px] text-neutral-300">{t("calendar.holidayPrefHint")}</p>
-        </div>
-
         {error && (
-          <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</p>
+          <p className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</p>
         )}
 
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {ALL_CATEGORIES.map((cat) => {
             const active = activeCats.has(cat);
             return (
@@ -482,7 +487,7 @@ export default function CalendarPage() {
                 key={cat}
                 type="button"
                 onClick={() => toggleCategory(cat)}
-                className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
                   active ? "border-transparent text-white" : "border-neutral-200 text-neutral-400"
                 }`}
                 style={active ? { backgroundColor: categoryColor[cat] } : undefined}
@@ -497,7 +502,7 @@ export default function CalendarPage() {
           })}
         </div>
 
-        <div className="mt-4 select-none overflow-hidden rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
+        <div className="mt-2 select-none overflow-hidden rounded-2xl bg-white p-3 shadow-sm ring-1 ring-black/5">
           <div className="relative">
             <div className="mb-3 flex items-center justify-between">
               <button
@@ -568,10 +573,7 @@ export default function CalendarPage() {
                       today={today}
                       selectedDate={selectedDate}
                       eventsByDate={eventsByDate}
-                      onSelectDay={(key) => {
-                        if (ignoreClick.current) return;
-                        setSelectedDate(key);
-                      }}
+                      onSelectDay={handleDayTap}
                     />
                   </div>
                 ))}
@@ -608,7 +610,10 @@ export default function CalendarPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-neutral-800">{ev.title}</p>
                   <p className="text-[11px] text-neutral-400">
-                    {ev.time ?? t("calendar.allDay")} · {t(`category.${ev.category}`)}
+                    {ev.endDate && ev.endDate !== ev.date
+                      ? `${ev.date.slice(5).replace("-", "/")} ~ ${ev.endDate.slice(5).replace("-", "/")}`
+                      : (ev.time ?? t("calendar.allDay"))}{" "}
+                    · {t(`category.${ev.category}`)}
                     {ev.isShared ? ` · ${ev.ownerName}` : ""}
                   </p>
                 </div>
@@ -662,13 +667,34 @@ export default function CalendarPage() {
               onChange={(e) => setTitle(e.target.value)}
               className="mb-3 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
             />
-            <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldDate")}</label>
-            <input
-              type="date"
-              value={eventDate}
-              onChange={(e) => setEventDate(e.target.value)}
-              className="mb-3 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
-            />
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldDateFrom")}</label>
+                <input
+                  type="date"
+                  value={eventDate}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setEventDate(next);
+                    if (eventEndDate && next > eventEndDate) setEventEndDate(next);
+                  }}
+                  className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldDateTo")}</label>
+                <input
+                  type="date"
+                  value={eventEndDate}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setEventEndDate(next);
+                    if (eventDate && next && next < eventDate) setEventDate(next);
+                  }}
+                  className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+                />
+              </div>
+            </div>
             <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldTime")}</label>
             <input
               type="time"
