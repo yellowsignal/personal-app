@@ -143,6 +143,7 @@ export default function YearMonthWheelPicker({
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center"
       onDismiss={onCancel}
       label={t("calendar.cancel")}
+      swipeToDismiss={false}
     >
       <div className="relative w-full max-w-md rounded-t-2xl bg-white p-4 shadow-xl sm:rounded-2xl">
         <div className="mb-2 flex items-center justify-between">

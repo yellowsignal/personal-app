@@ -528,6 +528,7 @@ export default function ChecklistsPage() {
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
             onDismiss={() => setConfirmDeleteItem(null)}
             label={t("checklists.cancel")}
+            swipeToDismiss={false}
           >
             <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
               <h2 className="text-base font-bold text-neutral-900">{t("checklists.deleteItem")}</h2>
@@ -764,6 +765,7 @@ export default function ChecklistsPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           onDismiss={() => setConfirmDeleteList(null)}
           label={t("checklists.cancel")}
+          swipeToDismiss={false}
         >
           <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
             <h2 className="text-base font-bold text-neutral-900">{t("checklists.deleteList")}</h2>

@@ -44,7 +44,7 @@ export default function ItemDetailSheet({
       onDismiss={onClose}
       label={closeLabel}
     >
-      <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+      <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 pt-6 shadow-xl">
         <div className="mb-2 flex items-center justify-between gap-3">
           <h2 className="min-w-0 truncate text-base font-bold text-neutral-900">{title}</h2>
           <button
