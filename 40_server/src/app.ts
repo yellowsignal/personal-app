@@ -27,6 +27,9 @@ import { TransactionService } from "./services/transactionService.js";
 import type { RecurringDepositRepository } from "./domain/recurringDepositRepository.js";
 import { RecurringDepositService } from "./services/recurringDepositService.js";
 import { createRecurringDepositRouter } from "./routes/recurringDepositRoutes.js";
+import type { CalendarRepository } from "./domain/calendarRepository.js";
+import { CalendarService } from "./services/calendarService.js";
+import { createCalendarRouter } from "./routes/calendarRoutes.js";
 
 export interface AppDeps {
   authRepo?: AuthRepository;
@@ -36,6 +39,7 @@ export interface AppDeps {
   subscriptionRepo?: SubscriptionRepository;
   checklistRepo?: ChecklistRepository;
   documentRepo?: DocumentRepository;
+  calendarRepo?: CalendarRepository;
   documentScanStore?: DocumentScanStore;
   passkeyRepo?: PasskeyRepository;
   inviteTokenRepo?: InviteTokenRepository;
@@ -147,6 +151,18 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
         deps.documentScanStore ?? null,
       );
       app.use("/api/documents", createDocumentRouter(documentService, jwtSecret));
+    }
+
+    if (deps.calendarRepo) {
+      const calendarService = new CalendarService(
+        deps.authRepo,
+        deps.calendarRepo,
+        deps.documentRepo ?? null,
+        deps.subscriptionRepo ?? null,
+        deps.recurringDepositRepo ?? null,
+        deps.assetRepo ?? null,
+      );
+      app.use("/api/calendar", createCalendarRouter(calendarService, jwtSecret));
     }
 
     if (passkeyService) {

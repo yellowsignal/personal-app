@@ -7,8 +7,6 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../context/CurrencyContext";
 import { useAuth } from "../context/AuthContext";
 import {
-  calendarEvents,
-  categoryColor,
   currentUser,
   documents,
   exchangeRates,
@@ -18,10 +16,22 @@ import {
   type Currency,
 } from "../mocks/data";
 import { assetsApi, type PublicAsset } from "../api/assets";
+import { calendarApi, categoryColor, type PublicCalendarEvent } from "../api/calendar";
 import { formatMoney } from "../utils/formatMoney";
 
 const CURRENCIES: Currency[] = ["KRW", "JPY", "USD"];
 const CURRENCY_SYMBOL: Record<Currency, string> = { KRW: "₩", JPY: "¥", USD: "$" };
+
+function isoToday(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function isoPlusDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 export default function DashboardPage() {
   const { lang, t } = useLanguage();
@@ -29,6 +39,7 @@ export default function DashboardPage() {
   const { token, user, family } = useAuth();
   const [scope, setScope] = useState<ViewScope>("all");
   const [assets, setAssets] = useState<PublicAsset[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<PublicCalendarEvent[]>([]);
 
   const loadAssets = useCallback(async () => {
     if (!token) return;
@@ -40,9 +51,23 @@ export default function DashboardPage() {
     }
   }, [token]);
 
+  const loadUpcoming = useCallback(async () => {
+    if (!token) return;
+    try {
+      const items = await calendarApi.listEvents(token, isoToday(), isoPlusDays(60), "all");
+      setUpcomingEvents(items.slice(0, 3));
+    } catch {
+      setUpcomingEvents([]);
+    }
+  }, [token]);
+
   useEffect(() => {
     void loadAssets();
   }, [loadAssets]);
+
+  useEffect(() => {
+    void loadUpcoming();
+  }, [loadUpcoming]);
 
   const displayName = user?.name || currentUser.name[lang];
   const displayFamily = family?.familyName || familyInfo.familyName[lang];
@@ -75,10 +100,6 @@ export default function DashboardPage() {
 
   const upcomingExpiry = [...documents].sort((a, b) => a.daysLeft - b.daysLeft)[0];
   const nextBilling = [...subscriptions].sort((a, b) => a.billingDate - b.billingDate)[0];
-  const upcomingEvents = calendarEvents
-    .filter((e) => new Date(e.date) >= new Date("2026-08-11"))
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 3);
 
   const scopeLabel = t(scope === "all" ? "scope.all" : scope === "personal" ? "scope.personal" : "scope.family");
 
@@ -162,6 +183,9 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="mt-2 divide-y divide-neutral-100 rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+            {upcomingEvents.length === 0 && (
+              <p className="px-4 py-6 text-center text-xs text-neutral-400">{t("calendar.noEvents")}</p>
+            )}
             {upcomingEvents.map((e) => (
               <div key={e.id} className="flex items-center gap-3 px-4 py-3">
                 <span
@@ -169,7 +193,7 @@ export default function DashboardPage() {
                   style={{ backgroundColor: categoryColor[e.category] }}
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-neutral-800">{e.title[lang]}</p>
+                  <p className="truncate text-sm font-medium text-neutral-800">{e.title}</p>
                   <p className="text-[11px] text-neutral-400">
                     {e.date} {e.time && `· ${e.time}`}
                   </p>

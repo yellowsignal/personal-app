@@ -32,6 +32,9 @@ import type { TransactionRepository } from "./domain/transactionRepository.js";
 import { MemoryRecurringDepositRepository } from "./domain/memoryRecurringDepositRepository.js";
 import { PrismaRecurringDepositRepository } from "./domain/prismaRecurringDepositRepository.js";
 import type { RecurringDepositRepository } from "./domain/recurringDepositRepository.js";
+import { MemoryCalendarRepository } from "./domain/memoryCalendarRepository.js";
+import { PrismaCalendarRepository } from "./domain/prismaCalendarRepository.js";
+import type { CalendarRepository } from "./domain/calendarRepository.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -63,6 +66,9 @@ const transactionRepo: TransactionRepository = useMemoryAuth
 const recurringDepositRepo: RecurringDepositRepository = useMemoryAuth
   ? new MemoryRecurringDepositRepository()
   : new PrismaRecurringDepositRepository(prisma);
+const calendarRepo: CalendarRepository = useMemoryAuth
+  ? new MemoryCalendarRepository()
+  : new PrismaCalendarRepository(prisma);
 const passkeyRepo = useMemoryAuth ? new MemoryPasskeyRepository() : new PrismaPasskeyRepository(prisma);
 const inviteTokenRepo = useMemoryAuth
   ? new MemoryInviteTokenRepository()
@@ -74,6 +80,7 @@ const app = createApp(store, {
   assetRepo,
   transactionRepo,
   recurringDepositRepo,
+  calendarRepo,
   subscriptionRepo,
   checklistRepo,
   documentRepo,
@@ -88,7 +95,7 @@ app.listen(PORT, () => {
   console.log(`[server] personal-app API listening on http://localhost:${PORT}`);
   console.log(`[server] persisting tasks to ${DATA_FILE}`);
   console.log(
-    `[server] auth/family/assets/subscriptions/checklists/documents/passkey routes enabled (JWT, store=${
+    `[server] auth/family/assets/subscriptions/checklists/documents/calendar/passkey routes enabled (JWT, store=${
       useMemoryAuth ? "memory" : "prisma"
     })`,
   );
