@@ -220,7 +220,7 @@ export default function DashboardPage() {
     : t("dashboard.noFamilyActivity");
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden overscroll-none" style={{ touchAction: "none" }}>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden overscroll-none">
       <TopBar
         title={t("dashboard.greeting", { name: displayName })}
         subtitle={t("dashboard.familySubtitle", { family: displayFamily })}
@@ -306,7 +306,10 @@ export default function DashboardPage() {
               {t("dashboard.viewAll")} <ChevronRight size={14} />
             </Link>
           </div>
-          <div className="mt-2 min-h-0 flex-1 divide-y divide-neutral-100 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+          <div
+            className="mt-2 min-h-0 flex-1 divide-y divide-neutral-100 overflow-y-auto overscroll-contain rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
+            style={{ touchAction: "pan-y", WebkitOverflowScrolling: "touch" }}
+          >
             {upcomingEvents.length === 0 && (
               <p className="px-4 py-6 text-center text-xs text-neutral-400">{t("calendar.noEvents")}</p>
             )}
