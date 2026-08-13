@@ -59,6 +59,48 @@ export class TransactionService {
     return records.map((r) => toPublicTransaction(r, name));
   }
 
+  /** Hard-set deposit balance; records an adjustment credit/debit when amount changes. */
+  async setBalance(userId: number, assetId: number, amountRaw: unknown): Promise<PublicAsset> {
+    const user = await this.requireUser(userId);
+    const asset = await this.assetRepo.findById(assetId);
+    if (!asset) throw new HttpError(404, "asset not found", "NOT_FOUND");
+    if (!this.canModify(asset, userId)) {
+      throw new HttpError(403, "only the owner can update the balance", "FORBIDDEN");
+    }
+    if (asset.type !== "deposit") {
+      throw new HttpError(400, "only deposit assets support set-balance");
+    }
+    const amount = typeof amountRaw === "number" ? amountRaw : Number(amountRaw);
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new HttpError(400, "amount must be a non-negative number");
+    }
+    const next = Math.round(amount * 100) / 100;
+    const prev = asset.amount;
+    const delta = Math.round((next - prev) * 100) / 100;
+
+    if (delta !== 0) {
+      const today = new Date();
+      const date = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+      await this.transactionRepo.createMany([
+        {
+          userId: asset.userId,
+          familyId: asset.familyId,
+          assetId: asset.id,
+          category: delta > 0 ? "credit" : "debit",
+          amount: Math.abs(delta),
+          currency: asset.currency,
+          date,
+          description: "잔액 조정",
+          balanceAfter: next,
+          isShared: asset.isShared,
+        },
+      ]);
+    }
+
+    const updated = await this.assetRepo.update(assetId, { amount: next });
+    return toPublicAsset(updated, user.name);
+  }
+
   async importStatement(userId: number, assetId: number, csvText: string): Promise<ImportStatementResult> {
     const user = await this.requireUser(userId);
     const asset = await this.assetRepo.findById(assetId);

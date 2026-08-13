@@ -35,6 +35,7 @@ model Family {
   photos           Photo[]
   calendarEvents   CalendarEvent[]
   checklists       Checklist[]
+  recurringDeposits RecurringDeposit[]
 
   @@map("families")
 }
@@ -63,6 +64,7 @@ model User {
   photos           Photo[]
   calendarEvents   CalendarEvent[]
   checklists       Checklist[]
+  recurringDeposits RecurringDeposit[]
 
   @@index([familyId])
   @@map("users")
@@ -96,11 +98,42 @@ model Asset {
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   family       Family?       @relation(fields: [familyId], references: [id], onDelete: SetNull)
   transactions Transaction[]
+  recurringDeposits RecurringDeposit[]
 
   @@index([userId])
   @@index([familyId])
   @@index([isShared])
   @@map("assets")
+}
+
+/// Automatic periodic credit into a deposit asset (e.g. 育児手当)
+model RecurringDeposit {
+  id              Int             @id @default(autoincrement())
+  userId          Int             @map("user_id")
+  familyId        Int?            @map("family_id")
+  assetId         Int             @map("asset_id")
+  label           String          @db.VarChar(200)
+  amount          Decimal         @db.Decimal(15, 2)
+  currency        String          @db.VarChar(10)
+  billingInterval BillingInterval @default(MONTHLY) @map("billing_interval")
+  /// Month of year (1–12). Required when billingInterval is YEARLY.
+  billingMonth    Int?            @map("billing_month")
+  /// Day of month (1–31)
+  billingDate     Int             @map("billing_date")
+  isActive        Boolean         @default(true) @map("is_active")
+  /// Last calendar date a credit was applied (UTC date)
+  lastAppliedOn   DateTime?       @map("last_applied_on") @db.Date
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family Family? @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  asset  Asset   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([assetId])
+  @@index([isActive])
+  @@map("recurring_deposits")
 }
 
 model Document {

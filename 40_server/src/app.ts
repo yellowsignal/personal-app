@@ -24,11 +24,15 @@ import { createPasskeyRouter } from "./routes/passkeyRoutes.js";
 import type { DocumentScanStore } from "./storage/documentScanStore.js";
 import type { TransactionRepository } from "./domain/transactionRepository.js";
 import { TransactionService } from "./services/transactionService.js";
+import type { RecurringDepositRepository } from "./domain/recurringDepositRepository.js";
+import { RecurringDepositService } from "./services/recurringDepositService.js";
+import { createRecurringDepositRouter } from "./routes/recurringDepositRoutes.js";
 
 export interface AppDeps {
   authRepo?: AuthRepository;
   assetRepo?: AssetRepository;
   transactionRepo?: TransactionRepository;
+  recurringDepositRepo?: RecurringDepositRepository;
   subscriptionRepo?: SubscriptionRepository;
   checklistRepo?: ChecklistRepository;
   documentRepo?: DocumentRepository;
@@ -103,7 +107,22 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
         deps.transactionRepo
           ? new TransactionService(deps.authRepo, deps.assetRepo, deps.transactionRepo)
           : undefined;
-      app.use("/api/assets", createAssetRouter(assetService, jwtSecret, transactionService));
+      const recurringDepositService =
+        deps.recurringDepositRepo && deps.transactionRepo
+          ? new RecurringDepositService(
+              deps.authRepo,
+              deps.assetRepo,
+              deps.recurringDepositRepo,
+              deps.transactionRepo,
+            )
+          : undefined;
+      app.use(
+        "/api/assets",
+        createAssetRouter(assetService, jwtSecret, transactionService, recurringDepositService),
+      );
+      if (recurringDepositService) {
+        app.use("/api", createRecurringDepositRouter(recurringDepositService, jwtSecret));
+      }
     }
 
     if (deps.subscriptionRepo) {

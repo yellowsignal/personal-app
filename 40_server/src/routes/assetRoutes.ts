@@ -23,12 +23,16 @@ export function createAssetRouter(
   service: AssetService,
   jwtSecret: string,
   transactionService?: TransactionService,
+  recurringDepositService?: import("../services/recurringDepositService.js").RecurringDepositService,
 ): Router {
   const router = Router();
   const auth = requireAuth(jwtSecret);
 
   router.get("/", auth, async (req: AuthedRequest, res) => {
     try {
+      if (recurringDepositService) {
+        await recurringDepositService.applyDueForUser(req.userId!);
+      }
       const scope = typeof req.query.scope === "string" ? req.query.scope : "all";
       const items = await service.list(req.userId!, scope);
       res.json(items);
@@ -105,8 +109,29 @@ export function createAssetRouter(
           res.status(400).json({ error: "invalid id" });
           return;
         }
+        if (recurringDepositService) {
+          await recurringDepositService.applyDueForAsset(req.userId!, id);
+        }
         const items = await transactionService.listForAsset(req.userId!, id);
         res.json(items);
+      } catch (err) {
+        sendError(res, err);
+      }
+    });
+
+    router.post("/:id/set-balance", auth, async (req: AuthedRequest, res) => {
+      try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id)) {
+          res.status(400).json({ error: "invalid id" });
+          return;
+        }
+        const updated = await transactionService.setBalance(
+          req.userId!,
+          id,
+          (req.body as { amount?: unknown })?.amount,
+        );
+        res.json(updated);
       } catch (err) {
         sendError(res, err);
       }

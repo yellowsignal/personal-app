@@ -106,7 +106,70 @@ export const assetsApi = {
       body: csvText,
     });
   },
+
+  setBalance(token: string, assetId: number, amount: number) {
+    return apiFetch<PublicAsset>(`/api/assets/${assetId}/set-balance`, {
+      method: "POST",
+      token,
+      body: JSON.stringify({ amount }),
+    });
+  },
+
+  listRecurringDeposits(token: string, assetId: number) {
+    return apiFetch<PublicRecurringDeposit[]>(`/api/assets/${assetId}/recurring-deposits`, { token });
+  },
+
+  createRecurringDeposit(token: string, assetId: number, body: CreateRecurringDepositInput) {
+    return apiFetch<PublicRecurringDeposit>(`/api/assets/${assetId}/recurring-deposits`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    });
+  },
+
+  updateRecurringDeposit(token: string, id: number, body: Partial<CreateRecurringDepositInput> & { isActive?: boolean }) {
+    return apiFetch<PublicRecurringDeposit>(`/api/recurring-deposits/${id}`, {
+      method: "PATCH",
+      token,
+      body: JSON.stringify(body),
+    });
+  },
+
+  removeRecurringDeposit(token: string, id: number) {
+    return apiFetch<void>(`/api/recurring-deposits/${id}`, {
+      method: "DELETE",
+      token,
+    });
+  },
 };
+
+export type BillingInterval = "MONTHLY" | "YEARLY";
+
+export interface PublicRecurringDeposit {
+  id: number;
+  userId: number;
+  assetId: number;
+  label: string;
+  amount: number;
+  currency: AssetCurrency;
+  billingInterval: BillingInterval;
+  billingMonth: number | null;
+  billingDate: number;
+  isActive: boolean;
+  lastAppliedOn: string | null;
+  nextDueOn: string | null;
+  createdAt: string;
+}
+
+export interface CreateRecurringDepositInput {
+  label: string;
+  amount: number;
+  billingInterval?: BillingInterval;
+  billingDate?: number;
+  billingMonth?: number | null;
+  billingAnchorDate?: string;
+  isActive?: boolean;
+}
 
 export type TransactionCategory = "credit" | "debit";
 

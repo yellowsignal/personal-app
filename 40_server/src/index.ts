@@ -29,6 +29,9 @@ import type { DocumentRepository } from "./domain/documentRepository.js";
 import { MemoryTransactionRepository } from "./domain/memoryTransactionRepository.js";
 import { PrismaTransactionRepository } from "./domain/prismaTransactionRepository.js";
 import type { TransactionRepository } from "./domain/transactionRepository.js";
+import { MemoryRecurringDepositRepository } from "./domain/memoryRecurringDepositRepository.js";
+import { PrismaRecurringDepositRepository } from "./domain/prismaRecurringDepositRepository.js";
+import type { RecurringDepositRepository } from "./domain/recurringDepositRepository.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -57,6 +60,9 @@ const documentRepo: DocumentRepository = useMemoryAuth
 const transactionRepo: TransactionRepository = useMemoryAuth
   ? new MemoryTransactionRepository()
   : new PrismaTransactionRepository(prisma);
+const recurringDepositRepo: RecurringDepositRepository = useMemoryAuth
+  ? new MemoryRecurringDepositRepository()
+  : new PrismaRecurringDepositRepository(prisma);
 const passkeyRepo = useMemoryAuth ? new MemoryPasskeyRepository() : new PrismaPasskeyRepository(prisma);
 const inviteTokenRepo = useMemoryAuth
   ? new MemoryInviteTokenRepository()
@@ -67,6 +73,7 @@ const app = createApp(store, {
   authRepo,
   assetRepo,
   transactionRepo,
+  recurringDepositRepo,
   subscriptionRepo,
   checklistRepo,
   documentRepo,
