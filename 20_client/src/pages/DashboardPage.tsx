@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Bell, ChevronRight, IdCard, Images, ListChecks, Settings, Users, X } from "lucide-react";
 import TopBar from "../components/TopBar";
@@ -85,6 +85,11 @@ export default function DashboardPage() {
   });
   const [activityOpen, setActivityOpen] = useState(false);
   const [activityList, setActivityList] = useState<PublicFamilyActivity[]>([]);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bodyScrollRef.current?.scrollTo(0, 0);
+  }, []);
 
   const loadAssets = useCallback(async () => {
     if (!token) return;
@@ -220,29 +225,36 @@ export default function DashboardPage() {
     : t("dashboard.noFamilyActivity");
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden overscroll-none">
-      <TopBar
-        title={t("dashboard.greeting", { name: displayName })}
-        subtitle={t("dashboard.familySubtitle", { family: displayFamily })}
-        right={
-          <div className="flex -space-x-2">
-            {memberChips.map((m) => (
-              <div
-                key={m.id}
-                className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white text-xs font-bold text-white"
-                style={{ backgroundColor: m.color }}
-              >
-                {m.initial}
-              </div>
-            ))}
-          </div>
-        }
-      />
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="shrink-0">
+        <TopBar
+          title={t("dashboard.greeting", { name: displayName })}
+          subtitle={t("dashboard.familySubtitle", { family: displayFamily })}
+          right={
+            <div className="flex -space-x-2">
+              {memberChips.map((m) => (
+                <div
+                  key={m.id}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white text-xs font-bold text-white"
+                  style={{ backgroundColor: m.color }}
+                >
+                  {m.initial}
+                </div>
+              ))}
+            </div>
+          }
+        />
+      </div>
 
-      <div className="mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col overflow-hidden px-4 pt-3">
+      {/* One body scroll: nested list scroll on iOS often clips without a usable pan area. */}
+      <div
+        ref={bodyScrollRef}
+        className="mx-auto min-h-0 w-full max-w-md flex-1 overflow-y-auto overscroll-y-contain px-4 pt-3"
+        style={{ touchAction: "pan-y", WebkitOverflowScrolling: "touch" }}
+      >
         <ScopeToggle value={scope} onChange={setScope} />
 
-        <section className="mt-3 shrink-0 rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-500 p-4 text-white">
+        <section className="mt-3 rounded-2xl bg-gradient-to-br from-indigo-600 to-indigo-500 p-4 text-white">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium text-indigo-100">{t("dashboard.totalAssets", { scope: scopeLabel })}</p>
             <div className="flex gap-1 rounded-full bg-white/15 p-0.5">
@@ -268,7 +280,7 @@ export default function DashboardPage() {
           </p>
         </section>
 
-        <section className="mt-3 grid shrink-0 grid-cols-2 gap-3">
+        <section className="mt-3 grid grid-cols-2 gap-3">
           <Link
             to="/documents"
             className="rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-black/5"
@@ -299,17 +311,14 @@ export default function DashboardPage() {
           </button>
         </section>
 
-        <section className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="flex shrink-0 items-center justify-between px-1">
+        <section className="mt-3">
+          <div className="flex items-center justify-between px-1">
             <h2 className="text-sm font-bold text-neutral-900">{t("dashboard.upcomingEvents")}</h2>
             <Link to="/calendar" className="flex items-center text-xs text-indigo-500">
               {t("dashboard.viewAll")} <ChevronRight size={14} />
             </Link>
           </div>
-          <div
-            className="mt-2 min-h-0 flex-1 divide-y divide-neutral-100 overflow-y-auto overscroll-contain rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
-            style={{ touchAction: "pan-y", WebkitOverflowScrolling: "touch" }}
-          >
+          <div className="mt-2 divide-y divide-neutral-100 rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
             {upcomingEvents.length === 0 && (
               <p className="px-4 py-6 text-center text-xs text-neutral-400">{t("calendar.noEvents")}</p>
             )}
@@ -331,7 +340,7 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <section className="mt-3 mb-1 grid shrink-0 grid-cols-2 gap-3">
+        <section className="mt-3 mb-3 grid grid-cols-2 gap-3">
           <Link
             to="/checklists"
             className="flex items-center gap-3 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-black/5"
