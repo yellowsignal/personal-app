@@ -154,25 +154,33 @@ export default function SwipeableRow({
     onActionOpenChange?.(false);
   }
 
+  const revealPx = Math.max(0, -offset);
+
   return (
     <div className={`relative ${className}`}>
       {canDelete && (
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
-          <div className="absolute inset-y-0 right-0 flex w-20 items-stretch justify-center bg-rose-500">
+          <div
+            className="absolute inset-y-0 right-0 flex items-stretch overflow-hidden bg-rose-500"
+            style={{
+              width: revealPx,
+              transition: dragging ? "none" : "width 0.22s ease",
+            }}
+          >
             <button
               type="button"
               data-swipe-ignore
-              tabIndex={actionOpen || offset < -40 ? 0 : -1}
+              tabIndex={actionOpen || revealPx > 40 ? 0 : -1}
               onClick={() => {
                 onActionOpenChange?.(false);
                 setOffset(0);
                 onDelete?.();
               }}
-              className="pointer-events-auto flex w-full flex-col items-center justify-center gap-1 text-[11px] font-semibold text-white"
+              className="pointer-events-auto flex h-full w-full min-w-0 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold text-white"
               aria-label={deleteLabel}
             >
-              <Trash2 size={18} />
-              {deleteLabel}
+              <Trash2 size={18} className="shrink-0" />
+              <span className="max-w-full truncate">{deleteLabel}</span>
             </button>
           </div>
         </div>
