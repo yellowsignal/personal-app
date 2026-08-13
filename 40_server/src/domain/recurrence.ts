@@ -274,6 +274,26 @@ export function shiftDateTime(source: Date, fromDay: Date, toDay: Date): Date {
   return next;
 }
 
+/**
+ * End time for one expanded occurrence.
+ * All-day recurring instances always end on the occurrence day so a long
+ * master range (e.g. start=1st Wed, end=3rd Wed) does not paint week-long bars.
+ * Timed instances keep the master duration via shiftDateTime.
+ */
+export function occurrenceEndTime(
+  masterEnd: Date,
+  isAllDay: boolean,
+  fromDay: Date,
+  toDay: Date,
+): Date {
+  if (isAllDay) {
+    const end = utcDate(toDay);
+    end.setUTCHours(23, 59, 59, 999);
+    return end;
+  }
+  return shiftDateTime(masterEnd, fromDay, toDay);
+}
+
 export function parseCalendarEventId(raw: string): number | null {
   const series = raw.split(":")[0] ?? "";
   const id = Number(series);

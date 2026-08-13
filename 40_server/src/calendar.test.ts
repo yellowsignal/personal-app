@@ -238,6 +238,71 @@ test("calendar CRUD and derived document expiry / subscription billing", async (
   }
 });
 
+test("calendar all-day recurring with long endDate expands as single-day occurrences", async () => {
+  const app = createApp(tmpStore(), {
+    authRepo: new MemoryAuthRepository(),
+    assetRepo: new MemoryAssetRepository(),
+    documentRepo: new MemoryDocumentRepository(),
+    subscriptionRepo: new MemorySubscriptionRepository(),
+    calendarRepo: new MemoryCalendarRepository(),
+    recurringDepositRepo: new MemoryRecurringDepositRepository(),
+    transactionRepo: new MemoryTransactionRepository(),
+    passkeyRepo: new MemoryPasskeyRepository(),
+    inviteTokenRepo: new MemoryInviteTokenRepository(),
+    challengeStore: new ChallengeStore(),
+    jwtSecret: "test-secret",
+  });
+
+  const { server, base } = await listen(app);
+  try {
+    const owner = await registerOwner(base);
+
+    const createRes = await fetch(`${base}/api/calendar/events`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        title: "ダンボールごみ捨て",
+        date: "2026-08-05",
+        endDate: "2026-08-31",
+        category: "family",
+        isShared: true,
+        recurrence: {
+          freq: "MONTHLY",
+          interval: 1,
+          monthMode: "BY_NTH_WEEKDAY",
+          byWeekday: [3],
+          bySetPos: [1, 3],
+        },
+      }),
+    });
+    assert.equal(createRes.status, 201);
+    const created = (await createRes.json()) as { date: string; endDate: string };
+    assert.equal(created.date, "2026-08-05");
+    assert.equal(created.endDate, "2026-08-05");
+
+    const listRes = await fetch(
+      `${base}/api/calendar/events?from=2026-08-01&to=2026-08-31&scope=all`,
+      { headers: { authorization: `Bearer ${owner.token}` } },
+    );
+    const events = (await listRes.json()) as Array<{
+      title: string;
+      date: string;
+      endDate: string;
+    }>;
+    const trash = events.filter((e) => e.title === "ダンボールごみ捨て");
+    assert.deepEqual(
+      trash.map((e) => e.date),
+      ["2026-08-05", "2026-08-19"],
+    );
+    assert.ok(trash.every((e) => e.endDate === e.date));
+  } finally {
+    server.close();
+  }
+});
+
 test("calendar recurring weekly events expand in range and delete as a series", async () => {
   const app = createApp(tmpStore(), {
     authRepo: new MemoryAuthRepository(),

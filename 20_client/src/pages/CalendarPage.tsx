@@ -90,6 +90,8 @@ function buildMonthGrid(year: number, month: number) {
 }
 
 function eventEndKey(e: PublicCalendarEvent): string {
+  // All-day recurring instances are discrete days; never paint a multi-day bar.
+  if (e.recurrence && e.isAllDay) return e.date;
   return e.endDate && e.endDate > e.date ? e.endDate : e.date;
 }
 
@@ -459,7 +461,7 @@ export default function CalendarPage() {
   const eventsByDate = useMemo(() => {
     const map = new Map<string, PublicCalendarEvent[]>();
     for (const e of filteredEvents) {
-      const end = e.endDate && e.endDate > e.date ? e.endDate : e.date;
+      const end = eventEndKey(e);
       let guard = 0;
       for (let key = e.date; key <= end && guard < 366; key = addOneDay(key), guard += 1) {
         if (!map.has(key)) map.set(key, []);
@@ -664,14 +666,16 @@ export default function CalendarPage() {
     if (!token || !title.trim()) return;
     setSubmitting(true);
     setError(null);
+    const hasRecurrence = recurrenceFromDraft(repeatDraft, eventDate) != null;
+    const allDay = !eventTime && !eventEndTime;
     const payload = {
       title: title.trim(),
       description: memo.trim() || null,
       date: eventDate,
-      endDate: eventEndDate || eventDate,
+      endDate: hasRecurrence && allDay ? eventDate : eventEndDate || eventDate,
       time: eventTime || null,
       endTime: eventEndTime || null,
-      isAllDay: !eventTime && !eventEndTime,
+      isAllDay: allDay,
       category: eventCategory,
       isShared: isShared || eventCategory === "family" || eventCategory === "holiday",
       recurrence: recurrenceFromDraft(repeatDraft, eventDate),
@@ -717,8 +721,9 @@ export default function CalendarPage() {
   }
 
   function eventTimeLabel(ev: PublicCalendarEvent): string {
-    if (ev.endDate && ev.endDate !== ev.date) {
-      return `${ev.date.slice(5).replace("-", "/")} ~ ${ev.endDate.slice(5).replace("-", "/")}`;
+    const end = eventEndKey(ev);
+    if (end !== ev.date) {
+      return `${ev.date.slice(5).replace("-", "/")} ~ ${end.slice(5).replace("-", "/")}`;
     }
     if (ev.time) {
       if (ev.endTime && ev.endTime !== ev.time) return `${ev.time} ~ ${ev.endTime}`;
@@ -1084,7 +1089,17 @@ export default function CalendarPage() {
               ))}
             </div>
             <p className="mb-3 text-[11px] text-neutral-400">{t("calendar.reminderHint")}</p>
-            <RecurrencePicker startDate={eventDate} draft={repeatDraft} onChange={setRepeatDraft} t={t} />
+            <RecurrencePicker
+              startDate={eventDate}
+              draft={repeatDraft}
+              onChange={(next) => {
+                setRepeatDraft(next);
+                if (next.preset !== "none" && !eventTime && !eventEndTime) {
+                  setEventEndDate(eventDate);
+                }
+              }}
+              t={t}
+            />
             <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldMemo")}</label>
             <textarea
               value={memo}

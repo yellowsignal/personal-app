@@ -6,6 +6,7 @@ import {
   inferBySetPos,
   normalizeRecurrence,
   nthWeekdayInMonth,
+  occurrenceEndTime,
   parseRecurrence,
 } from "./recurrence.js";
 
@@ -104,6 +105,16 @@ test("monthly 1st and 3rd Wednesday expands both days", () => {
     parseDateKey("2026-09-30"),
   ).map(toDateKey);
   assert.deepEqual(dates, ["2026-08-05", "2026-08-19", "2026-09-02", "2026-09-16"]);
+});
+
+test("occurrenceEndTime clamps all-day recurring to the occurrence day", () => {
+  const from = parseDateKey("2026-08-05");
+  const to = parseDateKey("2026-08-19");
+  const masterEnd = parseDateKey("2026-08-31");
+  masterEnd.setUTCHours(23, 59, 59, 999);
+  const end = occurrenceEndTime(masterEnd, true, from, to);
+  assert.equal(toDateKey(end), "2026-08-19");
+  assert.equal(end.getUTCHours(), 23);
 });
 
 test("yearly and count stop expansion", () => {

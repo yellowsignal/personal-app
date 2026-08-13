@@ -20,7 +20,13 @@ import {
   parseHolidayPref,
 } from "../domain/holidays.js";
 import { listDueDates, utcDateOnly } from "../domain/recurringDepositTypes.js";
-import { expandRecurrence, normalizeRecurrence, parseCalendarEventId, shiftDateTime } from "../domain/recurrence.js";
+import {
+  expandRecurrence,
+  normalizeRecurrence,
+  occurrenceEndTime,
+  parseCalendarEventId,
+  shiftDateTime,
+} from "../domain/recurrence.js";
 import { HttpError } from "./authService.js";
 
 const USER_CATEGORIES = new Set(["personal", "family", "holiday"]);
@@ -147,7 +153,7 @@ export class CalendarService {
             {
               ...row,
               startTime: shiftDateTime(row.startTime, startDay, occ),
-              endTime: shiftDateTime(row.endTime, startDay, occ),
+              endTime: occurrenceEndTime(row.endTime, row.isAllDay, startDay, occ),
             },
             owner,
             true,
@@ -305,10 +311,15 @@ export class CalendarService {
     const time = typeof body.time === "string" && /^\d{2}:\d{2}$/.test(body.time) ? body.time : null;
     const endTimeClock =
       typeof body.endTime === "string" && /^\d{2}:\d{2}$/.test(body.endTime) ? body.endTime : null;
-    const { startTime, endTime, isAllDay } = eventTimesFromRange(body.date, endDate, time, endTimeClock);
+    let { startTime, endTime, isAllDay } = eventTimesFromRange(body.date, endDate, time, endTimeClock);
     const recurrence = normalizeRecurrence(body.recurrence, startTime);
     if (body.recurrence != null && recurrence == null) {
       throw new HttpError(400, "invalid recurrence");
+    }
+    // All-day recurring: instance is a single day; series end lives in recurrence.until.
+    if (recurrence && isAllDay) {
+      const day = utcDateOnly(startTime);
+      endTime = occurrenceEndTime(endTime, true, day, day);
     }
 
     const isShared = body.isShared === true || category === "family" || category === "holiday";
@@ -361,6 +372,18 @@ export class CalendarService {
       isAllDay = next.isAllDay;
     }
 
+    const nextRecurrence =
+      body.recurrence === undefined
+        ? existing.recurrence
+        : normalizeRecurrence(body.recurrence, startTime);
+    if (body.recurrence != null && nextRecurrence == null) {
+      throw new HttpError(400, "invalid recurrence");
+    }
+    if (nextRecurrence && isAllDay) {
+      const day = utcDateOnly(startTime);
+      endTime = occurrenceEndTime(endTime, true, day, day);
+    }
+
     const category =
       body.category !== undefined
         ? typeof body.category === "string" && USER_CATEGORIES.has(body.category)
@@ -397,7 +420,7 @@ export class CalendarService {
       isShared,
       familyId: isShared === undefined ? undefined : isShared ? user.familyId : null,
       recurrence:
-        body.recurrence === undefined ? undefined : normalizeRecurrence(body.recurrence, startTime),
+        body.recurrence === undefined ? undefined : nextRecurrence,
       reminderMinutesBefore:
         body.reminderMinutesBefore === undefined
           ? undefined
