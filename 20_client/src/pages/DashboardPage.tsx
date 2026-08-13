@@ -50,6 +50,20 @@ function formatDaysLeftLabel(days: number): string {
   return `D-${days}`;
 }
 
+/** Keep the soonest item per series so a recurring rule only appears once on the dashboard. */
+function uniqueBySeries(events: PublicCalendarEvent[], limit: number): PublicCalendarEvent[] {
+  const seen = new Set<string>();
+  const out: PublicCalendarEvent[] = [];
+  for (const e of events) {
+    const key = e.seriesId || e.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(e);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 export default function DashboardPage() {
   const { lang, t } = useLanguage();
   const { currency: displayCurrency, setCurrency: setDisplayCurrency } = useCurrency();
@@ -88,10 +102,12 @@ export default function DashboardPage() {
       const billing = items.find((e) => e.category === "subscription_billing") ?? null;
       setNextBilling(billing);
       // Subscription billing stays on the top card only — keep calendar itself unchanged.
+      // Recurring series: show at most one upcoming occurrence so other events can appear.
       setUpcomingEvents(
-        items
-          .filter((e) => e.category !== "holiday" && e.category !== "subscription_billing")
-          .slice(0, 3),
+        uniqueBySeries(
+          items.filter((e) => e.category !== "holiday" && e.category !== "subscription_billing"),
+          3,
+        ),
       );
     } catch {
       setNextBilling(null);
