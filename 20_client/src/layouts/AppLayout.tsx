@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import BottomNav from "../components/BottomNav";
 
@@ -5,6 +6,13 @@ export default function AppLayout() {
   const { pathname } = useLocation();
   const hideBottomNav = /^\/assets\/\d+\/statement\/?$/.test(pathname);
   const isHome = pathname === "/";
+
+  useEffect(() => {
+    // SPA route changes keep window scroll; home is a fixed viewport and would clip if scrollY > 0.
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [pathname]);
 
   return (
     <div className={`flex justify-center bg-neutral-200 ${isHome ? "h-[100dvh] overflow-hidden" : "min-h-screen"}`}>

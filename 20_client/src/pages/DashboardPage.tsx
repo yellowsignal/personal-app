@@ -7,7 +7,6 @@ import OverlayScrim from "../components/OverlayScrim";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../context/CurrencyContext";
 import { useAuth } from "../context/AuthContext";
-import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { currentUser, exchangeRates, familyInfo, familyMembers, type Currency } from "../mocks/data";
 import { assetsApi, type PublicAsset } from "../api/assets";
 import { calendarApi, categoryColor, type PublicCalendarEvent } from "../api/calendar";
@@ -86,7 +85,6 @@ export default function DashboardPage() {
   });
   const [activityOpen, setActivityOpen] = useState(false);
   const [activityList, setActivityList] = useState<PublicFamilyActivity[]>([]);
-  useBodyScrollLock(true);
 
   const loadAssets = useCallback(async () => {
     if (!token) return;
