@@ -1,10 +1,11 @@
-import type { PrismaClient, CalendarEvent as PrismaRow } from "@prisma/client";
+import { Prisma, type PrismaClient, type CalendarEvent as PrismaRow } from "@prisma/client";
 import type {
   CalendarRepository,
   CreateCalendarEventInput,
   UpdateCalendarEventInput,
 } from "./calendarRepository.js";
 import type { CalendarEventRecord } from "./calendarTypes.js";
+import { parseRecurrence } from "./recurrence.js";
 
 function map(row: PrismaRow): CalendarEventRecord {
   return {
@@ -21,8 +22,15 @@ function map(row: PrismaRow): CalendarEventRecord {
     reminderMinutesBefore: row.reminderMinutesBefore,
     isReminderSent: row.isReminderSent,
     isShared: row.isShared,
+    recurrence: parseRecurrence(row.recurrence),
     createdAt: row.createdAt,
   };
+}
+
+function recurrenceJson(rule: CreateCalendarEventInput["recurrence"]): Prisma.InputJsonValue | typeof Prisma.JsonNull | undefined {
+  if (rule === undefined) return undefined;
+  if (rule == null) return Prisma.JsonNull;
+  return rule as unknown as Prisma.InputJsonValue;
 }
 
 export class PrismaCalendarRepository implements CalendarRepository {
@@ -47,8 +55,12 @@ export class PrismaCalendarRepository implements CalendarRepository {
               ? [{ userId }, { familyId, isShared: true }]
               : [{ userId }],
           },
-          { startTime: { lte: to } },
-          { endTime: { gte: from } },
+          {
+            OR: [
+              { AND: [{ startTime: { lte: to } }, { endTime: { gte: from } }] },
+              { AND: [{ startTime: { lte: to } }, { NOT: { recurrence: { equals: Prisma.DbNull } } }] },
+            ],
+          },
         ],
       },
       orderBy: [{ startTime: "asc" }, { id: "asc" }],
@@ -70,6 +82,7 @@ export class PrismaCalendarRepository implements CalendarRepository {
         sourceDocumentId: input.sourceDocumentId ?? null,
         reminderMinutesBefore: input.reminderMinutesBefore ?? null,
         isShared: input.isShared,
+        recurrence: recurrenceJson(input.recurrence ?? null),
       },
     });
     return map(row);
@@ -88,6 +101,7 @@ export class PrismaCalendarRepository implements CalendarRepository {
         reminderMinutesBefore: input.reminderMinutesBefore,
         isShared: input.isShared,
         familyId: input.familyId,
+        recurrence: recurrenceJson(input.recurrence),
       },
     });
     return map(row);

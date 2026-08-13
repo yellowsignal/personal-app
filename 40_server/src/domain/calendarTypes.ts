@@ -1,3 +1,5 @@
+import type { RecurrenceRule } from "./recurrence.js";
+
 export type CalendarCategory =
   | "personal"
   | "family"
@@ -22,6 +24,7 @@ export interface CalendarEventRecord {
   reminderMinutesBefore: number | null;
   isReminderSent: boolean;
   isShared: boolean;
+  recurrence: RecurrenceRule | null;
   createdAt: Date;
 }
 
@@ -41,6 +44,8 @@ export interface PublicCalendarEvent {
   editable: boolean;
   sourceDocumentId: number | null;
   ownerName: string;
+  seriesId: string;
+  recurrence: RecurrenceRule | null;
 }
 
 export function toDateKey(d: Date): string {
@@ -106,12 +111,14 @@ export function toPublicCalendarEvent(
   editable = true,
 ): PublicCalendarEvent {
   const category = (record.category as CalendarCategory) || "personal";
+  const date = toDateKey(record.startTime);
+  const recurrence = record.recurrence;
   return {
-    id: String(record.id),
+    id: recurrence ? `${record.id}:${date}` : String(record.id),
     userId: record.userId,
     title: record.title,
     description: record.description,
-    date: toDateKey(record.startTime),
+    date,
     time: timeFromDate(record.startTime, record.isAllDay),
     endDate: toDateKey(record.endTime),
     endTime: record.isAllDay ? null : timeFromDate(record.endTime, false),
@@ -121,5 +128,7 @@ export function toPublicCalendarEvent(
     editable,
     sourceDocumentId: record.sourceDocumentId,
     ownerName,
+    seriesId: String(record.id),
+    recurrence,
   };
 }

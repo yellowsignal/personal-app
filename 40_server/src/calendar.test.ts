@@ -202,3 +202,81 @@ test("calendar CRUD and derived document expiry / subscription billing", async (
     server.close();
   }
 });
+
+test("calendar recurring weekly events expand in range and delete as a series", async () => {
+  const app = createApp(tmpStore(), {
+    authRepo: new MemoryAuthRepository(),
+    assetRepo: new MemoryAssetRepository(),
+    documentRepo: new MemoryDocumentRepository(),
+    subscriptionRepo: new MemorySubscriptionRepository(),
+    calendarRepo: new MemoryCalendarRepository(),
+    recurringDepositRepo: new MemoryRecurringDepositRepository(),
+    transactionRepo: new MemoryTransactionRepository(),
+    passkeyRepo: new MemoryPasskeyRepository(),
+    inviteTokenRepo: new MemoryInviteTokenRepository(),
+    challengeStore: new ChallengeStore(),
+    jwtSecret: "test-secret",
+  });
+
+  const { server, base } = await listen(app);
+  try {
+    const owner = await registerOwner(base);
+
+    const createRes = await fetch(`${base}/api/calendar/events`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        title: "영어 수업",
+        date: "2026-08-10",
+        time: "19:00",
+        endTime: "20:00",
+        category: "personal",
+        recurrence: { freq: "WEEKLY", interval: 1, byWeekday: [1, 3], until: "2026-08-26" },
+      }),
+    });
+    assert.equal(createRes.status, 201);
+    const created = (await createRes.json()) as {
+      id: string;
+      seriesId: string;
+      recurrence: { freq: string } | null;
+    };
+    assert.equal(created.recurrence?.freq, "WEEKLY");
+
+    const listRes = await fetch(
+      `${base}/api/calendar/events?from=2026-08-01&to=2026-08-31&scope=all`,
+      { headers: { authorization: `Bearer ${owner.token}` } },
+    );
+    const events = (await listRes.json()) as Array<{ title: string; date: string; time: string | null; id: string }>;
+    const lessons = events.filter((e) => e.title === "영어 수업");
+    assert.deepEqual(
+      lessons.map((e) => e.date),
+      ["2026-08-10", "2026-08-12", "2026-08-17", "2026-08-19", "2026-08-24", "2026-08-26"],
+    );
+    assert.ok(lessons.every((e) => e.time === "19:00"));
+
+    const later = await fetch(
+      `${base}/api/calendar/events?from=2026-09-01&to=2026-09-30&scope=all`,
+      { headers: { authorization: `Bearer ${owner.token}` } },
+    );
+    const september = (await later.json()) as Array<{ title: string }>;
+    assert.equal(september.filter((e) => e.title === "영어 수업").length, 0);
+
+    const del = await fetch(`${base}/api/calendar/events/${encodeURIComponent(lessons[2]!.id)}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${owner.token}` } },
+    );
+    assert.equal(del.status, 204);
+
+    const afterDel = await fetch(
+      `${base}/api/calendar/events?from=2026-08-01&to=2026-08-31&scope=all`,
+      { headers: { authorization: `Bearer ${owner.token}` } },
+    );
+    const remaining = (await afterDel.json()) as Array<{ title: string }>;
+    assert.equal(remaining.filter((e) => e.title === "영어 수업").length, 0);
+  } finally {
+    server.close();
+  }
+});

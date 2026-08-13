@@ -54,8 +54,8 @@ export function createCalendarRouter(service: CalendarService, jwtSecret: string
 
   router.delete("/events/:id", auth, async (req: AuthedRequest, res) => {
     try {
-      const id = Number(req.params.id);
-      if (!Number.isFinite(id)) {
+      const id = req.params.id;
+      if (!id) {
         res.status(400).json({ error: "invalid id" });
         return;
       }

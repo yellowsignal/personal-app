@@ -9,6 +9,19 @@ export type CalendarCategory =
   | "subscription_billing"
   | "recurring_deposit";
 
+export type RecurrenceFreq = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
+export type RecurrenceMonthMode = "BY_MONTHDAY" | "BY_NTH_WEEKDAY";
+
+export interface RecurrenceRule {
+  freq: RecurrenceFreq;
+  interval: number;
+  byWeekday?: number[];
+  monthMode?: RecurrenceMonthMode;
+  bySetPos?: number;
+  until?: string;
+  count?: number;
+}
+
 export interface PublicCalendarEvent {
   id: string;
   userId: number;
@@ -24,6 +37,8 @@ export interface PublicCalendarEvent {
   editable: boolean;
   sourceDocumentId: number | null;
   ownerName: string;
+  seriesId?: string;
+  recurrence?: RecurrenceRule | null;
 }
 
 export interface CreateCalendarEventInput {
@@ -36,6 +51,7 @@ export interface CreateCalendarEventInput {
   category?: "personal" | "family" | "holiday";
   description?: string | null;
   isShared?: boolean;
+  recurrence?: RecurrenceRule | null;
 }
 
 export const categoryColor: Record<CalendarCategory, string> = {
@@ -72,7 +88,7 @@ export const calendarApi = {
   },
 
   remove(token: string, id: string) {
-    return apiFetch<void>(`/api/calendar/events/${id}`, {
+    return apiFetch<void>(`/api/calendar/events/${encodeURIComponent(id)}`, {
       method: "DELETE",
       token,
     });

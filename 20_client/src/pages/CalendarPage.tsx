@@ -9,10 +9,17 @@ import {
   type PointerEvent as ReactPointerEvent,
   type TransitionEvent as ReactTransitionEvent,
 } from "react";
-import { Bell, ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2, X } from "lucide-react";
+import { Bell, ChevronDown, ChevronLeft, ChevronRight, Plus, Repeat, Trash2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import YearMonthWheelPicker from "../components/YearMonthWheelPicker";
+import RecurrencePicker, {
+  emptyRecurrenceDraft,
+  formatRecurrenceLabel,
+  recurrenceFromDraft,
+  weekdayFromKey,
+  type RecurrenceDraft,
+} from "../components/RecurrencePicker";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -192,6 +199,7 @@ export default function CalendarPage() {
   const [eventEndTime, setEventEndTime] = useState("");
   const [eventCategory, setEventCategory] = useState<"personal" | "family" | "holiday">("personal");
   const [isShared, setIsShared] = useState(false);
+  const [repeatDraft, setRepeatDraft] = useState<RecurrenceDraft>(() => emptyRecurrenceDraft(todayKey()));
   const [submitting, setSubmitting] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -418,6 +426,7 @@ export default function CalendarPage() {
     setEventEndTime("");
     setEventCategory("personal");
     setIsShared(false);
+    setRepeatDraft(emptyRecurrenceDraft(start));
     setShowCreate(true);
   }
 
@@ -451,6 +460,7 @@ export default function CalendarPage() {
         isAllDay: !eventTime && !eventEndTime,
         category: eventCategory,
         isShared: isShared || eventCategory === "family" || eventCategory === "holiday",
+        recurrence: recurrenceFromDraft(repeatDraft, eventDate),
       });
       setShowCreate(false);
       await load();
@@ -466,7 +476,7 @@ export default function CalendarPage() {
     if (!token || !ev.editable) return;
     setError(null);
     try {
-      await calendarApi.remove(token, ev.id);
+      await calendarApi.remove(token, ev.seriesId ?? ev.id.split(":")[0] ?? ev.id);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("calendar.errorDelete"));
@@ -637,6 +647,12 @@ export default function CalendarPage() {
                     · {t(`category.${ev.category}`)}
                     {ev.isShared ? ` · ${ev.ownerName}` : ""}
                   </p>
+                  {ev.recurrence ? (
+                    <p className="mt-0.5 flex items-center gap-1 text-[11px] text-indigo-500">
+                      <Repeat size={11} />
+                      {formatRecurrenceLabel(ev.recurrence, ev.date, t, weekdays)}
+                    </p>
+                  ) : null}
                   {ev.description ? (
                     <p className="mt-1 whitespace-pre-wrap break-words text-xs text-neutral-500">{ev.description}</p>
                   ) : null}
@@ -701,6 +717,15 @@ export default function CalendarPage() {
                     const next = e.target.value;
                     setEventDate(next);
                     if (eventEndDate && next > eventEndDate) setEventEndDate(next);
+                    setRepeatDraft((prev) => ({
+                      ...prev,
+                      until: prev.until && prev.until < next ? next : prev.until,
+                      weekdays:
+                        (prev.preset === "weekly" || (prev.preset === "custom" && prev.freq === "WEEKLY")) &&
+                        prev.weekdays.length <= 1
+                          ? [weekdayFromKey(next)]
+                          : prev.weekdays,
+                    }));
                   }}
                   className="min-w-0 flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
                 />
@@ -744,6 +769,7 @@ export default function CalendarPage() {
               </div>
             </div>
             <p className="mb-3 text-[11px] text-neutral-400">{t("calendar.timeOptionalHint")}</p>
+            <RecurrencePicker startDate={eventDate} draft={repeatDraft} onChange={setRepeatDraft} t={t} />
             <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldMemo")}</label>
             <textarea
               value={memo}

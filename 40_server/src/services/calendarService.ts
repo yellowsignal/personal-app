@@ -20,6 +20,7 @@ import {
   parseHolidayPref,
 } from "../domain/holidays.js";
 import { listDueDates, utcDateOnly } from "../domain/recurringDepositTypes.js";
+import { expandRecurrence, normalizeRecurrence, parseCalendarEventId, shiftDateTime } from "../domain/recurrence.js";
 import { HttpError } from "./authService.js";
 
 const USER_CATEGORIES = new Set(["personal", "family", "holiday"]);
@@ -121,9 +122,27 @@ export class CalendarService {
 
     const stored = await this.calendarRepo.listInRange(user.id, user.familyId, from, to);
     for (const row of stored) {
-      // Skip document_expiry rows if we also derive — or include stored only for user-created
       if (row.sourceDocumentId != null) continue;
-      out.push(toPublicCalendarEvent(row, await this.ownerName(row.userId), true));
+      const owner = await this.ownerName(row.userId);
+      if (!row.recurrence) {
+        out.push(toPublicCalendarEvent(row, owner, true));
+        continue;
+      }
+      const startDay = utcDateOnly(row.startTime);
+      const occs = expandRecurrence(row.recurrence, startDay, from, to);
+      for (const occ of occs) {
+        out.push(
+          toPublicCalendarEvent(
+            {
+              ...row,
+              startTime: shiftDateTime(row.startTime, startDay, occ),
+              endTime: shiftDateTime(row.endTime, startDay, occ),
+            },
+            owner,
+            true,
+          ),
+        );
+      }
     }
 
     if (this.documentRepo) {
@@ -146,6 +165,8 @@ export class CalendarService {
           editable: false,
           sourceDocumentId: doc.id,
           ownerName: await this.ownerName(doc.userId),
+          seriesId: `doc-expiry-${doc.id}`,
+          recurrence: null,
         });
       }
     }
@@ -176,6 +197,8 @@ export class CalendarService {
             editable: false,
             sourceDocumentId: null,
             ownerName: await this.ownerName(sub.userId),
+            seriesId: `sub-${sub.id}`,
+            recurrence: null,
           });
         }
       }
@@ -212,6 +235,8 @@ export class CalendarService {
             editable: false,
             sourceDocumentId: null,
             ownerName: await this.ownerName(rule.userId),
+            seriesId: `recurring-${rule.id}`,
+            recurrence: null,
           });
         }
       }
@@ -239,6 +264,8 @@ export class CalendarService {
         sourceDocumentId: null,
         ownerName:
           h.country === "KR" ? (lang === "ja" ? "韓国" : "한국") : lang === "ja" ? "日本" : "일본",
+        seriesId: `holiday-${h.country}-${h.date}-${h.code}`,
+        recurrence: null,
       });
     }
 
@@ -264,6 +291,10 @@ export class CalendarService {
     const endTimeClock =
       typeof body.endTime === "string" && /^\d{2}:\d{2}$/.test(body.endTime) ? body.endTime : null;
     const { startTime, endTime, isAllDay } = eventTimesFromRange(body.date, endDate, time, endTimeClock);
+    const recurrence = normalizeRecurrence(body.recurrence, startTime);
+    if (body.recurrence != null && recurrence == null) {
+      throw new HttpError(400, "invalid recurrence");
+    }
 
     const isShared = body.isShared === true || category === "family" || category === "holiday";
     if (isShared && !user.familyId) {
@@ -280,6 +311,7 @@ export class CalendarService {
       isAllDay,
       category,
       isShared,
+      recurrence,
     });
     return toPublicCalendarEvent(record, user.name, true);
   }
@@ -348,11 +380,15 @@ export class CalendarService {
       category,
       isShared,
       familyId: isShared === undefined ? undefined : isShared ? user.familyId : null,
+      recurrence:
+        body.recurrence === undefined ? undefined : normalizeRecurrence(body.recurrence, startTime),
     });
     return toPublicCalendarEvent(updated, user.name, true);
   }
 
-  async remove(userId: number, id: number): Promise<void> {
+  async remove(userId: number, idRaw: string | number): Promise<void> {
+    const id = typeof idRaw === "number" ? idRaw : parseCalendarEventId(String(idRaw));
+    if (id == null) throw new HttpError(400, "invalid id");
     const user = await this.requireUser(userId);
     const existing = await this.calendarRepo.findById(id);
     if (!existing) throw new HttpError(404, "event not found", "NOT_FOUND");

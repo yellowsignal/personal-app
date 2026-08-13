@@ -26,7 +26,9 @@ export class MemoryCalendarRepository implements CalendarRepository {
           r.userId === userId ||
           (familyId !== null && r.familyId === familyId && r.isShared);
         if (!visible) return false;
-        return r.startTime <= to && r.endTime >= from;
+        const overlaps = r.startTime <= to && r.endTime >= from;
+        const recurring = r.recurrence != null && r.startTime <= to;
+        return overlaps || recurring;
       })
       .map((r) => ({ ...r }))
       .sort((a, b) => a.startTime.getTime() - b.startTime.getTime() || a.id - b.id);
@@ -47,6 +49,7 @@ export class MemoryCalendarRepository implements CalendarRepository {
       reminderMinutesBefore: input.reminderMinutesBefore ?? null,
       isReminderSent: false,
       isShared: input.isShared,
+      recurrence: input.recurrence ?? null,
       createdAt: new Date(),
     };
     this.rows.set(record.id, record);
@@ -70,6 +73,7 @@ export class MemoryCalendarRepository implements CalendarRepository {
           : input.reminderMinutesBefore,
       isShared: input.isShared === undefined ? existing.isShared : input.isShared,
       familyId: input.familyId === undefined ? existing.familyId : input.familyId,
+      recurrence: input.recurrence === undefined ? existing.recurrence : input.recurrence,
     };
     this.rows.set(id, updated);
     return { ...updated };

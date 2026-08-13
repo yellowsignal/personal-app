@@ -1,3 +1,4 @@
+import type { RecurrenceRule } from "./recurrence.js";
 import type { CalendarEventRecord } from "./calendarTypes.js";
 
 export interface CreateCalendarEventInput {
@@ -12,6 +13,7 @@ export interface CreateCalendarEventInput {
   sourceDocumentId?: number | null;
   reminderMinutesBefore?: number | null;
   isShared: boolean;
+  recurrence?: RecurrenceRule | null;
 }
 
 export interface UpdateCalendarEventInput {
@@ -24,6 +26,7 @@ export interface UpdateCalendarEventInput {
   reminderMinutesBefore?: number | null;
   isShared?: boolean;
   familyId?: number | null;
+  recurrence?: RecurrenceRule | null;
 }
 
 export interface CalendarRepository {

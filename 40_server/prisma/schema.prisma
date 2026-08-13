@@ -255,6 +255,8 @@ model CalendarEvent {
   reminderMinutesBefore Int?     @map("reminder_minutes_before")
   isReminderSent        Boolean  @default(false) @map("is_reminder_sent")
   isShared              Boolean  @default(false) @map("is_shared")
+  /// RecurrenceRule JSON: { freq, interval, byWeekday?, monthMode?, bySetPos?, until?, count? }
+  recurrence            Json?
   createdAt             DateTime @default(now()) @map("created_at")
 
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
