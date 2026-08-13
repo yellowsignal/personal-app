@@ -47,6 +47,17 @@ function addOneDay(key: string): string {
   return toKey(dt.getFullYear(), dt.getMonth(), dt.getDate());
 }
 
+function addOneHour(date: string, time: string): { date: string; time: string } {
+  const [y, m, d] = date.split("-").map(Number);
+  const [hh, mm] = time.split(":").map(Number);
+  const dt = new Date(y!, m! - 1, d!, hh ?? 0, mm ?? 0);
+  dt.setHours(dt.getHours() + 1);
+  return {
+    date: toKey(dt.getFullYear(), dt.getMonth(), dt.getDate()),
+    time: `${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`,
+  };
+}
+
 function monthBounds(year: number, month: number): { from: string; to: string } {
   const last = new Date(year, month + 1, 0).getDate();
   return {
@@ -177,6 +188,7 @@ export default function CalendarPage() {
   const [eventDate, setEventDate] = useState(todayKey());
   const [eventEndDate, setEventEndDate] = useState(todayKey());
   const [eventTime, setEventTime] = useState("");
+  const [eventEndTime, setEventEndTime] = useState("");
   const [eventCategory, setEventCategory] = useState<"personal" | "family" | "holiday">("personal");
   const [isShared, setIsShared] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -401,6 +413,7 @@ export default function CalendarPage() {
     setEventDate(start);
     setEventEndDate(start);
     setEventTime("");
+    setEventEndTime("");
     setEventCategory("personal");
     setIsShared(false);
     setShowCreate(true);
@@ -431,7 +444,8 @@ export default function CalendarPage() {
         date: eventDate,
         endDate: eventEndDate || eventDate,
         time: eventTime || null,
-        isAllDay: !eventTime,
+        endTime: eventEndTime || null,
+        isAllDay: !eventTime && !eventEndTime,
         category: eventCategory,
         isShared: isShared || eventCategory === "family" || eventCategory === "holiday",
       });
@@ -612,7 +626,11 @@ export default function CalendarPage() {
                   <p className="text-[11px] text-neutral-400">
                     {ev.endDate && ev.endDate !== ev.date
                       ? `${ev.date.slice(5).replace("-", "/")} ~ ${ev.endDate.slice(5).replace("-", "/")}`
-                      : (ev.time ?? t("calendar.allDay"))}{" "}
+                      : ev.time
+                        ? ev.endTime && ev.endTime !== ev.time
+                          ? `${ev.time} ~ ${ev.endTime}`
+                          : ev.time
+                        : t("calendar.allDay")}{" "}
                     · {t(`category.${ev.category}`)}
                     {ev.isShared ? ` · ${ev.ownerName}` : ""}
                   </p>
@@ -653,7 +671,7 @@ export default function CalendarPage() {
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">
           <form
             onSubmit={(e) => void handleCreate(e)}
-            className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">{t("calendar.addEvent")}</h2>
@@ -667,9 +685,9 @@ export default function CalendarPage() {
               onChange={(e) => setTitle(e.target.value)}
               className="mb-3 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
             />
-            <div className="mb-3 grid grid-cols-2 gap-2">
-              <div>
-                <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldDateFrom")}</label>
+            <div className="mb-3">
+              <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldDateFrom")}</label>
+              <div className="flex gap-2">
                 <input
                   type="date"
                   value={eventDate}
@@ -678,11 +696,29 @@ export default function CalendarPage() {
                     setEventDate(next);
                     if (eventEndDate && next > eventEndDate) setEventEndDate(next);
                   }}
-                  className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+                  className="min-w-0 flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+                />
+                <input
+                  type="time"
+                  value={eventTime}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setEventTime(next);
+                    if (!next) {
+                      setEventEndTime("");
+                      return;
+                    }
+                    const plus = addOneHour(eventDate || todayKey(), next);
+                    setEventEndDate(plus.date);
+                    setEventEndTime(plus.time);
+                  }}
+                  className="w-[7.25rem] shrink-0 rounded-xl border border-neutral-200 bg-neutral-50 px-2 py-2.5 text-sm outline-none focus:border-indigo-400"
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldDateTo")}</label>
+            </div>
+            <div className="mb-3">
+              <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldDateTo")}</label>
+              <div className="flex gap-2">
                 <input
                   type="date"
                   value={eventEndDate}
@@ -691,17 +727,16 @@ export default function CalendarPage() {
                     setEventEndDate(next);
                     if (eventDate && next && next < eventDate) setEventDate(next);
                   }}
-                  className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+                  className="min-w-0 flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+                />
+                <input
+                  type="time"
+                  value={eventEndTime}
+                  onChange={(e) => setEventEndTime(e.target.value)}
+                  className="w-[7.25rem] shrink-0 rounded-xl border border-neutral-200 bg-neutral-50 px-2 py-2.5 text-sm outline-none focus:border-indigo-400"
                 />
               </div>
             </div>
-            <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldTime")}</label>
-            <input
-              type="time"
-              value={eventTime}
-              onChange={(e) => setEventTime(e.target.value)}
-              className="mb-3 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
-            />
             <p className="mb-3 text-[11px] text-neutral-400">{t("calendar.timeOptionalHint")}</p>
             <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldCategory")}</label>
             <div className="mb-3 flex flex-wrap gap-2">

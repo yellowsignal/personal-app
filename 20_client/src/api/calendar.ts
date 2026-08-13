@@ -17,6 +17,7 @@ export interface PublicCalendarEvent {
   date: string;
   time: string | null;
   endDate: string;
+  endTime?: string | null;
   isAllDay: boolean;
   category: CalendarCategory;
   isShared: boolean;
@@ -30,6 +31,7 @@ export interface CreateCalendarEventInput {
   date: string;
   endDate?: string | null;
   time?: string | null;
+  endTime?: string | null;
   isAllDay?: boolean;
   category?: "personal" | "family" | "holiday";
   description?: string | null;

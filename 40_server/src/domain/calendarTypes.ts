@@ -33,6 +33,7 @@ export interface PublicCalendarEvent {
   date: string;
   time: string | null;
   endDate: string;
+  endTime?: string | null;
   isAllDay: boolean;
   category: CalendarCategory;
   isShared: boolean;
@@ -57,26 +58,39 @@ export function isDateKey(value: unknown): value is string {
   return typeof value === "string" && DATE_KEY_RE.test(value);
 }
 
-/** Inclusive calendar-day range. If time is set on a single day, end is +1 hour. */
+/** Inclusive calendar-day range. Timed events use start/end clock times (end defaults to +1 hour). */
 export function eventTimesFromRange(
   date: string,
   endDate: string | null | undefined,
   time: string | null | undefined,
+  endTime?: string | null,
 ): { startTime: Date; endTime: Date; isAllDay: boolean } {
   const startKey = endDate && endDate < date ? endDate : date;
   const endKey = endDate && endDate > date ? endDate : date;
-  const isAllDay = !(typeof time === "string" && /^\d{2}:\d{2}$/.test(time));
+  const startClock = typeof time === "string" && /^\d{2}:\d{2}$/.test(time) ? time : null;
+  const endClock = typeof endTime === "string" && /^\d{2}:\d{2}$/.test(endTime) ? endTime : null;
+  const isAllDay = !startClock && !endClock;
+
   const startTime = parseDateKey(startKey);
-  const endTime = parseDateKey(endKey);
-  if (!isAllDay && typeof time === "string") {
-    const [hh, mm] = time.split(":").map(Number);
+  const finish = parseDateKey(endKey);
+
+  if (startClock) {
+    const [hh, mm] = startClock.split(":").map(Number);
     startTime.setUTCHours(hh!, mm, 0, 0);
-    if (startKey === endKey) {
-      return { startTime, endTime: new Date(startTime.getTime() + 60 * 60 * 1000), isAllDay: false };
-    }
   }
-  endTime.setUTCHours(23, 59, 59, 999);
-  return { startTime, endTime, isAllDay };
+  if (endClock) {
+    const [hh, mm] = endClock.split(":").map(Number);
+    finish.setUTCHours(hh!, mm, 0, 0);
+    if (finish.getTime() <= startTime.getTime()) {
+      finish.setTime(startTime.getTime() + 60 * 60 * 1000);
+    }
+    return { startTime, endTime: finish, isAllDay: false };
+  }
+  if (startClock) {
+    return { startTime, endTime: new Date(startTime.getTime() + 60 * 60 * 1000), isAllDay: false };
+  }
+  finish.setUTCHours(23, 59, 59, 999);
+  return { startTime, endTime: finish, isAllDay: true };
 }
 
 export function timeFromDate(d: Date, isAllDay: boolean): string | null {
@@ -100,6 +114,7 @@ export function toPublicCalendarEvent(
     date: toDateKey(record.startTime),
     time: timeFromDate(record.startTime, record.isAllDay),
     endDate: toDateKey(record.endTime),
+    endTime: record.isAllDay ? null : timeFromDate(record.endTime, false),
     isAllDay: record.isAllDay,
     category,
     isShared: record.isShared,

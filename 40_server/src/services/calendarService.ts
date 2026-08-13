@@ -261,7 +261,9 @@ export class CalendarService {
 
     const endDate = isDateKey(body.endDate) ? body.endDate : body.date;
     const time = typeof body.time === "string" && /^\d{2}:\d{2}$/.test(body.time) ? body.time : null;
-    const { startTime, endTime, isAllDay } = eventTimesFromRange(body.date, endDate, time);
+    const endTimeClock =
+      typeof body.endTime === "string" && /^\d{2}:\d{2}$/.test(body.endTime) ? body.endTime : null;
+    const { startTime, endTime, isAllDay } = eventTimesFromRange(body.date, endDate, time, endTimeClock);
 
     const isShared = body.isShared === true || category === "family" || category === "holiday";
     if (isShared && !user.familyId) {
@@ -303,7 +305,9 @@ export class CalendarService {
         typeof body.time === "string" && /^\d{2}:\d{2}$/.test(body.time)
           ? body.time
           : publicExisting.time;
-      const next = eventTimesFromRange(date, endDate, time);
+      const endTimeClock =
+        typeof body.endTime === "string" && /^\d{2}:\d{2}$/.test(body.endTime) ? body.endTime : null;
+      const next = eventTimesFromRange(date, endDate, time, endTimeClock);
       startTime = next.startTime;
       endTime = next.endTime;
       isAllDay = next.isAllDay;
