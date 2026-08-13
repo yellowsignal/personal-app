@@ -74,12 +74,19 @@ test("calendar CRUD and derived document expiry / subscription billing", async (
         date: "2026-08-20",
         time: "14:00",
         category: "personal",
+        description: "예약 확인 후 보험증 지참",
       }),
     });
     assert.equal(createEvent.status, 201);
-    const created = (await createEvent.json()) as { id: string; title: string; time: string | null };
+    const created = (await createEvent.json()) as {
+      id: string;
+      title: string;
+      time: string | null;
+      description: string | null;
+    };
     assert.equal(created.title, "치과");
     assert.equal(created.time, "14:00");
+    assert.equal(created.description, "예약 확인 후 보험증 지참");
 
     const rangeRes = await fetch(`${base}/api/calendar/events`, {
       method: "POST",

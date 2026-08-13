@@ -185,6 +185,7 @@ export default function CalendarPage() {
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState("");
+  const [memo, setMemo] = useState("");
   const [eventDate, setEventDate] = useState(todayKey());
   const [eventEndDate, setEventEndDate] = useState(todayKey());
   const [eventTime, setEventTime] = useState("");
@@ -410,6 +411,7 @@ export default function CalendarPage() {
   function openCreate(date?: string) {
     const start = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : selectedDate;
     setTitle("");
+    setMemo("");
     setEventDate(start);
     setEventEndDate(start);
     setEventTime("");
@@ -441,6 +443,7 @@ export default function CalendarPage() {
     try {
       await calendarApi.create(token, {
         title: title.trim(),
+        description: memo.trim() || null,
         date: eventDate,
         endDate: eventEndDate || eventDate,
         time: eventTime || null,
@@ -615,10 +618,10 @@ export default function CalendarPage() {
             {selectedEvents.map((ev) => (
               <div
                 key={ev.id}
-                className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-black/5"
+                className="flex items-start gap-3 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-black/5"
               >
                 <span
-                  className="h-2 w-2 shrink-0 rounded-full"
+                  className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
                   style={{ backgroundColor: categoryColor[ev.category] }}
                 />
                 <div className="min-w-0 flex-1">
@@ -634,6 +637,9 @@ export default function CalendarPage() {
                     · {t(`category.${ev.category}`)}
                     {ev.isShared ? ` · ${ev.ownerName}` : ""}
                   </p>
+                  {ev.description ? (
+                    <p className="mt-1 whitespace-pre-wrap break-words text-xs text-neutral-500">{ev.description}</p>
+                  ) : null}
                 </div>
                 {(ev.category === "document_expiry" ||
                   ev.category === "subscription_billing" ||
@@ -738,6 +744,15 @@ export default function CalendarPage() {
               </div>
             </div>
             <p className="mb-3 text-[11px] text-neutral-400">{t("calendar.timeOptionalHint")}</p>
+            <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldMemo")}</label>
+            <textarea
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              placeholder={t("calendar.placeholderMemo")}
+              rows={3}
+              maxLength={2000}
+              className="mb-3 w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+            />
             <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldCategory")}</label>
             <div className="mb-3 flex flex-wrap gap-2">
               {(["personal", "family", "holiday"] as const).map((cat) => (
