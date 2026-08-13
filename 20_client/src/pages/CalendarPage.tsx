@@ -34,6 +34,7 @@ import {
 } from "../api/calendar";
 import { ApiError } from "../api/http";
 import { enableHomeScreenPush } from "../api/push";
+import { LONG_PRESS_MS } from "../utils/swipeGesture";
 
 const ALL_CATEGORIES: CalendarCategory[] = [
   "personal",
@@ -178,6 +179,7 @@ function MonthGrid({
   selectedDate,
   eventsByDate,
   onSelectDay,
+  onOpenEvent,
 }: {
   year: number;
   month: number;
@@ -185,6 +187,7 @@ function MonthGrid({
   selectedDate: string;
   eventsByDate: Map<string, PublicCalendarEvent[]>;
   onSelectDay: (key: string) => void;
+  onOpenEvent: (ev: PublicCalendarEvent, dayKey: string) => void;
 }) {
   const cells = useMemo(() => buildMonthGrid(year, month), [year, month]);
   const allEvents = useMemo(() => uniqueMonthEvents(eventsByDate), [eventsByDate]);
@@ -193,6 +196,22 @@ function MonthGrid({
     for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
     return rows;
   }, [cells]);
+  const longPressTimer = useRef<number | null>(null);
+  const longPressEvent = useRef<PublicCalendarEvent | null>(null);
+  const openedByLongPress = useRef(false);
+
+  function clearLongPress() {
+    if (longPressTimer.current != null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    longPressEvent.current = null;
+  }
+
+  function openSeg(ev: PublicCalendarEvent, dayKey: string, fromLongPress: boolean) {
+    if (fromLongPress) openedByLongPress.current = true;
+    onOpenEvent(ev, dayKey);
+  }
 
   return (
     <div className="mt-1 overflow-hidden rounded-lg bg-neutral-100 ring-1 ring-neutral-100">
@@ -231,11 +250,18 @@ function MonthGrid({
                       ? "text-blue-500"
                       : "text-neutral-800";
               return (
-                <button
+                <div
                   key={key}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => onSelectDay(key)}
-                  className={`relative flex min-h-[5.5rem] flex-col overflow-visible px-[2px] pb-0.5 pt-0.5 text-left touch-manipulation ${
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onSelectDay(key);
+                    }
+                  }}
+                  className={`relative flex min-h-[5.5rem] cursor-pointer flex-col overflow-visible px-[2px] pb-0.5 pt-0.5 text-left touch-manipulation ${
                     isSelected ? "bg-indigo-50" : "bg-white"
                   }`}
                 >
@@ -253,10 +279,38 @@ function MonthGrid({
                         seg.continuesRight ? "rounded-r-none" : "rounded-r-[3px]",
                       ].join(" ");
                       return (
-                        <span
+                        <button
                           key={seg.event.id}
+                          type="button"
                           title={seg.event.title}
-                          className={`pointer-events-none absolute truncate px-[3px] text-[9px] font-semibold leading-[13px] text-white ${radius}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (openedByLongPress.current) {
+                              openedByLongPress.current = false;
+                              return;
+                            }
+                            clearLongPress();
+                            openSeg(seg.event, key, false);
+                          }}
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            clearLongPress();
+                            longPressEvent.current = seg.event;
+                            longPressTimer.current = window.setTimeout(() => {
+                              if (longPressEvent.current) openSeg(longPressEvent.current, key, true);
+                              clearLongPress();
+                            }, LONG_PRESS_MS);
+                          }}
+                          onPointerUp={clearLongPress}
+                          onPointerCancel={clearLongPress}
+                          onPointerLeave={clearLongPress}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            clearLongPress();
+                            openSeg(seg.event, key, true);
+                          }}
+                          className={`absolute truncate px-[3px] text-left text-[9px] font-semibold leading-[13px] text-white ${radius}`}
                           style={{
                             top: li * GRID_LANE_H,
                             left: 0,
@@ -267,14 +321,14 @@ function MonthGrid({
                           }}
                         >
                           {seg.event.title}
-                        </span>
+                        </button>
                       );
                     })}
                     {extra > 0 && (
                       <span className="px-[2px] text-[9px] font-semibold leading-3 text-neutral-400">+{extra}</span>
                     )}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -558,8 +612,9 @@ export default function CalendarPage() {
     setShowCreate(true);
   }
 
-  function openDetail(ev: PublicCalendarEvent) {
+  function openDetail(ev: PublicCalendarEvent, dayKey?: string) {
     setSwipeId(null);
+    if (dayKey) setSelectedDate(dayKey);
     setDetailEvent(ev);
   }
 
@@ -790,6 +845,7 @@ export default function CalendarPage() {
                       selectedDate={selectedDate}
                       eventsByDate={eventsByDate}
                       onSelectDay={handleDayTap}
+                      onOpenEvent={(ev, dayKey) => openDetail(ev, dayKey)}
                     />
                   </div>
                 ))}
