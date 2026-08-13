@@ -9,6 +9,8 @@ export interface PushPayload {
   body: string;
   url: string;
   tag?: string;
+  /** App icon badge count (LINE-style). */
+  unreadCount?: number;
 }
 
 export interface PushSender {
@@ -46,6 +48,7 @@ export function toPushWirePayload(payload: PushPayload): Record<string, unknown>
     body: payload.body,
     url: payload.url,
     tag,
+    unreadCount: payload.unreadCount,
   };
 }
 

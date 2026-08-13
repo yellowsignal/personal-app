@@ -28,6 +28,7 @@ import {
   shiftDateTime,
 } from "../domain/recurrence.js";
 import { HttpError } from "./authService.js";
+import type { FamilyActivityService } from "./familyActivityService.js";
 
 const USER_CATEGORIES = new Set(["personal", "family", "holiday"]);
 const REMINDER_MINUTES = new Set([10, 30, 60, 1440]);
@@ -112,6 +113,7 @@ export class CalendarService {
     private readonly subscriptionRepo: SubscriptionRepository | null = null,
     private readonly recurringRepo: RecurringDepositRepository | null = null,
     private readonly assetRepo: AssetRepository | null = null,
+    private readonly activityService: FamilyActivityService | null = null,
   ) {}
 
   private async requireUser(userId: number) {
@@ -340,6 +342,16 @@ export class CalendarService {
       recurrence,
       reminderMinutesBefore: parseReminderMinutes(body.reminderMinutesBefore, 60),
     });
+    if (isShared) {
+      await this.activityService?.recordSharedCreate({
+        familyId: record.familyId,
+        actorUserId: user.id,
+        actorName: user.name,
+        entityType: "CALENDAR_EVENT",
+        entityId: record.id,
+        title: record.title,
+      });
+    }
     return toPublicCalendarEvent(record, user.name, true);
   }
 

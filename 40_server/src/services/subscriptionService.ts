@@ -9,6 +9,7 @@ import {
   type ViewScope,
 } from "../domain/subscriptionTypes.js";
 import { HttpError } from "./authService.js";
+import type { FamilyActivityService } from "./familyActivityService.js";
 import type { PasskeyService } from "./passkeyService.js";
 
 const CURRENCIES = new Set(["KRW", "JPY", "USD"]);
@@ -117,6 +118,7 @@ export class SubscriptionService {
     private readonly authRepo: AuthRepository,
     private readonly subscriptionRepo: SubscriptionRepository,
     private readonly passkeyService: PasskeyService | null = null,
+    private readonly activityService: FamilyActivityService | null = null,
   ) {}
 
   private async requireUser(userId: number) {
@@ -194,6 +196,16 @@ export class SubscriptionService {
       reason: typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : null,
       isShared,
     });
+    if (isShared) {
+      await this.activityService?.recordSharedCreate({
+        familyId: record.familyId,
+        actorUserId: user.id,
+        actorName: user.name,
+        entityType: "SUBSCRIPTION",
+        entityId: record.id,
+        title: record.serviceName,
+      });
+    }
     return toPublicSubscription(record, user.name);
   }
 

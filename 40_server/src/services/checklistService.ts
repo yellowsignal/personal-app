@@ -11,6 +11,7 @@ import {
   type ViewScope,
 } from "../domain/checklistTypes.js";
 import { HttpError } from "./authService.js";
+import type { FamilyActivityService } from "./familyActivityService.js";
 
 function parseScope(value: unknown): ViewScope {
   if (value === "personal" || value === "family" || value === "all") return value;
@@ -28,6 +29,7 @@ export class ChecklistService {
   constructor(
     private readonly authRepo: AuthRepository,
     private readonly checklistRepo: ChecklistRepository,
+    private readonly activityService: FamilyActivityService | null = null,
   ) {}
 
   private async requireUser(userId: number) {
@@ -133,6 +135,16 @@ export class ChecklistService {
       title,
       isShared,
     });
+    if (isShared) {
+      await this.activityService?.recordSharedCreate({
+        familyId: record.familyId,
+        actorUserId: user.id,
+        actorName: user.name,
+        entityType: "CHECKLIST",
+        entityId: record.id,
+        title: record.title,
+      });
+    }
     return toPublicChecklist(record, user.name, 0, 0);
   }
 

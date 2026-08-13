@@ -16,6 +16,7 @@ import { PasskeyService } from "./services/passkeyService.js";
 import { ChallengeStore } from "./auth/challengeStore.js";
 import { createAuthRouter } from "./routes/authRoutes.js";
 import { createFamilyRouter } from "./routes/familyRoutes.js";
+import { createFamilyActivityRouter } from "./routes/familyActivityRoutes.js";
 import { createAssetRouter } from "./routes/assetRoutes.js";
 import { createSubscriptionRouter } from "./routes/subscriptionRoutes.js";
 import { createChecklistRouter } from "./routes/checklistRoutes.js";
@@ -32,6 +33,8 @@ import { CalendarService } from "./services/calendarService.js";
 import { createCalendarRouter } from "./routes/calendarRoutes.js";
 import { PushService } from "./services/pushService.js";
 import { createPushRouter } from "./routes/pushRoutes.js";
+import type { FamilyActivityRepository } from "./domain/familyActivityTypes.js";
+import { FamilyActivityService } from "./services/familyActivityService.js";
 
 export interface AppDeps {
   authRepo?: AuthRepository;
@@ -43,6 +46,7 @@ export interface AppDeps {
   documentRepo?: DocumentRepository;
   calendarRepo?: CalendarRepository;
   pushService?: PushService;
+  activityRepo?: FamilyActivityRepository;
   documentScanStore?: DocumentScanStore;
   passkeyRepo?: PasskeyRepository;
   inviteTokenRepo?: InviteTokenRepository;
@@ -108,8 +112,17 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
 
     app.use("/api/family", createFamilyRouter(authService, passkeyService, jwtSecret));
 
+    const activityService =
+      deps.activityRepo != null
+        ? new FamilyActivityService(deps.authRepo, deps.activityRepo, deps.pushService ?? null)
+        : null;
+
+    if (activityService) {
+      app.use("/api/family", createFamilyActivityRouter(activityService, jwtSecret));
+    }
+
     if (deps.assetRepo) {
-      const assetService = new AssetService(deps.authRepo, deps.assetRepo);
+      const assetService = new AssetService(deps.authRepo, deps.assetRepo, activityService);
       const transactionService =
         deps.transactionRepo
           ? new TransactionService(deps.authRepo, deps.assetRepo, deps.transactionRepo)
@@ -137,12 +150,13 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
         deps.authRepo,
         deps.subscriptionRepo,
         passkeyService,
+        activityService,
       );
       app.use("/api/subscriptions", createSubscriptionRouter(subscriptionService, jwtSecret));
     }
 
     if (deps.checklistRepo) {
-      const checklistService = new ChecklistService(deps.authRepo, deps.checklistRepo);
+      const checklistService = new ChecklistService(deps.authRepo, deps.checklistRepo, activityService);
       app.use("/api/checklists", createChecklistRouter(checklistService, jwtSecret));
     }
 
@@ -152,6 +166,7 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
         deps.documentRepo,
         passkeyService,
         deps.documentScanStore ?? null,
+        activityService,
       );
       app.use("/api/documents", createDocumentRouter(documentService, jwtSecret));
     }
@@ -164,6 +179,7 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
         deps.subscriptionRepo ?? null,
         deps.recurringDepositRepo ?? null,
         deps.assetRepo ?? null,
+        activityService,
       );
       app.use("/api/calendar", createCalendarRouter(calendarService, jwtSecret));
     }

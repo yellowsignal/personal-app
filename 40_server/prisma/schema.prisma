@@ -36,6 +36,7 @@ model Family {
   calendarEvents   CalendarEvent[]
   checklists       Checklist[]
   recurringDeposits RecurringDeposit[]
+  activities       FamilyActivity[]
 
   @@map("families")
 }
@@ -66,6 +67,8 @@ model User {
   checklists       Checklist[]
   recurringDeposits RecurringDeposit[]
   pushSubscriptions PushSubscription[]
+  activitiesActed   FamilyActivity[]     @relation("FamilyActivityActor")
+  activityReads     FamilyActivityRead[]
 
   @@index([familyId])
   @@map("users")
@@ -362,4 +365,44 @@ model PushSubscription {
 
   @@index([userId])
   @@map("push_subscriptions")
+}
+
+enum FamilyActivityEntityType {
+  CALENDAR_EVENT
+  DOCUMENT
+  CHECKLIST
+  ASSET
+  SUBSCRIPTION
+}
+
+model FamilyActivity {
+  id          Int                      @id @default(autoincrement())
+  familyId    Int                      @map("family_id")
+  actorUserId Int                      @map("actor_user_id")
+  entityType  FamilyActivityEntityType @map("entity_type")
+  entityId    Int                      @map("entity_id")
+  title       String                   @db.VarChar(200)
+  createdAt   DateTime                 @default(now()) @map("created_at")
+
+  family Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  actor  User                 @relation("FamilyActivityActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  reads  FamilyActivityRead[]
+
+  @@index([familyId, createdAt])
+  @@index([entityType, entityId])
+  @@map("family_activities")
+}
+
+model FamilyActivityRead {
+  id         Int      @id @default(autoincrement())
+  activityId Int      @map("activity_id")
+  userId     Int      @map("user_id")
+  readAt     DateTime @default(now()) @map("read_at")
+
+  activity FamilyActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, userId])
+  @@index([userId])
+  @@map("family_activity_reads")
 }

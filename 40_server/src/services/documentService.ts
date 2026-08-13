@@ -11,6 +11,7 @@ import {
 import type { DocumentCategory } from "../documentCategories.js";
 import { inferCategoryFromTypeLabel, parseDocumentCategory } from "../documentCategories.js";
 import { HttpError } from "./authService.js";
+import type { FamilyActivityService } from "./familyActivityService.js";
 import type { PasskeyService } from "./passkeyService.js";
 import type { ViewScope } from "../domain/subscriptionTypes.js";
 import type { DocumentScanStore, ScanSide } from "../storage/documentScanStore.js";
@@ -154,6 +155,7 @@ export class DocumentService {
     private readonly documentRepo: DocumentRepository,
     private readonly passkeyService: PasskeyService | null = null,
     private readonly scanStore: DocumentScanStore | null = null,
+    private readonly activityService: FamilyActivityService | null = null,
   ) {}
 
   private async requireUser(userId: number) {
@@ -250,6 +252,16 @@ export class DocumentService {
       isShared,
       memo,
     });
+    if (isShared) {
+      await this.activityService?.recordSharedCreate({
+        familyId: record.familyId,
+        actorUserId: user.id,
+        actorName: user.name,
+        entityType: "DOCUMENT",
+        entityId: record.id,
+        title: record.typeLabel,
+      });
+    }
     return toPublicDocument(record, user.name);
   }
 

@@ -10,6 +10,7 @@ import {
   type ViewScope,
 } from "../domain/assetTypes.js";
 import { HttpError } from "./authService.js";
+import type { FamilyActivityService } from "./familyActivityService.js";
 import { currencyForMarket, fetchYahooPrice, toYahooSymbol } from "./stockQuote.js";
 
 const CURRENCIES = new Set(["KRW", "JPY", "USD"]);
@@ -77,6 +78,7 @@ export class AssetService {
   constructor(
     private readonly authRepo: AuthRepository,
     private readonly assetRepo: AssetRepository,
+    private readonly activityService: FamilyActivityService | null = null,
   ) {}
 
   private async requireUser(userId: number) {
@@ -123,6 +125,21 @@ export class AssetService {
     const records = await this.assetRepo.listForUser(userId, user.familyId);
     const withOwners = await this.withOwners(records);
     return this.filterScope(withOwners, scope, userId);
+  }
+
+  private async notifySharedAsset(
+    user: { id: number; name: string; familyId: number | null },
+    record: { id: number; familyId: number | null; label: string; isShared: boolean },
+  ) {
+    if (!record.isShared) return;
+    await this.activityService?.recordSharedCreate({
+      familyId: record.familyId ?? user.familyId,
+      actorUserId: user.id,
+      actorName: user.name,
+      entityType: "ASSET",
+      entityId: record.id,
+      title: record.label,
+    });
   }
 
   async create(userId: number, body: Record<string, unknown>): Promise<PublicAsset> {
@@ -172,6 +189,7 @@ export class AssetService {
         currentPrice,
         isShared,
       });
+      await this.notifySharedAsset(user, record);
       return toPublicAsset(record, user.name);
     }
 
@@ -193,6 +211,7 @@ export class AssetService {
         currentPrice: null,
         isShared,
       });
+      await this.notifySharedAsset(user, record);
       return toPublicAsset(record, user.name);
     }
 
@@ -211,6 +230,7 @@ export class AssetService {
       currentPrice: null,
       isShared,
     });
+    await this.notifySharedAsset(user, record);
     return toPublicAsset(record, user.name);
   }
 

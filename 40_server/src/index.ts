@@ -37,6 +37,8 @@ import { PrismaCalendarRepository } from "./domain/prismaCalendarRepository.js";
 import type { CalendarRepository } from "./domain/calendarRepository.js";
 import { MemoryPushRepository } from "./domain/memoryPushRepository.js";
 import { PrismaPushRepository } from "./domain/prismaPushRepository.js";
+import { MemoryFamilyActivityRepository } from "./domain/memoryFamilyActivityRepository.js";
+import { PrismaFamilyActivityRepository } from "./domain/prismaFamilyActivityRepository.js";
 import { loadOrCreateVapidKeys, PushService, WebPushSender } from "./services/pushService.js";
 import { ReminderDispatcher, startReminderScheduler } from "./services/reminderDispatcher.js";
 
@@ -74,6 +76,9 @@ const calendarRepo: CalendarRepository = useMemoryAuth
   ? new MemoryCalendarRepository()
   : new PrismaCalendarRepository(prisma);
 const pushRepo = useMemoryAuth ? new MemoryPushRepository() : new PrismaPushRepository(prisma);
+const activityRepo = useMemoryAuth
+  ? new MemoryFamilyActivityRepository()
+  : new PrismaFamilyActivityRepository(prisma);
 const vapidSubject =
   process.env.VAPID_SUBJECT ??
   (process.env.WEBAUTHN_ORIGIN
@@ -105,6 +110,7 @@ const app = createApp(store, {
   challengeStore,
   jwtSecret: JWT_SECRET,
   pushService,
+  activityRepo,
 });
 
 app.listen(PORT, () => {

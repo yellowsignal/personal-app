@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { Bell, ChevronRight, IdCard, Images, ListChecks, Settings } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Bell, ChevronRight, IdCard, Images, ListChecks, Settings, Users, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
+import OverlayScrim from "../components/OverlayScrim";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../context/CurrencyContext";
 import { useAuth } from "../context/AuthContext";
@@ -11,6 +12,12 @@ import { currentUser, exchangeRates, familyInfo, familyMembers, type Currency } 
 import { assetsApi, type PublicAsset } from "../api/assets";
 import { calendarApi, categoryColor, type PublicCalendarEvent } from "../api/calendar";
 import { documentsApi, type PublicDocument } from "../api/documents";
+import {
+  familyActivityApi,
+  syncAppBadge,
+  type FamilyActivitySummary,
+  type PublicFamilyActivity,
+} from "../api/familyActivity";
 import { formatMoney } from "../utils/formatMoney";
 
 const CURRENCIES: Currency[] = ["KRW", "JPY", "USD"];
@@ -66,13 +73,19 @@ function uniqueBySeries(events: PublicCalendarEvent[], limit: number): PublicCal
 
 export default function DashboardPage() {
   const { lang, t } = useLanguage();
+  const navigate = useNavigate();
   const { currency: displayCurrency, setCurrency: setDisplayCurrency } = useCurrency();
   const { token, user, family } = useAuth();
   const [scope, setScope] = useState<ViewScope>("all");
   const [assets, setAssets] = useState<PublicAsset[]>([]);
   const [docs, setDocs] = useState<PublicDocument[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<PublicCalendarEvent[]>([]);
-  const [nextBilling, setNextBilling] = useState<PublicCalendarEvent | null>(null);
+  const [activitySummary, setActivitySummary] = useState<FamilyActivitySummary>({
+    unreadCount: 0,
+    latest: null,
+  });
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityList, setActivityList] = useState<PublicFamilyActivity[]>([]);
   useBodyScrollLock(true);
 
   const loadAssets = useCallback(async () => {
@@ -99,10 +112,6 @@ export default function DashboardPage() {
     if (!token) return;
     try {
       const items = await calendarApi.listEvents(token, isoToday(), isoPlusDays(60), "all");
-      const billing = items.find((e) => e.category === "subscription_billing") ?? null;
-      setNextBilling(billing);
-      // Subscription billing stays on the top card only — keep calendar itself unchanged.
-      // Recurring series: show at most one upcoming occurrence so other events can appear.
       setUpcomingEvents(
         uniqueBySeries(
           items.filter((e) => e.category !== "holiday" && e.category !== "subscription_billing"),
@@ -110,8 +119,18 @@ export default function DashboardPage() {
         ),
       );
     } catch {
-      setNextBilling(null);
       setUpcomingEvents([]);
+    }
+  }, [token]);
+
+  const loadActivitySummary = useCallback(async () => {
+    if (!token) return;
+    try {
+      const summary = await familyActivityApi.summary(token);
+      setActivitySummary(summary);
+      void syncAppBadge(summary.unreadCount);
+    } catch {
+      setActivitySummary({ unreadCount: 0, latest: null });
     }
   }, [token]);
 
@@ -126,6 +145,39 @@ export default function DashboardPage() {
   useEffect(() => {
     void loadUpcoming();
   }, [loadUpcoming]);
+
+  useEffect(() => {
+    void loadActivitySummary();
+  }, [loadActivitySummary]);
+
+  async function openActivitySheet() {
+    if (!token) return;
+    setActivityOpen(true);
+    try {
+      const list = await familyActivityApi.list(token, 40);
+      setActivityList(list);
+      const result = await familyActivityApi.markRead(token, { all: true });
+      setActivitySummary((prev) => ({
+        ...prev,
+        unreadCount: result.unreadCount,
+        latest: list[0] ?? null,
+      }));
+      void syncAppBadge(result.unreadCount);
+    } catch {
+      setActivityList([]);
+    }
+  }
+
+  async function openActivityItem(item: PublicFamilyActivity) {
+    if (!token) return;
+    try {
+      await familyActivityApi.markRead(token, { ids: [item.id] });
+    } catch {
+      /* ignore */
+    }
+    setActivityOpen(false);
+    navigate(item.path);
+  }
 
   const displayName = user?.name || currentUser.name[lang];
   const displayFamily = family?.familyName || familyInfo.familyName[lang];
@@ -164,9 +216,10 @@ export default function DashboardPage() {
     return withExpiry[0] ?? null;
   }, [docs]);
 
-  const nextBillingDays = nextBilling ? daysUntilIso(nextBilling.date) : null;
-
   const scopeLabel = t(scope === "all" ? "scope.all" : scope === "personal" ? "scope.personal" : "scope.family");
+  const latestLine = activitySummary.latest
+    ? `${activitySummary.latest.actorName} · ${activitySummary.latest.title}`
+    : t("dashboard.noFamilyActivity");
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden overscroll-none" style={{ touchAction: "none" }}>
@@ -230,21 +283,22 @@ export default function DashboardPage() {
                 : t("dashboard.noExpiry")}
             </p>
           </Link>
-          <Link
-            to="/subscriptions"
-            className="rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-black/5"
+          <button
+            type="button"
+            onClick={() => void openActivitySheet()}
+            className="rounded-2xl bg-white p-3.5 text-left shadow-sm ring-1 ring-black/5"
           >
-            <div
-              className="h-[18px] w-[18px] rounded-full"
-              style={{ backgroundColor: categoryColor.subscription_billing }}
-            />
-            <p className="mt-2 text-xs text-neutral-400">{t("dashboard.nextBilling")}</p>
-            <p className="mt-0.5 truncate text-sm font-bold text-neutral-900">
-              {nextBilling && nextBillingDays != null
-                ? `${nextBilling.title} ${formatDaysLeftLabel(nextBillingDays)}`
-                : t("dashboard.noBilling")}
-            </p>
-          </Link>
+            <div className="flex items-center justify-between">
+              <Users size={18} className="text-indigo-500" />
+              {activitySummary.unreadCount > 0 ? (
+                <span className="min-w-[1.25rem] rounded-full bg-rose-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">
+                  {activitySummary.unreadCount > 99 ? "99+" : activitySummary.unreadCount}
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-2 text-xs text-neutral-400">{t("dashboard.familyActivity")}</p>
+            <p className="mt-0.5 truncate text-sm font-bold text-neutral-900">{latestLine}</p>
+          </button>
         </section>
 
         <section className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -315,6 +369,67 @@ export default function DashboardPage() {
           </Link>
         </section>
       </div>
+
+      {activityOpen && (
+        <OverlayScrim
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center"
+          onDismiss={() => setActivityOpen(false)}
+          label={t("dashboard.closeActivity")}
+        >
+          <div className="relative max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 pt-6 shadow-xl sm:rounded-2xl">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-base font-bold text-neutral-900">{t("dashboard.familyActivity")}</h2>
+              <button
+                type="button"
+                onClick={() => setActivityOpen(false)}
+                className="rounded-full p-1 text-neutral-400"
+                aria-label={t("dashboard.closeActivity")}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            {activityList.length === 0 ? (
+              <p className="py-8 text-center text-xs text-neutral-400">{t("dashboard.noFamilyActivity")}</p>
+            ) : (
+              <ul className="divide-y divide-neutral-100">
+                {activityList.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => void openActivityItem(item)}
+                      className="flex w-full items-start gap-3 py-3 text-left"
+                    >
+                      <span
+                        className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                          item.isRead ? "bg-neutral-200" : "bg-rose-500"
+                        }`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-neutral-900">
+                          {item.actorName}
+                          <span className="font-medium text-neutral-400"> · </span>
+                          {item.title}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-neutral-400">
+                          {t(`dashboard.activityType.${item.entityType}`)}
+                          {" · "}
+                          {new Date(item.createdAt).toLocaleString(lang === "ja" ? "ja-JP" : "ko-KR", {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+                      <ChevronRight size={16} className="mt-1 shrink-0 text-neutral-300" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </OverlayScrim>
+      )}
     </div>
   );
 }
