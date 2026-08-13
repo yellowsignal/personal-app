@@ -1,4 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type PointerEvent as ReactPointerEvent,
+  type TransitionEvent as ReactTransitionEvent,
+} from "react";
 import { Bell, ChevronLeft, ChevronRight, Plus, Trash2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
@@ -49,6 +59,73 @@ function buildMonthGrid(year: number, month: number) {
   return cells;
 }
 
+type MonthCursor = { year: number; month: number };
+
+function shiftMonth(cursor: MonthCursor, delta: number): MonthCursor {
+  const d = new Date(cursor.year, cursor.month + delta, 1);
+  return { year: d.getFullYear(), month: d.getMonth() };
+}
+
+function clampSelectedDate(selected: string, cursor: MonthCursor): string {
+  const day = Number(selected.slice(8, 10));
+  const last = new Date(cursor.year, cursor.month + 1, 0).getDate();
+  return toKey(cursor.year, cursor.month, Math.min(Number.isFinite(day) && day > 0 ? day : 1, last));
+}
+
+function MonthGrid({
+  year,
+  month,
+  today,
+  selectedDate,
+  eventsByDate,
+  onSelectDay,
+}: {
+  year: number;
+  month: number;
+  today: string;
+  selectedDate: string;
+  eventsByDate: Map<string, PublicCalendarEvent[]>;
+  onSelectDay: (key: string) => void;
+}) {
+  const cells = useMemo(() => buildMonthGrid(year, month), [year, month]);
+  return (
+    <div className="mt-1 grid grid-cols-7 gap-y-1 text-center" style={{ minHeight: "18rem" }}>
+      {cells.map((day, idx) => {
+        if (day === null) return <div key={idx} className="h-12" />;
+        const key = toKey(year, month, day);
+        const dayEvents = eventsByDate.get(key) ?? [];
+        const isToday = key === today;
+        const isSelected = key === selectedDate;
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onSelectDay(key)}
+            className="flex h-12 flex-col items-center justify-start gap-1 pt-0.5"
+          >
+            <span
+              className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
+                isSelected ? "bg-indigo-600 text-white" : isToday ? "text-indigo-600" : "text-neutral-700"
+              }`}
+            >
+              {day}
+            </span>
+            <div className="flex gap-0.5">
+              {dayEvents.slice(0, 3).map((ev) => (
+                <span
+                  key={ev.id}
+                  className="h-1 w-1 rounded-full"
+                  style={{ backgroundColor: categoryColor[ev.category] }}
+                />
+              ))}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function CalendarPage() {
   const { t } = useLanguage();
   const { token, user, family, updateMe } = useAuth();
@@ -69,34 +146,76 @@ export default function CalendarPage() {
   const [isShared, setIsShared] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [savingHolidayPref, setSavingHolidayPref] = useState(false);
-  const [dragX, setDragX] = useState(0);
-  const [dragging, setDragging] = useState(false);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const pageWidthRef = useRef(0);
+  const dragXRef = useRef(0);
+  const cursorRef = useRef(cursor);
+  const animatingRef = useRef(false);
+  const pendingDeltaRef = useRef<number | null>(null);
   const pointerStart = useRef<{ x: number; y: number; id: number } | null>(null);
+  const axisRef = useRef<"x" | "y" | null>(null);
   const ignoreClick = useRef(false);
+  const hasLoadedRef = useRef(false);
+  const [pageWidth, setPageWidth] = useState(0);
 
-  const cells = useMemo(() => buildMonthGrid(cursor.year, cursor.month), [cursor]);
   const today = todayKey();
   const holidayPref = parseHolidayPref(user?.countryPref);
+  const prevMonth = useMemo(() => shiftMonth(cursor, -1), [cursor]);
+  const nextMonth = useMemo(() => shiftMonth(cursor, 1), [cursor]);
+  const monthPanes = useMemo(() => [prevMonth, cursor, nextMonth], [prevMonth, cursor, nextMonth]);
 
   const load = useCallback(async () => {
     if (!token) return;
-    setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
     setError(null);
     try {
-      const { from, to } = monthBounds(cursor.year, cursor.month);
+      const from = monthBounds(prevMonth.year, prevMonth.month).from;
+      const to = monthBounds(nextMonth.year, nextMonth.month).to;
       const items = await calendarApi.listEvents(token, from, to, scope);
       setEvents(items);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("calendar.errorLoad"));
       setEvents([]);
     } finally {
+      hasLoadedRef.current = true;
       setLoading(false);
     }
-  }, [token, cursor, scope, t]);
+  }, [token, prevMonth, nextMonth, scope, t]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    cursorRef.current = cursor;
+  }, [cursor]);
+
+  useLayoutEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const sync = () => {
+      const w = el.clientWidth;
+      pageWidthRef.current = w;
+      setPageWidth(w);
+      const track = trackRef.current;
+      if (track && w > 0 && !animatingRef.current) {
+        track.style.transition = "none";
+        track.style.transform = `translateX(${-w + dragXRef.current}px)`;
+      }
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useLayoutEffect(() => {
+    if (pendingDeltaRef.current == null) return;
+    pendingDeltaRef.current = null;
+    animatingRef.current = false;
+    applyOffset(0, false);
+  }, [cursor]);
 
   const filteredEvents = useMemo(
     () => events.filter((e) => activeCats.has(e.category)),
@@ -139,39 +258,77 @@ export default function CalendarPage() {
     });
   }
 
+  function applyOffset(x: number, animate: boolean) {
+    dragXRef.current = x;
+    const track = trackRef.current;
+    const w = pageWidthRef.current;
+    if (!track || w <= 0) return;
+    track.style.transition = animate ? "transform 280ms cubic-bezier(0.22, 1, 0.36, 1)" : "none";
+    track.style.transform = `translateX(${-w + x}px)`;
+  }
+
   function changeMonth(delta: number) {
-    setCursor((prev) => {
-      let month = prev.month + delta;
-      let year = prev.year;
-      if (month < 0) {
-        month = 11;
-        year -= 1;
-      } else if (month > 11) {
-        month = 0;
-        year += 1;
-      }
-      return { year, month };
-    });
+    const next = shiftMonth(cursorRef.current, delta);
+    cursorRef.current = next;
+    setCursor(next);
+    setSelectedDate((sel) => clampSelectedDate(sel, next));
+  }
+
+  function goToMonth(delta: number) {
+    if (delta === 0 || animatingRef.current) return;
+    const w = pageWidthRef.current;
+    if (w <= 0) {
+      changeMonth(delta);
+      return;
+    }
+    const target = delta < 0 ? w : -w;
+    if (Math.abs(dragXRef.current - target) < 2) {
+      pendingDeltaRef.current = delta;
+      changeMonth(delta);
+      return;
+    }
+    animatingRef.current = true;
+    pendingDeltaRef.current = delta;
+    applyOffset(target, true);
+  }
+
+  function onTrackTransitionEnd(e: ReactTransitionEvent<HTMLDivElement>) {
+    if (e.target !== trackRef.current) return;
+    if (e.propertyName !== "transform") return;
+    const delta = pendingDeltaRef.current;
+    if (delta == null) {
+      animatingRef.current = false;
+      return;
+    }
+    changeMonth(delta);
   }
 
   function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    if (animatingRef.current) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     pointerStart.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
-    setDragging(true);
-    setDragX(0);
+    axisRef.current = null;
     ignoreClick.current = false;
     e.currentTarget.setPointerCapture(e.pointerId);
   }
 
   function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
     const start = pointerStart.current;
-    if (!start || start.id !== e.pointerId) return;
+    if (!start || start.id !== e.pointerId || animatingRef.current) return;
     const dx = e.clientX - start.x;
     const dy = e.clientY - start.y;
-    if (Math.abs(dx) > Math.abs(dy)) {
-      setDragX(Math.max(-120, Math.min(120, dx)));
-      if (Math.abs(dx) > 12) ignoreClick.current = true;
+    if (!axisRef.current) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      axisRef.current = Math.abs(dx) > Math.abs(dy) * 1.15 ? "x" : "y";
+      if (axisRef.current === "x") {
+        ignoreClick.current = true;
+        e.currentTarget.style.touchAction = "none";
+      }
     }
+    if (axisRef.current !== "x") return;
+    const w = pageWidthRef.current;
+    const capped = w > 0 ? Math.max(-w, Math.min(w, dx)) : dx;
+    applyOffset(capped, false);
   }
 
   function onPointerUp(e: ReactPointerEvent<HTMLDivElement>) {
@@ -179,16 +336,27 @@ export default function CalendarPage() {
     if (!start || start.id !== e.pointerId) return;
     const dx = e.clientX - start.x;
     const dy = e.clientY - start.y;
+    const axis = axisRef.current;
     pointerStart.current = null;
-    setDragging(false);
-    setDragX(0);
+    axisRef.current = null;
+    e.currentTarget.style.touchAction = "";
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
       /* ignore */
     }
-    if (Math.abs(dx) > 56 && Math.abs(dx) > Math.abs(dy) * 1.2) {
-      changeMonth(dx < 0 ? 1 : -1);
+    if (axis !== "x") {
+      applyOffset(0, false);
+      return;
+    }
+    const w = pageWidthRef.current;
+    const threshold = Math.max(56, w * 0.22);
+    if (Math.abs(dx) > threshold && Math.abs(dx) > Math.abs(dy) * 1.05) {
+      goToMonth(dx < 0 ? 1 : -1);
+    } else {
+      animatingRef.current = true;
+      pendingDeltaRef.current = null;
+      applyOffset(0, true);
     }
   }
 
@@ -289,75 +457,71 @@ export default function CalendarPage() {
           })}
         </div>
 
-        <div
-          className="mt-4 touch-pan-y select-none overflow-hidden rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-        >
-          <div className="flex items-center justify-between">
-            <button type="button" onClick={() => changeMonth(-1)} className="p-1 text-neutral-400" aria-label={t("calendar.prevMonth")}>
+        <div className="mt-4 select-none overflow-hidden rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => goToMonth(-1)}
+              className="absolute left-0 top-0 z-10 p-1 text-neutral-400"
+              aria-label={t("calendar.prevMonth")}
+            >
               <ChevronLeft size={18} />
             </button>
-            <p className="text-sm font-bold text-neutral-900">
-              {t("calendar.monthYear", { year: cursor.year, month: cursor.month + 1 })}
-            </p>
-            <button type="button" onClick={() => changeMonth(1)} className="p-1 text-neutral-400" aria-label={t("calendar.nextMonth")}>
+            <button
+              type="button"
+              onClick={() => goToMonth(1)}
+              className="absolute right-0 top-0 z-10 p-1 text-neutral-400"
+              aria-label={t("calendar.nextMonth")}
+            >
               <ChevronRight size={18} />
             </button>
-          </div>
 
-          <div
-            className={dragging ? "" : "transition-transform duration-200"}
-            style={{ transform: `translateX(${dragX}px)` }}
-          >
-            <div className="mt-3 grid grid-cols-7 text-center text-[11px] font-semibold text-neutral-300">
-              {weekdays.map((w) => (
-                <div key={w}>{w}</div>
-              ))}
-            </div>
-
-            <div className="mt-1 grid grid-cols-7 gap-y-1 text-center">
-              {cells.map((day, idx) => {
-                if (day === null) return <div key={idx} className="h-12" />;
-                const key = toKey(cursor.year, cursor.month, day);
-                const dayEvents = eventsByDate.get(key) ?? [];
-                const isToday = key === today;
-                const isSelected = key === selectedDate;
-                return (
-                  <button
+            <div
+              ref={viewportRef}
+              className="touch-pan-y overflow-hidden"
+              style={{ overscrollBehaviorX: "contain" }}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+            >
+              <div
+                ref={trackRef}
+                className="flex will-change-transform"
+                onTransitionEnd={onTrackTransitionEnd}
+              >
+                {monthPanes.map((pane, idx) => (
+                  <div
                     key={idx}
-                    type="button"
-                    onClick={() => {
-                      if (ignoreClick.current) return;
-                      setSelectedDate(key);
-                    }}
-                    className="flex h-12 flex-col items-center justify-start gap-1 pt-0.5"
+                    className="shrink-0"
+                    style={
+                      pageWidth > 0
+                        ? { flex: `0 0 ${pageWidth}px`, width: pageWidth }
+                        : { flex: "0 0 100%" }
+                    }
                   >
-                    <span
-                      className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
-                        isSelected
-                          ? "bg-indigo-600 text-white"
-                          : isToday
-                            ? "text-indigo-600"
-                            : "text-neutral-700"
-                      }`}
-                    >
-                      {day}
-                    </span>
-                    <div className="flex gap-0.5">
-                      {dayEvents.slice(0, 3).map((ev) => (
-                        <span
-                          key={ev.id}
-                          className="h-1 w-1 rounded-full"
-                          style={{ backgroundColor: categoryColor[ev.category] }}
-                        />
+                    <p className="px-8 text-center text-sm font-bold text-neutral-900">
+                      {t("calendar.monthYear", { year: pane.year, month: pane.month + 1 })}
+                    </p>
+                    <div className="mt-3 grid grid-cols-7 text-center text-[11px] font-semibold text-neutral-300">
+                      {weekdays.map((w) => (
+                        <div key={w}>{w}</div>
                       ))}
                     </div>
-                  </button>
-                );
-              })}
+                    <MonthGrid
+                      year={pane.year}
+                      month={pane.month}
+                      today={today}
+                      selectedDate={selectedDate}
+                      eventsByDate={eventsByDate}
+                      onSelectDay={(key) => {
+                        if (ignoreClick.current) return;
+                        setSelectedDate(key);
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           <p className="mt-2 text-center text-[10px] text-neutral-300">{t("calendar.swipeHint")}</p>
