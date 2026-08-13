@@ -9,10 +9,11 @@ import {
   type PointerEvent as ReactPointerEvent,
   type TransitionEvent as ReactTransitionEvent,
 } from "react";
-import { Bell, ChevronLeft, ChevronRight, Plus, Trash2, X } from "lucide-react";
+import { Bell, ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import HolidayPrefPicker, { parseHolidayPref, type HolidayPref } from "../components/HolidayPrefPicker";
+import YearMonthWheelPicker from "../components/YearMonthWheelPicker";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -174,6 +175,7 @@ export default function CalendarPage() {
   const [isShared, setIsShared] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [savingHolidayPref, setSavingHolidayPref] = useState(false);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const pageWidthRef = useRef(0);
@@ -300,6 +302,16 @@ export default function CalendarPage() {
     cursorRef.current = next;
     setCursor(next);
     setSelectedDate((sel) => clampSelectedDate(sel, next));
+  }
+
+  function jumpToMonth(next: MonthCursor) {
+    if (next.year === cursorRef.current.year && next.month === cursorRef.current.month) return;
+    animatingRef.current = false;
+    pendingDeltaRef.current = null;
+    cursorRef.current = next;
+    setCursor(next);
+    setSelectedDate((sel) => clampSelectedDate(sel, next));
+    applyOffset(0, false);
   }
 
   function goToMonth(delta: number) {
@@ -487,22 +499,44 @@ export default function CalendarPage() {
 
         <div className="mt-4 select-none overflow-hidden rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
           <div className="relative">
-            <button
-              type="button"
-              onClick={() => goToMonth(-1)}
-              className="absolute left-0 top-0 z-10 p-1 text-neutral-400"
-              aria-label={t("calendar.prevMonth")}
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={() => goToMonth(1)}
-              className="absolute right-0 top-0 z-10 p-1 text-neutral-400"
-              aria-label={t("calendar.nextMonth")}
-            >
-              <ChevronRight size={18} />
-            </button>
+            <div className="mb-3 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => goToMonth(-1)}
+                className="p-1 text-neutral-400"
+                aria-label={t("calendar.prevMonth")}
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowMonthPicker(true)}
+                className="flex items-center gap-0.5 rounded-lg px-2 py-1 text-sm font-bold text-neutral-900"
+                aria-label={t("calendar.pickYearMonth")}
+              >
+                {t("calendar.monthYear", { year: cursor.year, month: cursor.month + 1 })}
+                <ChevronDown size={16} className="text-neutral-400" />
+              </button>
+              <button
+                type="button"
+                onClick={() => goToMonth(1)}
+                className="p-1 text-neutral-400"
+                aria-label={t("calendar.nextMonth")}
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-7 text-center text-[11px] font-semibold">
+              {weekdays.map((w, i) => (
+                <div
+                  key={w}
+                  className={i === 0 ? "text-red-400" : i === 6 ? "text-blue-400" : "text-neutral-400"}
+                >
+                  {w}
+                </div>
+              ))}
+            </div>
 
             <div
               ref={viewportRef}
@@ -528,19 +562,6 @@ export default function CalendarPage() {
                         : { flex: "0 0 100%" }
                     }
                   >
-                    <p className="px-8 text-center text-sm font-bold text-neutral-900">
-                      {t("calendar.monthYear", { year: pane.year, month: pane.month + 1 })}
-                    </p>
-                    <div className="mt-3 grid grid-cols-7 text-center text-[11px] font-semibold">
-                      {weekdays.map((w, i) => (
-                        <div
-                          key={w}
-                          className={i === 0 ? "text-red-400" : i === 6 ? "text-blue-400" : "text-neutral-400"}
-                        >
-                          {w}
-                        </div>
-                      ))}
-                    </div>
                     <MonthGrid
                       year={pane.year}
                       month={pane.month}
@@ -611,6 +632,17 @@ export default function CalendarPage() {
           </div>
         </section>
       </div>
+
+      {showMonthPicker && (
+        <YearMonthWheelPicker
+          value={cursor}
+          onCancel={() => setShowMonthPicker(false)}
+          onConfirm={(next) => {
+            jumpToMonth(next);
+            setShowMonthPicker(false);
+          }}
+        />
+      )}
 
       {showCreate && (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center">
