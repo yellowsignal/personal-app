@@ -83,10 +83,45 @@ test("calendar CRUD and derived document expiry / subscription billing", async (
       title: string;
       time: string | null;
       description: string | null;
+      reminderMinutesBefore: number | null;
     };
     assert.equal(created.title, "치과");
     assert.equal(created.time, "14:00");
     assert.equal(created.description, "예약 확인 후 보험증 지참");
+    assert.equal(created.reminderMinutesBefore, 60);
+
+    const noReminder = await fetch(`${base}/api/calendar/events`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        title: "알림 없음",
+        date: "2026-08-21",
+        reminderMinutesBefore: null,
+      }),
+    });
+    assert.equal(noReminder.status, 201);
+    const noneEv = (await noReminder.json()) as { reminderMinutesBefore: number | null };
+    assert.equal(noneEv.reminderMinutesBefore, null);
+
+    const tenMin = await fetch(`${base}/api/calendar/events`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        title: "10분 전",
+        date: "2026-08-22",
+        time: "09:00",
+        reminderMinutesBefore: 10,
+      }),
+    });
+    assert.equal(tenMin.status, 201);
+    const tenEv = (await tenMin.json()) as { reminderMinutesBefore: number | null };
+    assert.equal(tenEv.reminderMinutesBefore, 10);
 
     const rangeRes = await fetch(`${base}/api/calendar/events`, {
       method: "POST",

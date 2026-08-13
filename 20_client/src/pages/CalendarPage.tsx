@@ -84,14 +84,95 @@ function buildMonthGrid(year: number, month: number) {
   return cells;
 }
 
-function sortDayEvents(events: PublicCalendarEvent[]): PublicCalendarEvent[] {
-  return [...events].sort((a, b) => {
-    const rank = (c: CalendarCategory) => (c === "holiday" ? 0 : 1);
-    return rank(a.category) - rank(b.category) || (a.time ?? "").localeCompare(b.time ?? "") || a.title.localeCompare(b.title);
-  });
+function eventEndKey(e: PublicCalendarEvent): string {
+  return e.endDate && e.endDate > e.date ? e.endDate : e.date;
 }
 
-const MAX_GRID_PILLS = 3;
+const MAX_GRID_LANES = 3;
+const GRID_LANE_H = 14;
+
+type WeekSeg = {
+  event: PublicCalendarEvent;
+  startCol: number;
+  span: number;
+  continuesLeft: boolean;
+  continuesRight: boolean;
+};
+
+function uniqueMonthEvents(eventsByDate: Map<string, PublicCalendarEvent[]>): PublicCalendarEvent[] {
+  const map = new Map<string, PublicCalendarEvent>();
+  for (const list of eventsByDate.values()) {
+    for (const e of list) map.set(e.id, e);
+  }
+  return [...map.values()];
+}
+
+function segmentInWeek(ev: PublicCalendarEvent, keys: (string | null)[]): WeekSeg | null {
+  const end = eventEndKey(ev);
+  let startCol = -1;
+  let endCol = -1;
+  for (let i = 0; i < 7; i++) {
+    const key = keys[i];
+    if (!key) continue;
+    if (key >= ev.date && key <= end) {
+      if (startCol < 0) startCol = i;
+      endCol = i;
+    }
+  }
+  if (startCol < 0 || endCol < 0) return null;
+  const startKey = keys[startCol];
+  const endKey = keys[endCol];
+  return {
+    event: ev,
+    startCol,
+    span: endCol - startCol + 1,
+    continuesLeft: Boolean(startKey && ev.date < startKey),
+    continuesRight: Boolean(endKey && end > endKey),
+  };
+}
+
+function packWeekLanes(segs: WeekSeg[]): WeekSeg[][] {
+  const lanes: WeekSeg[][] = [];
+  const sorted = [...segs].sort((a, b) => {
+    const rank = (c: CalendarCategory) => (c === "holiday" ? 0 : 1);
+    const dur = (s: WeekSeg) => s.span;
+    return (
+      rank(a.event.category) - rank(b.event.category) ||
+      dur(b) - dur(a) ||
+      a.event.date.localeCompare(b.event.date) ||
+      a.event.title.localeCompare(b.event.title)
+    );
+  });
+  for (const seg of sorted) {
+    const lane = lanes.find((items) =>
+      items.every((s) => seg.startCol + seg.span <= s.startCol || s.startCol + s.span <= seg.startCol),
+    );
+    if (lane) lane.push(seg);
+    else lanes.push([seg]);
+  }
+  return lanes;
+}
+
+function reminderLabel(
+  minutes: number | null | undefined,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string {
+  if (minutes == null) return t("calendar.reminderNone");
+  if (minutes === 10) return t("calendar.reminder10m");
+  if (minutes === 30) return t("calendar.reminder30m");
+  if (minutes === 60) return t("calendar.reminder1h");
+  if (minutes === 1440) return t("calendar.reminder1d");
+  return t("calendar.reminderCustom", { n: minutes });
+}
+
+function eventStartMs(ev: PublicCalendarEvent): number {
+  const [y, m, d] = ev.date.split("-").map(Number);
+  if (ev.isAllDay || !ev.time) return new Date(y!, (m ?? 1) - 1, d ?? 1).getTime();
+  const [hh, mm] = ev.time.split(":").map(Number);
+  return new Date(y!, (m ?? 1) - 1, d ?? 1, hh ?? 0, mm ?? 0).getTime();
+}
+
+const REMINDER_CHOICES: Array<number | null> = [null, 10, 30, 60, 1440];
 
 function MonthGrid({
   year,
@@ -109,57 +190,97 @@ function MonthGrid({
   onSelectDay: (key: string) => void;
 }) {
   const cells = useMemo(() => buildMonthGrid(year, month), [year, month]);
+  const allEvents = useMemo(() => uniqueMonthEvents(eventsByDate), [eventsByDate]);
+  const weeks = useMemo(() => {
+    const rows: Array<Array<number | null>> = [];
+    for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+    return rows;
+  }, [cells]);
+
   return (
-    <div className="mt-1 grid grid-cols-7 gap-px overflow-hidden rounded-lg bg-neutral-100">
-      {cells.map((day, idx) => {
-        const weekday = idx % 7;
-        if (day === null) {
-          return <div key={idx} className="min-h-[5.5rem] bg-white" />;
-        }
-        const key = toKey(year, month, day);
-        const dayEvents = sortDayEvents(eventsByDate.get(key) ?? []);
-        const visible = dayEvents.slice(0, MAX_GRID_PILLS);
-        const extra = dayEvents.length - visible.length;
-        const isToday = key === today;
-        const isSelected = key === selectedDate;
-        const hasHoliday = dayEvents.some((e) => e.category === "holiday");
-        const dateColor = isSelected
-          ? "bg-indigo-600 text-white"
-          : isToday
-            ? "text-indigo-600 ring-1 ring-indigo-600"
-            : hasHoliday || weekday === 0
-              ? "text-red-500"
-              : weekday === 6
-                ? "text-blue-500"
-                : "text-neutral-800";
+    <div className="mt-1 overflow-hidden rounded-lg bg-neutral-100 ring-1 ring-neutral-100">
+      {weeks.map((week, wi) => {
+        const keys = week.map((day) => (day == null ? null : toKey(year, month, day)));
+        const visibleKeys = keys.filter((k): k is string => Boolean(k));
+        const weekFrom = visibleKeys[0] ?? "";
+        const weekTo = visibleKeys[visibleKeys.length - 1] ?? "";
+        const segs = allEvents
+          .filter((ev) => weekFrom && eventEndKey(ev) >= weekFrom && ev.date <= weekTo)
+          .map((ev) => segmentInWeek(ev, keys))
+          .filter((s): s is WeekSeg => Boolean(s));
+        const lanes = packWeekLanes(segs);
+        const visibleLanes = lanes.slice(0, MAX_GRID_LANES);
+        const hidden = lanes.slice(MAX_GRID_LANES).flat();
         return (
-          <button
-            key={key}
-            type="button"
-            onClick={() => onSelectDay(key)}
-            className={`flex min-h-[5.5rem] flex-col items-stretch px-[2px] pb-0.5 pt-0.5 text-left touch-manipulation ${
-              isSelected ? "bg-indigo-50" : "bg-white"
-            }`}
-          >
-            <span className={`mb-0.5 flex h-5 w-5 items-center justify-center self-center rounded-full text-[11px] font-semibold ${dateColor}`}>
-              {day}
-            </span>
-            <div className="flex min-w-0 flex-1 flex-col gap-px">
-              {visible.map((ev) => (
-                <span
-                  key={ev.id}
-                  title={ev.title}
-                  className="block truncate rounded-[3px] px-[3px] text-[9px] font-semibold leading-[13px] text-white"
-                  style={{ backgroundColor: categoryColor[ev.category] }}
+          <div key={wi} className="grid grid-cols-7 border-b border-neutral-100 last:border-b-0">
+            {week.map((day, col) => {
+              if (day === null) {
+                return <div key={`${wi}-${col}`} className="min-h-[5.5rem] bg-white" />;
+              }
+              const key = toKey(year, month, day);
+              const weekday = col;
+              const isToday = key === today;
+              const isSelected = key === selectedDate;
+              const dayEvents = eventsByDate.get(key) ?? [];
+              const hasHoliday = dayEvents.some((e) => e.category === "holiday");
+              const extra = hidden.filter((s) => key >= s.event.date && key <= eventEndKey(s.event)).length;
+              const dateColor = isSelected
+                ? "bg-indigo-600 text-white"
+                : isToday
+                  ? "text-indigo-600 ring-1 ring-indigo-600"
+                  : hasHoliday || weekday === 0
+                    ? "text-red-500"
+                    : weekday === 6
+                      ? "text-blue-500"
+                      : "text-neutral-800";
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onSelectDay(key)}
+                  className={`relative flex min-h-[5.5rem] flex-col overflow-visible px-[2px] pb-0.5 pt-0.5 text-left touch-manipulation ${
+                    isSelected ? "bg-indigo-50" : "bg-white"
+                  }`}
                 >
-                  {ev.title}
-                </span>
-              ))}
-              {extra > 0 && (
-                <span className="px-[2px] text-[9px] font-semibold leading-3 text-neutral-400">+{extra}</span>
-              )}
-            </div>
-          </button>
+                  <span
+                    className={`mb-0.5 flex h-5 w-5 items-center justify-center self-center rounded-full text-[11px] font-semibold ${dateColor}`}
+                  >
+                    {day}
+                  </span>
+                  <div className="relative min-h-0 flex-1">
+                    {visibleLanes.map((lane, li) => {
+                      const seg = lane.find((s) => s.startCol === col);
+                      if (!seg) return <div key={li} className="h-[13px]" />;
+                      const radius = [
+                        seg.continuesLeft ? "rounded-l-none" : "rounded-l-[3px]",
+                        seg.continuesRight ? "rounded-r-none" : "rounded-r-[3px]",
+                      ].join(" ");
+                      return (
+                        <span
+                          key={seg.event.id}
+                          title={seg.event.title}
+                          className={`pointer-events-none absolute truncate px-[3px] text-[9px] font-semibold leading-[13px] text-white ${radius}`}
+                          style={{
+                            top: li * GRID_LANE_H,
+                            left: 0,
+                            width: `calc(${seg.span} * 100% - 1px)`,
+                            height: 13,
+                            backgroundColor: categoryColor[seg.event.category],
+                            zIndex: 2,
+                          }}
+                        >
+                          {seg.event.title}
+                        </span>
+                      );
+                    })}
+                    {extra > 0 && (
+                      <span className="px-[2px] text-[9px] font-semibold leading-3 text-neutral-400">+{extra}</span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         );
       })}
     </div>
@@ -201,6 +322,7 @@ export default function CalendarPage() {
   const [eventCategory, setEventCategory] = useState<"personal" | "family" | "holiday">("personal");
   const [isShared, setIsShared] = useState(false);
   const [repeatDraft, setRepeatDraft] = useState<RecurrenceDraft>(() => emptyRecurrenceDraft(todayKey()));
+  const [reminderMinutes, setReminderMinutes] = useState<number | null>(60);
   const [submitting, setSubmitting] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -215,6 +337,7 @@ export default function CalendarPage() {
   const ignoreClick = useRef(false);
   const lastTap = useRef<{ key: string; at: number } | null>(null);
   const hasLoadedRef = useRef(false);
+  const reminderTimersRef = useRef<number[]>([]);
   const [pageWidth, setPageWidth] = useState(0);
 
   const today = todayKey();
@@ -243,6 +366,36 @@ export default function CalendarPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    reminderTimersRef.current.forEach((id) => window.clearTimeout(id));
+    reminderTimersRef.current = [];
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+      return () => undefined;
+    }
+    const now = Date.now();
+    for (const ev of events) {
+      if (ev.reminderMinutesBefore == null) continue;
+      const fireAt = eventStartMs(ev) - ev.reminderMinutesBefore * 60_000;
+      const delay = fireAt - now;
+      if (delay <= 0 || delay > 36 * 60 * 60 * 1000) continue;
+      const id = window.setTimeout(() => {
+        try {
+          new Notification(ev.title, {
+            body: ev.time ?? t("calendar.allDay"),
+            tag: ev.id,
+          });
+        } catch {
+          /* ignore */
+        }
+      }, delay);
+      reminderTimersRef.current.push(id);
+    }
+    return () => {
+      reminderTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+      reminderTimersRef.current = [];
+    };
+  }, [events, t]);
 
   useEffect(() => {
     cursorRef.current = cursor;
@@ -428,6 +581,7 @@ export default function CalendarPage() {
     setEventCategory("personal");
     setIsShared(false);
     setRepeatDraft(emptyRecurrenceDraft(start));
+    setReminderMinutes(60);
     setShowCreate(true);
   }
 
@@ -462,7 +616,11 @@ export default function CalendarPage() {
         category: eventCategory,
         isShared: isShared || eventCategory === "family" || eventCategory === "holiday",
         recurrence: recurrenceFromDraft(repeatDraft, eventDate),
+        reminderMinutesBefore: reminderMinutes,
       });
+      if (reminderMinutes != null && typeof Notification !== "undefined" && Notification.permission === "default") {
+        void Notification.requestPermission();
+      }
       setShowCreate(false);
       await load();
       setSelectedDate(eventDate);
@@ -647,6 +805,7 @@ export default function CalendarPage() {
                         : t("calendar.allDay")}{" "}
                     · {t(`category.${ev.category}`)}
                     {ev.isShared ? ` · ${ev.ownerName}` : ""}
+                    {ev.reminderMinutesBefore != null ? ` · ${reminderLabel(ev.reminderMinutesBefore, t)}` : ""}
                   </p>
                   {ev.recurrence ? (
                     <p className="mt-0.5 flex items-center gap-1 text-[11px] text-indigo-500">
@@ -660,8 +819,18 @@ export default function CalendarPage() {
                 </div>
                 {(ev.category === "document_expiry" ||
                   ev.category === "subscription_billing" ||
-                  ev.category === "recurring_deposit") && (
-                  <Bell size={14} className="text-rose-400" />
+                  ev.category === "recurring_deposit" ||
+                  ev.reminderMinutesBefore != null) && (
+                  <Bell
+                    size={14}
+                    className={
+                      ev.category === "document_expiry" ||
+                      ev.category === "subscription_billing" ||
+                      ev.category === "recurring_deposit"
+                        ? "text-rose-400"
+                        : "text-amber-500"
+                    }
+                  />
                 )}
                 {ev.editable && user?.id === ev.userId && (
                   <button
@@ -774,6 +943,21 @@ export default function CalendarPage() {
               </div>
             </div>
             <p className="mb-3 text-[11px] text-neutral-400">{t("calendar.timeOptionalHint")}</p>
+            <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.reminder")}</label>
+            <div className="mb-3 flex flex-wrap gap-2">
+              {REMINDER_CHOICES.map((mins) => (
+                <button
+                  key={mins ?? "none"}
+                  type="button"
+                  onClick={() => setReminderMinutes(mins)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                    reminderMinutes === mins ? "bg-indigo-600 text-white" : "bg-neutral-100 text-neutral-600"
+                  }`}
+                >
+                  {reminderLabel(mins, t)}
+                </button>
+              ))}
+            </div>
             <RecurrencePicker startDate={eventDate} draft={repeatDraft} onChange={setRepeatDraft} t={t} />
             <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("calendar.fieldMemo")}</label>
             <textarea

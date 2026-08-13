@@ -39,6 +39,7 @@ export interface PublicCalendarEvent {
   ownerName: string;
   seriesId?: string;
   recurrence?: RecurrenceRule | null;
+  reminderMinutesBefore?: number | null;
 }
 
 export interface CreateCalendarEventInput {
@@ -52,6 +53,7 @@ export interface CreateCalendarEventInput {
   description?: string | null;
   isShared?: boolean;
   recurrence?: RecurrenceRule | null;
+  reminderMinutesBefore?: number | null;
 }
 
 export const categoryColor: Record<CalendarCategory, string> = {

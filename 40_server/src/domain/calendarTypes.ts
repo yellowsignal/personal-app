@@ -46,6 +46,7 @@ export interface PublicCalendarEvent {
   ownerName: string;
   seriesId: string;
   recurrence: RecurrenceRule | null;
+  reminderMinutesBefore: number | null;
 }
 
 export function toDateKey(d: Date): string {
@@ -130,5 +131,6 @@ export function toPublicCalendarEvent(
     ownerName,
     seriesId: String(record.id),
     recurrence,
+    reminderMinutesBefore: record.reminderMinutesBefore,
   };
 }

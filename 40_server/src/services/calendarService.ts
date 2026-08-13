@@ -24,6 +24,17 @@ import { expandRecurrence, normalizeRecurrence, parseCalendarEventId, shiftDateT
 import { HttpError } from "./authService.js";
 
 const USER_CATEGORIES = new Set(["personal", "family", "holiday"]);
+const REMINDER_MINUTES = new Set([10, 30, 60, 1440]);
+
+function parseReminderMinutes(raw: unknown, fallback: number | null): number | null {
+  if (raw === undefined) return fallback;
+  if (raw === null || raw === "" || raw === "none") return null;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isInteger(n) || !REMINDER_MINUTES.has(n)) {
+    throw new HttpError(400, "reminderMinutesBefore must be 10, 30, 60, or 1440");
+  }
+  return n;
+}
 
 function parseScope(value: unknown): ViewScope {
   if (value === "personal" || value === "family" || value === "all") return value;
@@ -167,6 +178,7 @@ export class CalendarService {
           ownerName: await this.ownerName(doc.userId),
           seriesId: `doc-expiry-${doc.id}`,
           recurrence: null,
+          reminderMinutesBefore: null,
         });
       }
     }
@@ -199,6 +211,7 @@ export class CalendarService {
             ownerName: await this.ownerName(sub.userId),
             seriesId: `sub-${sub.id}`,
             recurrence: null,
+            reminderMinutesBefore: null,
           });
         }
       }
@@ -237,6 +250,7 @@ export class CalendarService {
             ownerName: await this.ownerName(rule.userId),
             seriesId: `recurring-${rule.id}`,
             recurrence: null,
+            reminderMinutesBefore: null,
           });
         }
       }
@@ -266,6 +280,7 @@ export class CalendarService {
           h.country === "KR" ? (lang === "ja" ? "韓国" : "한국") : lang === "ja" ? "日本" : "일본",
         seriesId: `holiday-${h.country}-${h.date}-${h.code}`,
         recurrence: null,
+        reminderMinutesBefore: null,
       });
     }
 
@@ -312,6 +327,7 @@ export class CalendarService {
       category,
       isShared,
       recurrence,
+      reminderMinutesBefore: parseReminderMinutes(body.reminderMinutesBefore, 60),
     });
     return toPublicCalendarEvent(record, user.name, true);
   }
@@ -382,6 +398,10 @@ export class CalendarService {
       familyId: isShared === undefined ? undefined : isShared ? user.familyId : null,
       recurrence:
         body.recurrence === undefined ? undefined : normalizeRecurrence(body.recurrence, startTime),
+      reminderMinutesBefore:
+        body.reminderMinutesBefore === undefined
+          ? undefined
+          : parseReminderMinutes(body.reminderMinutesBefore, null),
     });
     return toPublicCalendarEvent(updated, user.name, true);
   }
