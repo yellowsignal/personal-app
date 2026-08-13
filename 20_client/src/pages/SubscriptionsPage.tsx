@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, Eye, EyeOff, ExternalLink, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Copy, Eye, EyeOff, ExternalLink, Plus, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
 import OverlayScrim from "../components/OverlayScrim";
+import SwipeableRow from "../components/SwipeableRow";
+import ItemDetailSheet, { DetailRow } from "../components/ItemDetailSheet";
 import { exchangeRates } from "../mocks/data";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../context/CurrencyContext";
@@ -81,7 +83,8 @@ export default function SubscriptionsPage() {
   const [items, setItems] = useState<PublicSubscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [menuId, setMenuId] = useState<number | null>(null);
+  const [swipeId, setSwipeId] = useState<number | null>(null);
+  const [detail, setDetail] = useState<PublicSubscription | null>(null);
   const [editing, setEditing] = useState<PublicSubscription | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<CreateSubscriptionInput>(() => emptyForm(currency));
@@ -90,6 +93,7 @@ export default function SubscriptionsPage() {
   const [revealed, setRevealed] = useState<Record<number, string>>({});
   const [revealBusyId, setRevealBusyId] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [copiedField, setCopiedField] = useState<"id" | "pw" | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -133,14 +137,21 @@ export default function SubscriptionsPage() {
   function openCreate() {
     setEditing(null);
     setForm(emptyForm(currency));
-    setMenuId(null);
+    setSwipeId(null);
+    setDetail(null);
     setShowForm(true);
+  }
+
+  function openDetail(item: PublicSubscription) {
+    setSwipeId(null);
+    setDetail(item);
   }
 
   function openEdit(item: PublicSubscription) {
     setEditing(item);
     setForm(toForm(item));
-    setMenuId(null);
+    setSwipeId(null);
+    setDetail(null);
     setShowForm(true);
   }
 
@@ -215,11 +226,15 @@ export default function SubscriptionsPage() {
     }
   }
 
-  async function handleCopyPassword(id: number, password: string) {
+  async function handleCopy(id: number, text: string, field: "id" | "pw") {
     try {
-      await navigator.clipboard.writeText(password);
+      await navigator.clipboard.writeText(text);
       setCopiedId(id);
-      window.setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1500);
+      setCopiedField(field);
+      window.setTimeout(() => {
+        setCopiedId((cur) => (cur === id ? null : cur));
+        setCopiedField(null);
+      }, 1500);
     } catch {
       /* ignore */
     }
@@ -232,6 +247,7 @@ export default function SubscriptionsPage() {
     try {
       await subscriptionsApi.remove(token, confirmDelete.id);
       setConfirmDelete(null);
+      setDetail(null);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("subscriptions.deleteError"));
@@ -284,74 +300,42 @@ export default function SubscriptionsPage() {
             {visible.map((s) => {
               const canManage = user?.id === s.userId;
               return (
-                <div key={s.id} className="relative rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
-                  <div className="flex items-start gap-3">
-                    <div
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white"
-                      style={{ backgroundColor: serviceColor(s.serviceName) }}
-                    >
-                      {s.serviceName.slice(0, 1)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="min-w-0 flex-1 truncate text-sm font-bold text-neutral-900">
-                          {s.serviceName}
-                        </p>
-                        <SharedBadge isShared={s.isShared} />
-                        {canManage && (
-                          <button
-                            type="button"
-                            aria-label={t("subscriptions.more")}
-                            onClick={() => setMenuId((id) => (id === s.id ? null : s.id))}
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-100"
-                          >
-                            <MoreHorizontal size={18} />
-                          </button>
+                <SwipeableRow
+                  key={s.id}
+                  canDelete={canManage}
+                  deleteLabel={t("subscriptions.delete")}
+                  actionOpen={swipeId === s.id}
+                  onActionOpenChange={(open) => setSwipeId(open ? s.id : null)}
+                  onPress={() => openDetail(s)}
+                  onLongPress={() => openDetail(s)}
+                  onDelete={() => {
+                    setSwipeId(null);
+                    setConfirmDelete(s);
+                  }}
+                >
+                  <div className="p-4">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white"
+                        style={{ backgroundColor: serviceColor(s.serviceName) }}
+                      >
+                        {s.serviceName.slice(0, 1)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="min-w-0 flex-1 truncate text-sm font-bold text-neutral-900">
+                            {s.serviceName}
+                          </p>
+                          <SharedBadge isShared={s.isShared} />
+                        </div>
+                        {(s.isShared || scope === "family") && (
+                          <p className="mt-1 inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-600">
+                            {t("subscriptions.registeredBy", { name: s.ownerName })}
+                          </p>
                         )}
                       </div>
-                      {s.reason && (
-                        <p className="mt-0.5 text-xs text-neutral-400">{s.reason}</p>
-                      )}
-                      {(s.isShared || scope === "family") && (
-                        <p className="mt-1 inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-600">
-                          {t("subscriptions.registeredBy", { name: s.ownerName })}
-                        </p>
-                      )}
                     </div>
-                  </div>
-
-                  {menuId === s.id && canManage && (
-                    <>
-                      <button
-                        type="button"
-                        className="fixed inset-0 z-40"
-                        aria-label="close menu"
-                        onClick={() => setMenuId(null)}
-                      />
-                      <div className="absolute right-3 top-12 z-50 min-w-[140px] overflow-hidden rounded-xl bg-white py-1 shadow-lg ring-1 ring-black/10">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(s)}
-                          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
-                        >
-                          <Pencil size={14} /> {t("subscriptions.edit")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMenuId(null);
-                            setConfirmDelete(s);
-                          }}
-                          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-rose-600 hover:bg-rose-50"
-                        >
-                          <Trash2 size={14} /> {t("subscriptions.delete")}
-                        </button>
-                      </div>
-                    </>
-                  )}
-
-                  <div className="mt-3 flex items-center justify-between">
-                    <div>
+                    <div className="mt-3">
                       <p className="text-base font-bold text-neutral-900">
                         {CURRENCY_SYMBOL[s.currency]}
                         {formatMoney(s.cost, s.currency)}
@@ -368,70 +352,136 @@ export default function SubscriptionsPage() {
                               d: s.billingDate,
                             })
                           : t("subscriptions.billingMonthly", { d: s.billingDate })}
+                        {(s.loginId || s.hasPassword) ? ` · ${t("subscriptions.hasCredentials")}` : ""}
                       </p>
                     </div>
-                    {s.cancelUrl && s.cancelUrl !== "#" && (
-                      <a
-                        href={s.cancelUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1.5 text-[11px] font-semibold text-neutral-500"
-                      >
-                        {t("subscriptions.cancel")} <ExternalLink size={12} />
-                      </a>
-                    )}
                   </div>
-
-                  {(s.loginId || s.hasPassword) && (
-                    <div className="mt-3 rounded-xl bg-neutral-50 px-3 py-2.5">
-                      <p className="text-[11px] font-semibold text-neutral-500">
-                        {t("subscriptions.credentialsSection")}
-                      </p>
-                      {s.loginId && (
-                        <p className="mt-1 break-all text-sm text-neutral-800">{s.loginId}</p>
-                      )}
-                      {s.hasPassword && (
-                        <div className="mt-1.5 flex items-center gap-2">
-                          <p className="min-w-0 flex-1 break-all font-mono text-sm text-neutral-800">
-                            {revealed[s.id] !== undefined
-                              ? revealed[s.id] || "—"
-                              : t("subscriptions.passwordHidden")}
-                          </p>
-                          <button
-                            type="button"
-                            disabled={revealBusyId === s.id}
-                            onClick={() => void handleReveal(s)}
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-white disabled:opacity-50"
-                            aria-label={
-                              revealed[s.id] !== undefined
-                                ? t("subscriptions.hidePassword")
-                                : t("subscriptions.revealPassword")
-                            }
-                          >
-                            {revealed[s.id] !== undefined ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
-                          {revealed[s.id] !== undefined && revealed[s.id] && (
-                            <button
-                              type="button"
-                              onClick={() => void handleCopyPassword(s.id, revealed[s.id]!)}
-                              className="flex h-8 items-center gap-1 rounded-full px-2 text-[11px] font-semibold text-neutral-500 hover:bg-white"
-                            >
-                              <Copy size={14} />
-                              {copiedId === s.id
-                                ? t("subscriptions.copied")
-                                : t("subscriptions.copyPassword")}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                </SwipeableRow>
               );
             })}
+            <p className="text-center text-[11px] text-neutral-400">{t("common.rowHint")}</p>
           </div>
         )}
       </div>
+
+      {detail && (
+        <ItemDetailSheet
+          title={detail.serviceName}
+          onClose={() => setDetail(null)}
+          closeLabel={t("subscriptions.cancelAction")}
+          editLabel={t("subscriptions.edit")}
+          deleteLabel={t("subscriptions.delete")}
+          canManage={user?.id === detail.userId}
+          onEdit={() => openEdit(detail)}
+          onDelete={() => {
+            setConfirmDelete(detail);
+            setDetail(null);
+          }}
+        >
+          <DetailRow label={t("subscriptions.fieldCost")}>
+            {CURRENCY_SYMBOL[detail.currency]}
+            {formatMoney(detail.cost, detail.currency)}
+            {detail.billingInterval === "YEARLY"
+              ? t("subscriptions.perYear")
+              : t("subscriptions.perMonth")}
+          </DetailRow>
+          <DetailRow label={t("subscriptions.fieldInterval")}>
+            {detail.billingInterval === "YEARLY"
+              ? t("subscriptions.billingYearly", {
+                  m: detail.billingMonth ?? 1,
+                  d: detail.billingDate,
+                })
+              : t("subscriptions.billingMonthly", { d: detail.billingDate })}
+          </DetailRow>
+          {detail.reason ? (
+            <DetailRow label={t("subscriptions.fieldReason")}>{detail.reason}</DetailRow>
+          ) : null}
+          {detail.cancelUrl && detail.cancelUrl !== "#" ? (
+            <DetailRow label={t("subscriptions.fieldCancelUrl")}>
+              <a
+                href={detail.cancelUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 break-all text-indigo-600"
+              >
+                {t("subscriptions.cancel")} <ExternalLink size={12} />
+              </a>
+            </DetailRow>
+          ) : null}
+          <DetailRow label={t("subscriptions.shareWithFamily")}>
+            {detail.isShared ? t("scope.family") : t("scope.personal")}
+            {detail.isShared ? ` · ${detail.ownerName}` : ""}
+          </DetailRow>
+          <div className="mt-4 rounded-xl bg-neutral-50 px-3 py-3">
+            <p className="text-[11px] font-semibold text-neutral-500">
+              {t("subscriptions.credentialsSection")}
+            </p>
+            <p className="mt-1 text-[11px] text-neutral-400">{t("subscriptions.credentialsHint")}</p>
+            <div className="mt-3 flex items-start justify-between gap-3">
+              <p className="text-xs font-semibold text-neutral-400">{t("subscriptions.fieldLoginId")}</p>
+              <div className="flex min-w-0 items-start gap-2">
+                <p className="min-w-0 break-all text-right text-sm text-neutral-900">
+                  {detail.loginId || t("common.none")}
+                </p>
+                {detail.loginId ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleCopy(detail.id, detail.loginId!, "id")}
+                    className="flex h-8 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-semibold text-neutral-500 hover:bg-white"
+                  >
+                    <Copy size={14} />
+                    {copiedId === detail.id && copiedField === "id"
+                      ? t("subscriptions.copied")
+                      : t("subscriptions.copyPassword")}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            {detail.hasPassword && (
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-neutral-400">
+                  {t("subscriptions.fieldLoginPassword")}
+                </p>
+                <div className="flex min-w-0 items-center gap-2">
+                  <p className="min-w-0 break-all font-mono text-sm text-neutral-800">
+                    {revealed[detail.id] !== undefined
+                      ? revealed[detail.id] || "—"
+                      : t("subscriptions.passwordHidden")}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={revealBusyId === detail.id}
+                    onClick={() => void handleReveal(detail)}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-white disabled:opacity-50"
+                    aria-label={
+                      revealed[detail.id] !== undefined
+                        ? t("subscriptions.hidePassword")
+                        : t("subscriptions.revealPassword")
+                    }
+                  >
+                    {revealed[detail.id] !== undefined ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                  {revealed[detail.id] !== undefined && revealed[detail.id] && (
+                    <button
+                      type="button"
+                      onClick={() => void handleCopy(detail.id, revealed[detail.id]!, "pw")}
+                      className="flex h-8 items-center gap-1 rounded-full px-2 text-[11px] font-semibold text-neutral-500 hover:bg-white"
+                    >
+                      <Copy size={14} />
+                      {copiedId === detail.id && copiedField === "pw"
+                        ? t("subscriptions.copied")
+                        : t("subscriptions.copyPassword")}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {!detail.loginId && !detail.hasPassword && (
+              <p className="mt-2 text-sm text-neutral-400">{t("common.none")}</p>
+            )}
+          </div>
+        </ItemDetailSheet>
+      )}
 
       {showForm && (
         <OverlayScrim

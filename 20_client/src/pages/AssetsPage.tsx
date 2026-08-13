@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronRight, MoreHorizontal, Pencil, Plus, RefreshCw, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
+import { ChevronRight, Plus, RefreshCw, TrendingDown, TrendingUp, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
 import OverlayScrim from "../components/OverlayScrim";
+import SwipeableRow from "../components/SwipeableRow";
+import ItemDetailSheet, { DetailRow } from "../components/ItemDetailSheet";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../context/CurrencyContext";
 import { useAuth } from "../context/AuthContext";
@@ -98,7 +100,8 @@ export default function AssetsPage() {
   const [items, setItems] = useState<PublicAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [menuId, setMenuId] = useState<number | null>(null);
+  const [swipeId, setSwipeId] = useState<number | null>(null);
+  const [detail, setDetail] = useState<PublicAsset | null>(null);
   const [editing, setEditing] = useState<PublicAsset | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [lastMarket, setLastMarket] = useState<StockMarket>(readLastMarket);
@@ -148,21 +151,29 @@ export default function AssetsPage() {
   function openCreate() {
     setEditing(null);
     setForm(emptyForm(currency, lastMarket, lastBank));
-    setMenuId(null);
+    setSwipeId(null);
+    setDetail(null);
     setShowForm(true);
   }
 
   function openCreateDeposit() {
     setEditing(null);
     setForm({ ...emptyForm(currency, lastMarket, lastBank), type: "deposit" });
-    setMenuId(null);
+    setSwipeId(null);
+    setDetail(null);
     setShowForm(true);
+  }
+
+  function openDetail(item: PublicAsset) {
+    setSwipeId(null);
+    setDetail(item);
   }
 
   function openEdit(item: PublicAsset) {
     setEditing(item);
     setForm(toForm(item, lastMarket, lastBank));
-    setMenuId(null);
+    setSwipeId(null);
+    setDetail(null);
     setShowForm(true);
   }
 
@@ -233,6 +244,7 @@ export default function AssetsPage() {
     try {
       await assetsApi.remove(token, confirmDelete.id);
       setConfirmDelete(null);
+      setDetail(null);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("assets.deleteError"));
@@ -262,6 +274,7 @@ export default function AssetsPage() {
     try {
       const updated = await assetsApi.refreshPrice(token, id);
       setItems((prev) => prev.map((a) => (a.id === id ? updated : a)));
+      setDetail((cur) => (cur?.id === id ? updated : cur));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("assets.refreshError"));
     } finally {
@@ -344,22 +357,29 @@ export default function AssetsPage() {
             {visible.map((a) => {
               const canManage = user?.id === a.userId;
               const gain = a.gainPercent;
+              const isDeposit = a.type === "deposit";
 
-              if (a.type === "deposit") {
-                return (
-                  <div
-                    key={a.id}
-                    className="relative overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => openDepositStatement(a)}
-                      className="flex w-full items-center gap-2 p-4 pr-12 text-left active:bg-neutral-50"
-                    >
+              return (
+                <SwipeableRow
+                  key={a.id}
+                  canDelete={canManage}
+                  deleteLabel={t("assets.delete")}
+                  actionOpen={swipeId === a.id}
+                  onActionOpenChange={(open) => setSwipeId(open ? a.id : null)}
+                  onPress={() => (isDeposit ? openDepositStatement(a) : openDetail(a))}
+                  onLongPress={() => openDetail(a)}
+                  onDelete={() => {
+                    setSwipeId(null);
+                    setConfirmDelete(a);
+                  }}
+                >
+                  <div className={`relative p-4 ${isDeposit ? "pr-10" : ""}`}>
+                    <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <p className="text-[11px] font-semibold text-indigo-500">
-                          {t("assetType.deposit")}
+                          {t(`assetType.${a.type}`)}
                           {a.bankCode ? ` · ${t(`depositBank.${a.bankCode}`)}` : ""}
+                          {a.stockMarket ? ` · ${t(`stockMarket.${a.stockMarket}`)}` : ""}
                         </p>
                         <p className="mt-0.5 truncate text-sm font-bold text-neutral-900">{a.label}</p>
                         {(a.isShared || scope === "family") && (
@@ -367,188 +387,137 @@ export default function AssetsPage() {
                             {t("assets.registeredBy", { name: a.ownerName })}
                           </p>
                         )}
-                        <p className="mt-2 text-xl font-bold text-neutral-900">
-                          {CURRENCY_SYMBOL[a.currency]}
-                          {formatMoney(a.amount, a.currency)}
-                        </p>
                       </div>
-                      <ChevronRight size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-300" />
-                    </button>
-
-                    <div className="absolute right-10 top-3 flex items-center gap-1">
-                      <SharedBadge isShared={a.isShared} />
-                      {canManage && (
-                        <button
-                          type="button"
-                          aria-label={t("assets.more")}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMenuId((id) => (id === a.id ? null : a.id));
-                          }}
-                          className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-100"
-                        >
-                          <MoreHorizontal size={18} />
-                        </button>
-                      )}
+                      <div className="flex shrink-0 items-center gap-1">
+                        <SharedBadge isShared={a.isShared} />
+                        {a.type === "stock" && (
+                          <button
+                            type="button"
+                            data-swipe-ignore
+                            disabled={refreshing}
+                            onClick={() => void handleRefreshOne(a.id)}
+                            className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-100 disabled:opacity-50"
+                            aria-label={t("assets.refreshPrices")}
+                          >
+                            <RefreshCw size={14} />
+                          </button>
+                        )}
+                      </div>
                     </div>
-
-                    {menuId === a.id && canManage && (
-                      <>
-                        <button
-                          type="button"
-                          className="fixed inset-0 z-40"
-                          aria-label="close menu"
-                          onClick={() => setMenuId(null)}
-                        />
-                        <div className="absolute right-3 top-12 z-50 min-w-[140px] overflow-hidden rounded-xl bg-white py-1 shadow-lg ring-1 ring-black/10">
-                          <button
-                            type="button"
-                            onClick={() => openEdit(a)}
-                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
-                          >
-                            <Pencil size={14} /> {t("assets.edit")}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMenuId(null);
-                              setConfirmDelete(a);
-                            }}
-                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-rose-600 hover:bg-rose-50"
-                          >
-                            <Trash2 size={14} /> {t("assets.delete")}
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                );
-              }
-
-              return (
-                <div key={a.id} className="relative rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[11px] font-semibold text-indigo-500">
-                        {t(`assetType.${a.type}`)}
-                        {a.stockMarket ? ` · ${t(`stockMarket.${a.stockMarket}`)}` : ""}
+                    <div className="mt-3 flex items-end justify-between gap-2">
+                      <p className="text-xl font-bold text-neutral-900">
+                        {CURRENCY_SYMBOL[a.currency]}
+                        {formatMoney(a.amount, a.currency)}
                       </p>
-                      <p className="mt-0.5 truncate text-sm font-bold text-neutral-900">{a.label}</p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <SharedBadge isShared={a.isShared} />
-                      {a.type === "stock" && (
-                        <button
-                          type="button"
-                          disabled={refreshing}
-                          onClick={() => void handleRefreshOne(a.id)}
-                          className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-100 disabled:opacity-50"
-                          aria-label={t("assets.refreshPrices")}
+                      {gain != null && (
+                        <span
+                          className={`flex items-center gap-0.5 text-xs font-semibold ${
+                            gain >= 0 ? "text-emerald-500" : "text-rose-500"
+                          }`}
                         >
-                          <RefreshCw size={14} />
-                        </button>
-                      )}
-                      {canManage && (
-                        <button
-                          type="button"
-                          aria-label={t("assets.more")}
-                          onClick={() => setMenuId((id) => (id === a.id ? null : a.id))}
-                          className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-100"
-                        >
-                          <MoreHorizontal size={18} />
-                        </button>
+                          {gain >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+                          {Math.abs(gain).toFixed(1)}%
+                        </span>
                       )}
                     </div>
-                  </div>
-
-                  {(a.isShared || scope === "family") && (
-                    <p className="mt-1 inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-600">
-                      {t("assets.registeredBy", { name: a.ownerName })}
-                    </p>
-                  )}
-
-                  {menuId === a.id && canManage && (
-                    <>
-                      <button
-                        type="button"
-                        className="fixed inset-0 z-40"
-                        aria-label="close menu"
-                        onClick={() => setMenuId(null)}
+                    {isDeposit && (
+                      <ChevronRight
+                        size={18}
+                        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-300"
                       />
-                      <div className="absolute right-3 top-12 z-50 min-w-[140px] overflow-hidden rounded-xl bg-white py-1 shadow-lg ring-1 ring-black/10">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(a)}
-                          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-neutral-800 hover:bg-neutral-50"
-                        >
-                          <Pencil size={14} /> {t("assets.edit")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMenuId(null);
-                            setConfirmDelete(a);
-                          }}
-                          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-rose-600 hover:bg-rose-50"
-                        >
-                          <Trash2 size={14} /> {t("assets.delete")}
-                        </button>
-                      </div>
-                    </>
-                  )}
-
-                  <div className="mt-3 flex items-end justify-between gap-2">
-                    <p className="text-xl font-bold text-neutral-900">
-                      {CURRENCY_SYMBOL[a.currency]}
-                      {formatMoney(a.amount, a.currency)}
-                    </p>
-                    {gain != null && (
-                      <span
-                        className={`flex items-center gap-0.5 text-xs font-semibold ${
-                          gain >= 0 ? "text-emerald-500" : "text-rose-500"
-                        }`}
-                      >
-                        {gain >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
-                        {Math.abs(gain).toFixed(1)}%
-                      </span>
                     )}
                   </div>
-
-                  {a.type === "stock" && (
-                    <div className="mt-2 space-y-1 rounded-lg bg-neutral-50 px-3 py-2 text-[11px] text-neutral-500">
-                      <div className="flex justify-between gap-2">
-                        <span>{a.stockCode}</span>
-                        <span>
-                          {a.quantity != null
-                            ? t("assets.shares", { n: a.quantity })
-                            : ""}
-                        </span>
-                      </div>
-                      <div className="flex justify-between gap-2">
-                        <span>
-                          {a.buyPrice != null
-                            ? t("assets.buyPrice", {
-                                v: formatMoney(a.buyPrice, a.currency),
-                              })
-                            : ""}
-                        </span>
-                        <span>
-                          {a.currentPrice != null
-                            ? t("assets.currentPrice", {
-                                v: formatMoney(a.currentPrice, a.currency),
-                              })
-                            : t("assets.noQuote")}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                </div>
+                </SwipeableRow>
               );
             })}
+            <p className="text-center text-[11px] text-neutral-400">{t("common.rowHint")}</p>
           </div>
         )}
       </div>
+
+      {detail && (
+        <ItemDetailSheet
+          title={detail.label}
+          onClose={() => setDetail(null)}
+          closeLabel={t("assets.cancelAction")}
+          editLabel={t("assets.edit")}
+          deleteLabel={t("assets.delete")}
+          canManage={user?.id === detail.userId}
+          onEdit={() => openEdit(detail)}
+          onDelete={() => {
+            setConfirmDelete(detail);
+            setDetail(null);
+          }}
+        >
+          <DetailRow label={t("assets.fieldType")}>{t(`assetType.${detail.type}`)}</DetailRow>
+          {detail.bankCode ? (
+            <DetailRow label={t("assets.fieldBank")}>{t(`depositBank.${detail.bankCode}`)}</DetailRow>
+          ) : null}
+          {detail.stockMarket ? (
+            <DetailRow label={t("assets.fieldMarket")}>{t(`stockMarket.${detail.stockMarket}`)}</DetailRow>
+          ) : null}
+          {detail.stockCode ? (
+            <DetailRow label={t("assets.fieldStockCode")}>{detail.stockCode}</DetailRow>
+          ) : null}
+          {detail.quantity != null ? (
+            <DetailRow label={t("assets.fieldQuantity")}>{t("assets.shares", { n: detail.quantity })}</DetailRow>
+          ) : null}
+          {detail.buyPrice != null ? (
+            <DetailRow label={t("assets.fieldBuyPrice")}>
+              {CURRENCY_SYMBOL[detail.currency]}
+              {formatMoney(detail.buyPrice, detail.currency)}
+            </DetailRow>
+          ) : null}
+          {detail.currentPrice != null ? (
+            <DetailRow label={t("assets.fieldCurrentPrice")}>
+              {CURRENCY_SYMBOL[detail.currency]}
+              {formatMoney(detail.currentPrice, detail.currency)}
+            </DetailRow>
+          ) : detail.type === "stock" ? (
+            <DetailRow label={t("assets.fieldCurrentPrice")}>{t("assets.noQuote")}</DetailRow>
+          ) : null}
+          <DetailRow label={t("assets.fieldAmount")}>
+            {CURRENCY_SYMBOL[detail.currency]}
+            {formatMoney(detail.amount, detail.currency)}
+          </DetailRow>
+          {detail.gainPercent != null ? (
+            <DetailRow label={t("assets.gain")}>
+              <span className={detail.gainPercent >= 0 ? "text-emerald-500" : "text-rose-500"}>
+                {detail.gainPercent >= 0 ? "+" : ""}
+                {detail.gainPercent.toFixed(1)}%
+              </span>
+            </DetailRow>
+          ) : null}
+          <DetailRow label={t("assets.shareWithFamily")}>
+            {detail.isShared ? t("scope.family") : t("scope.personal")}
+            {` · ${detail.ownerName}`}
+          </DetailRow>
+          {detail.type === "deposit" && (
+            <button
+              type="button"
+              onClick={() => {
+                setDetail(null);
+                openDepositStatement(detail);
+              }}
+              className="mt-4 flex w-full items-center justify-center gap-1 rounded-xl bg-neutral-100 py-2.5 text-sm font-semibold text-neutral-700"
+            >
+              {t("assets.viewStatement")} <ChevronRight size={16} />
+            </button>
+          )}
+          {detail.type === "stock" && (
+            <button
+              type="button"
+              data-swipe-ignore
+              disabled={refreshing}
+              onClick={() => void handleRefreshOne(detail.id)}
+              className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl bg-neutral-100 py-2.5 text-sm font-semibold text-neutral-700 disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+              {t("assets.refreshPrices")}
+            </button>
+          )}
+        </ItemDetailSheet>
+      )}
 
       {showForm && (
         <OverlayScrim

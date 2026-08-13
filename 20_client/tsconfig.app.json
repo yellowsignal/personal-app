@@ -22,5 +22,6 @@
       "@personal-app/document-categories": ["../40_server/src/documentCategories.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
 }
