@@ -205,9 +205,7 @@ export default function DashboardPage() {
                 />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-neutral-800">{e.title}</p>
-                  <p className="text-[11px] text-neutral-400">
-                    {e.date} {e.time && `· ${e.time}`}
-                  </p>
+                  <p className="text-[11px] text-neutral-400">{formatUpcomingWhen(e)}</p>
                 </div>
                 <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500">
                   {t(`category.${e.category}`)}
