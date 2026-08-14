@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Cloud, ImagePlus, Plus, X } from "lucide-react";
+import { Cloud, Download, ImagePlus, Plus, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
@@ -11,11 +11,11 @@ import { useAuth } from "../context/AuthContext";
 import {
   photosApi,
   type IcloudAlbumPhoto,
-  type IcloudAlbumResponse,
+  type LinkedIcloudAlbum,
   type PublicPhoto,
 } from "../api/photos";
 import { ApiError } from "../api/http";
-import { MAX_PHOTO_UPLOAD, selectImageFiles } from "../utils/photoUpload";
+import { MAX_ICLOUD_ALBUMS, MAX_PHOTO_UPLOAD, saveBlobLocally, selectImageFiles } from "../utils/photoUpload";
 
 function usePhotoObjectUrls(token: string | null, ids: number[]) {
   const [urls, setUrls] = useState<Record<number, string>>({});
@@ -74,7 +74,7 @@ function formatPhotoDate(iso: string, lang: string) {
 
 export default function PhotosPage() {
   const { t, lang } = useLanguage();
-  const { token, family, refresh } = useAuth();
+  const { token, family } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [scope, setScope] = useState<ViewScope>("all");
   const [items, setItems] = useState<PublicPhoto[]>([]);
@@ -93,14 +93,18 @@ export default function PhotosPage() {
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [icloud, setIcloud] = useState<IcloudAlbumResponse | null>(null);
+  const [icloudAlbums, setIcloudAlbums] = useState<LinkedIcloudAlbum[]>([]);
   const [icloudLoading, setIcloudLoading] = useState(false);
   const [icloudDraft, setIcloudDraft] = useState("");
   const [icloudFormOpen, setIcloudFormOpen] = useState(false);
   const [icloudSaving, setIcloudSaving] = useState(false);
   const [icloudError, setIcloudError] = useState<string | null>(null);
-  const [icloudDetail, setIcloudDetail] = useState<IcloudAlbumPhoto | null>(null);
-  const [confirmUnlink, setConfirmUnlink] = useState(false);
+  const [icloudDetail, setIcloudDetail] = useState<{
+    album: LinkedIcloudAlbum;
+    photo: IcloudAlbumPhoto;
+  } | null>(null);
+  const [confirmUnlink, setConfirmUnlink] = useState<LinkedIcloudAlbum | null>(null);
+  const [icloudDownloading, setIcloudDownloading] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -119,15 +123,15 @@ export default function PhotosPage() {
 
   const loadIcloud = useCallback(async () => {
     if (!token || !family) {
-      setIcloud(null);
+      setIcloudAlbums([]);
       return;
     }
     setIcloudLoading(true);
     try {
-      const data = await photosApi.icloudAlbum(token);
-      setIcloud(data);
+      const data = await photosApi.icloudAlbums(token);
+      setIcloudAlbums(data.albums);
     } catch {
-      setIcloud(null);
+      setIcloudAlbums([]);
     } finally {
       setIcloudLoading(false);
     }
@@ -290,10 +294,10 @@ export default function PhotosPage() {
     setIcloudSaving(true);
     setIcloudError(null);
     try {
-      const data = await photosApi.saveIcloudAlbum(token, url);
-      setIcloud(data);
+      const created = await photosApi.addIcloudAlbum(token, url);
+      setIcloudAlbums((prev) => [...prev.filter((a) => a.id !== created.id), created]);
+      setIcloudDraft("");
       setIcloudFormOpen(false);
-      await refresh();
     } catch (err) {
       setIcloudError(err instanceof ApiError ? err.message : t("photos.icloudError"));
     } finally {
@@ -302,24 +306,37 @@ export default function PhotosPage() {
   }
 
   async function handleUnlinkIcloud() {
-    if (!token || icloudSaving) return;
+    if (!token || icloudSaving || !confirmUnlink) return;
     setIcloudSaving(true);
     try {
-      const data = await photosApi.removeIcloudAlbum(token);
-      setIcloud(data);
-      setConfirmUnlink(false);
-      setIcloudDraft("");
-      await refresh();
+      const data = await photosApi.removeIcloudAlbum(token, confirmUnlink.id);
+      setIcloudAlbums(data.albums);
+      if (icloudDetail?.album.id === confirmUnlink.id) setIcloudDetail(null);
+      setConfirmUnlink(null);
     } catch (err) {
       setIcloudError(err instanceof ApiError ? err.message : t("photos.icloudError"));
-      setConfirmUnlink(false);
+      setConfirmUnlink(null);
     } finally {
       setIcloudSaving(false);
     }
   }
 
+  async function handleDownloadIcloud() {
+    if (!token || !icloudDetail || icloudDownloading) return;
+    setIcloudDownloading(true);
+    try {
+      const blob = await photosApi.downloadIcloudPhoto(token, icloudDetail.album.id, icloudDetail.photo.id);
+      const name = `${icloudDetail.photo.caption || icloudDetail.album.name || "icloud"}.jpg`;
+      await saveBlobLocally(blob, name);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("photos.icloudDownloadError"));
+    } finally {
+      setIcloudDownloading(false);
+    }
+  }
+
   const liveDetail = detail ? (items.find((p) => p.id === detail.id) ?? detail) : null;
-  const icloudConfigured = Boolean(icloud?.configured && icloud.url);
+  const canAddAlbum = icloudAlbums.length < MAX_ICLOUD_ALBUMS;
   const formTitle = editing
     ? t("photos.edit")
     : pickFiles.length > 1
@@ -362,40 +379,25 @@ export default function PhotosPage() {
         {family ? (
           <section className="mt-4 rounded-2xl border border-sky-100 bg-sky-50/70 p-4">
             <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="flex items-center gap-1.5 text-sm font-bold text-sky-900">
-                  <Cloud size={16} />
-                  {t("photos.icloudTitle")}
-                </p>
-                {icloudConfigured && icloud?.name && (
-                  <p className="mt-0.5 text-xs text-sky-700">{icloud.name}</p>
-                )}
-                {icloudConfigured && icloud?.url && (
-                  <a
-                    href={icloud.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1 inline-block text-[11px] font-semibold text-sky-700 underline"
-                  >
-                    {t("photos.icloudOpen")}
-                  </a>
-                )}
-              </div>
-              {icloudConfigured && (
+              <p className="flex items-center gap-1.5 text-sm font-bold text-sky-900">
+                <Cloud size={16} />
+                {t("photos.icloudTitle")}
+              </p>
+              {canAddAlbum && icloudAlbums.length > 0 && !icloudFormOpen && (
                 <button
                   type="button"
                   onClick={() => {
-                    setIcloudDraft(icloud?.url ?? "");
+                    setIcloudDraft("");
                     setIcloudError(null);
                     setIcloudFormOpen(true);
                   }}
                   className="text-xs font-semibold text-sky-700"
                 >
-                  {t("photos.icloudChange")}
+                  {t("photos.icloudAdd")}
                 </button>
               )}
             </div>
-            {!icloudConfigured && !icloudFormOpen && (
+            {icloudAlbums.length === 0 && !icloudFormOpen && (
               <>
                 <p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-sky-800">
                   {t("photos.icloudHowTo")}
@@ -444,40 +446,54 @@ export default function PhotosPage() {
               </form>
             )}
             {icloudLoading && <p className="mt-3 text-xs text-sky-700">{t("photos.loading")}</p>}
-            {icloudConfigured && icloud?.error && (
-              <p className="mt-3 text-xs text-rose-600">{t("photos.icloudError")}</p>
-            )}
-            {icloudConfigured && !icloudLoading && !icloud?.error && (icloud?.photos.length ?? 0) === 0 && (
-              <p className="mt-3 text-xs text-sky-800">{t("photos.icloudEmpty")}</p>
-            )}
-            {icloudConfigured && icloud && icloud.photos.length > 0 && (
-              <div className="mt-3 grid grid-cols-3 gap-1.5">
-                {icloud.photos.map((p) => (
+            {icloudError && !icloudFormOpen && <p className="mt-2 text-xs text-rose-600">{icloudError}</p>}
+            {icloudAlbums.map((album) => (
+              <div key={album.id} className="mt-4 border-t border-sky-100 pt-3 first:mt-3 first:border-0 first:pt-0">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-sky-900">{album.name || t("photos.icloudTitle")}</p>
+                    <a
+                      href={album.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-0.5 inline-block text-[11px] font-semibold text-sky-700 underline"
+                    >
+                      {t("photos.icloudOpen")}
+                    </a>
+                  </div>
                   <button
-                    key={p.id}
                     type="button"
-                    onClick={() => setIcloudDetail(p)}
-                    className="relative aspect-square overflow-hidden rounded-lg bg-white"
+                    onClick={() => setConfirmUnlink(album)}
+                    className="text-xs font-semibold text-sky-600"
                   >
-                    <img
-                      src={p.thumbUrl}
-                      alt={p.caption ?? t("photos.noCaption")}
-                      referrerPolicy="no-referrer"
-                      className="h-full w-full object-cover"
-                    />
+                    {t("photos.icloudUnlink")}
                   </button>
-                ))}
+                </div>
+                {album.error && <p className="mt-2 text-xs text-rose-600">{t("photos.icloudError")}</p>}
+                {!album.error && album.photos.length === 0 && (
+                  <p className="mt-2 text-xs text-sky-800">{t("photos.icloudEmpty")}</p>
+                )}
+                {album.photos.length > 0 && (
+                  <div className="mt-2 grid grid-cols-3 gap-1.5">
+                    {album.photos.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setIcloudDetail({ album, photo: p })}
+                        className="relative aspect-square overflow-hidden rounded-lg bg-white"
+                      >
+                        <img
+                          src={p.thumbUrl}
+                          alt={p.caption ?? t("photos.noCaption")}
+                          referrerPolicy="no-referrer"
+                          className="h-full w-full object-cover"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-            {icloudConfigured && (
-              <button
-                type="button"
-                onClick={() => setConfirmUnlink(true)}
-                className="mt-3 text-xs font-semibold text-sky-600"
-              >
-                {t("photos.icloudUnlink")}
-              </button>
-            )}
+            ))}
           </section>
         ) : (
           <p className="mt-4 rounded-2xl bg-neutral-50 px-4 py-3 text-xs text-neutral-500">
@@ -629,21 +645,30 @@ export default function PhotosPage() {
 
       {icloudDetail && (
         <ItemDetailSheet
-          title={icloudDetail.caption || icloud?.name || t("photos.icloudTitle")}
+          title={icloudDetail.photo.caption || icloudDetail.album.name || t("photos.icloudTitle")}
           onClose={() => setIcloudDetail(null)}
           closeLabel={t("photos.cancel")}
           editLabel={t("photos.edit")}
           deleteLabel={t("photos.delete")}
         >
           <img
-            src={icloudDetail.fullUrl}
-            alt={icloudDetail.caption ?? t("photos.noCaption")}
+            src={icloudDetail.photo.fullUrl}
+            alt={icloudDetail.photo.caption ?? t("photos.noCaption")}
             referrerPolicy="no-referrer"
             className="mb-3 max-h-[50vh] w-full rounded-xl object-contain bg-neutral-50"
           />
-          {icloudDetail.date && (
-            <DetailRow label={t("photos.addedAt")}>{formatPhotoDate(icloudDetail.date, lang)}</DetailRow>
+          {icloudDetail.photo.date && (
+            <DetailRow label={t("photos.addedAt")}>{formatPhotoDate(icloudDetail.photo.date, lang)}</DetailRow>
           )}
+          <button
+            type="button"
+            disabled={icloudDownloading}
+            onClick={() => void handleDownloadIcloud()}
+            className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl bg-sky-700 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            <Download size={16} />
+            {icloudDownloading ? t("photos.icloudDownloading") : t("photos.icloudDownload")}
+          </button>
         </ItemDetailSheet>
       )}
 
@@ -683,7 +708,7 @@ export default function PhotosPage() {
       {confirmUnlink && (
         <OverlayScrim
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
-          onDismiss={() => setConfirmUnlink(false)}
+          onDismiss={() => setConfirmUnlink(null)}
           label={t("photos.cancel")}
           swipeToDismiss={false}
         >
@@ -693,7 +718,7 @@ export default function PhotosPage() {
             <div className="mt-5 flex gap-2">
               <button
                 type="button"
-                onClick={() => setConfirmUnlink(false)}
+                onClick={() => setConfirmUnlink(null)}
                 className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-semibold text-neutral-600"
               >
                 {t("photos.cancel")}

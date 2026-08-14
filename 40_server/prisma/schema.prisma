@@ -21,11 +21,10 @@ enum BillingInterval {
 }
 
 model Family {
-  id                    Int      @id @default(autoincrement())
-  familyName            String   @map("family_name") @db.VarChar(100)
-  inviteCode            String   @unique @map("invite_code") @db.VarChar(20)
-  icloudSharedAlbumUrl  String?  @map("icloud_shared_album_url") @db.VarChar(500)
-  createdAt             DateTime @default(now()) @map("created_at")
+  id         Int      @id @default(autoincrement())
+  familyName String   @map("family_name") @db.VarChar(100)
+  inviteCode String   @unique @map("invite_code") @db.VarChar(20)
+  createdAt  DateTime @default(now()) @map("created_at")
 
   users            User[]
   inviteTokens     InviteToken[]
@@ -38,8 +37,22 @@ model Family {
   checklists       Checklist[]
   recurringDeposits RecurringDeposit[]
   activities       FamilyActivity[]
+  icloudAlbums     FamilyIcloudAlbum[]
 
   @@map("families")
+}
+
+model FamilyIcloudAlbum {
+  id        Int      @id @default(autoincrement())
+  familyId  Int      @map("family_id")
+  url       String   @db.VarChar(500)
+  name      String?  @db.VarChar(200)
+  createdAt DateTime @default(now()) @map("created_at")
+  family    Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@unique([familyId, url])
+  @@index([familyId])
+  @@map("family_icloud_albums")
 }
 
 model User {

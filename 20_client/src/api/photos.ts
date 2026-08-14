@@ -21,12 +21,16 @@ export interface IcloudAlbumPhoto {
   fullUrl: string;
 }
 
-export interface IcloudAlbumResponse {
-  configured: boolean;
-  url: string | null;
+export interface LinkedIcloudAlbum {
+  id: number;
+  url: string;
   name: string | null;
   photos: IcloudAlbumPhoto[];
   error?: string;
+}
+
+export interface IcloudAlbumsResponse {
+  albums: LinkedIcloudAlbum[];
 }
 
 export const photosApi = {
@@ -84,22 +88,34 @@ export const photosApi = {
     return res.blob();
   },
 
-  icloudAlbum(token: string) {
-    return apiFetch<IcloudAlbumResponse>("/api/photos/icloud-album", { token });
+  icloudAlbums(token: string) {
+    return apiFetch<IcloudAlbumsResponse>("/api/photos/icloud-albums", { token });
   },
 
-  saveIcloudAlbum(token: string, url: string) {
-    return apiFetch<IcloudAlbumResponse>("/api/photos/icloud-album", {
-      method: "PUT",
+  addIcloudAlbum(token: string, url: string) {
+    return apiFetch<LinkedIcloudAlbum>("/api/photos/icloud-albums", {
+      method: "POST",
       token,
       body: JSON.stringify({ url }),
     });
   },
 
-  removeIcloudAlbum(token: string) {
-    return apiFetch<IcloudAlbumResponse>("/api/photos/icloud-album", {
+  removeIcloudAlbum(token: string, albumId: number) {
+    return apiFetch<IcloudAlbumsResponse>(`/api/photos/icloud-albums/${albumId}`, {
       method: "DELETE",
       token,
     });
+  },
+
+  async downloadIcloudPhoto(token: string, albumId: number, photoId: string): Promise<Blob> {
+    const res = await fetch(
+      `/api/photos/icloud-albums/${albumId}/file?photo=${encodeURIComponent(photoId)}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+      throw new ApiError(data.error ?? `request failed (${res.status})`, res.status, data.code);
+    }
+    return res.blob();
   },
 };

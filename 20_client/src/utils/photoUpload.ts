@@ -44,3 +44,57 @@ export function selectImageFiles(
   }
   return { files, skippedNonImage, skippedTooLarge, truncated };
 }
+
+export const MAX_ICLOUD_ALBUMS = 8;
+
+export interface SaveBlobHooks {
+  share?: (data: { files: File[]; title: string }) => Promise<void>;
+  canShare?: (data: { files: File[] }) => boolean;
+  clickDownload?: (href: string, filename: string) => void;
+}
+
+export async function saveBlobLocally(
+  blob: Blob,
+  filename: string,
+  hooks: SaveBlobHooks = {},
+): Promise<"shared" | "downloaded"> {
+  const file = new File([blob], filename, { type: blob.type || "image/jpeg" });
+  const share = hooks.share ?? (typeof navigator !== "undefined" && navigator.share ? navigator.share.bind(navigator) : undefined);
+  const canShare =
+    hooks.canShare ??
+    (typeof navigator !== "undefined" && "canShare" in navigator
+      ? (data: { files: File[] }) => {
+          try {
+            return navigator.canShare(data);
+          } catch {
+            return false;
+          }
+        }
+      : undefined);
+  if (share && (!canShare || canShare({ files: [file] }))) {
+    try {
+      await share({ files: [file], title: filename });
+      return "shared";
+    } catch (err) {
+      if ((err as { name?: string }).name === "AbortError") return "shared";
+    }
+  }
+  const href = URL.createObjectURL(blob);
+  try {
+    if (hooks.clickDownload) {
+      hooks.clickDownload(href, filename);
+    } else if (typeof document !== "undefined") {
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = filename;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(href), 1_000);
+  }
+  return "downloaded";
+}
+

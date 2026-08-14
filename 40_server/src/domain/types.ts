@@ -16,7 +16,6 @@ export interface FamilySummary {
   id: number;
   familyName: string;
   inviteCode: string;
-  icloudSharedAlbumUrl: string | null;
   createdAt: string;
   members: Array<{
     id: number;
@@ -43,7 +42,6 @@ export interface FamilyRecord {
   id: number;
   familyName: string;
   inviteCode: string;
-  icloudSharedAlbumUrl: string | null;
   createdAt: Date;
 }
 

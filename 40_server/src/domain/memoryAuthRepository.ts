@@ -68,7 +68,6 @@ export class MemoryAuthRepository implements AuthRepository {
       id: this.nextFamilyId++,
       familyName,
       inviteCode: inviteCode.toUpperCase(),
-      icloudSharedAlbumUrl: null,
       createdAt: new Date(),
     };
     this.families.set(family.id, family);
@@ -79,14 +78,6 @@ export class MemoryAuthRepository implements AuthRepository {
     const family = this.families.get(id);
     if (!family) throw Object.assign(new Error("family not found"), { code: "NOT_FOUND" });
     const updated = { ...family, inviteCode: inviteCode.toUpperCase() };
-    this.families.set(id, updated);
-    return { ...updated };
-  }
-
-  async updateFamilyIcloudSharedAlbumUrl(id: number, url: string | null): Promise<FamilyRecord> {
-    const family = this.families.get(id);
-    if (!family) throw Object.assign(new Error("family not found"), { code: "NOT_FOUND" });
-    const updated = { ...family, icloudSharedAlbumUrl: url };
     this.families.set(id, updated);
     return { ...updated };
   }

@@ -45,25 +45,48 @@ export function createPhotoRouter(
   });
 
   if (icloud) {
-    router.get("/icloud-album", auth, async (req: AuthedRequest, res) => {
+    router.get("/icloud-albums", auth, async (req: AuthedRequest, res) => {
       try {
-        res.json(await icloud.get(req.userId!));
+        res.json(await icloud.list(req.userId!));
       } catch (err) {
         sendError(res, err);
       }
     });
 
-    router.put("/icloud-album", auth, async (req: AuthedRequest, res) => {
+    router.post("/icloud-albums", auth, async (req: AuthedRequest, res) => {
       try {
-        res.json(await icloud.set(req.userId!, req.body?.url));
+        res.status(201).json(await icloud.add(req.userId!, req.body?.url));
       } catch (err) {
         sendError(res, err);
       }
     });
 
-    router.delete("/icloud-album", auth, async (req: AuthedRequest, res) => {
+    router.get("/icloud-albums/:albumId/file", auth, async (req: AuthedRequest, res) => {
       try {
-        res.json(await icloud.clear(req.userId!));
+        const albumId = Number(req.params.albumId);
+        const photoId = typeof req.query.photo === "string" ? req.query.photo : "";
+        if (!Number.isFinite(albumId) || !photoId) {
+          res.status(400).json({ error: "invalid album or photo" });
+          return;
+        }
+        const file = await icloud.downloadPhoto(req.userId!, albumId, photoId);
+        res.setHeader("content-type", file.mime);
+        res.setHeader("content-disposition", `attachment; filename="${file.filename}"`);
+        res.setHeader("cache-control", "private, max-age=300");
+        res.send(file.bytes);
+      } catch (err) {
+        sendError(res, err);
+      }
+    });
+
+    router.delete("/icloud-albums/:albumId", auth, async (req: AuthedRequest, res) => {
+      try {
+        const albumId = Number(req.params.albumId);
+        if (!Number.isFinite(albumId)) {
+          res.status(400).json({ error: "invalid id" });
+          return;
+        }
+        res.json(await icloud.remove(req.userId!, albumId));
       } catch (err) {
         sendError(res, err);
       }

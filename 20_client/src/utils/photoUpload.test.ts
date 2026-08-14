@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { selectImageFiles } from "./photoUpload";
+import { selectImageFiles, saveBlobLocally } from "./photoUpload";
 
 function file(name: string, type: string, size = 10): File {
   const blob = new Blob([new Uint8Array(size)], { type });
@@ -35,4 +35,25 @@ test("selectImageFiles skips oversized files and accepts heic by extension", () 
   assert.equal(picked.skippedTooLarge, 1);
   assert.equal(picked.files.length, 1);
   assert.equal(picked.files[0].name, "ok.heic");
+});
+
+test("saveBlobLocally prefers share when available and falls back to download", async () => {
+  const blob = new Blob([new Uint8Array(4)], { type: "image/jpeg" });
+  const shared = await saveBlobLocally(blob, "a.jpg", {
+    canShare: () => true,
+    share: async () => undefined,
+    clickDownload: () => {
+      throw new Error("should not download");
+    },
+  });
+  assert.equal(shared, "shared");
+
+  const clicks: Array<{ href: string; filename: string }> = [];
+  const downloaded = await saveBlobLocally(blob, "b.jpg", {
+    canShare: () => false,
+    clickDownload: (href, filename) => clicks.push({ href, filename }),
+  });
+  assert.equal(downloaded, "downloaded");
+  assert.equal(clicks.length, 1);
+  assert.equal(clicks[0].filename, "b.jpg");
 });

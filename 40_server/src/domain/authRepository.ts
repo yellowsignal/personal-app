@@ -24,7 +24,6 @@ export interface AuthRepository {
   findFamilyByInviteCode(inviteCode: string): Promise<FamilyRecord | null>;
   createFamily(familyName: string, inviteCode: string): Promise<FamilyRecord>;
   updateFamilyInviteCode(id: number, inviteCode: string): Promise<FamilyRecord>;
-  updateFamilyIcloudSharedAlbumUrl(id: number, url: string | null): Promise<FamilyRecord>;
   listFamilyMembers(familyId: number): Promise<UserRecord[]>;
 
   /** Atomic helper used by register flows */

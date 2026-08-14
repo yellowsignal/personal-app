@@ -25,6 +25,9 @@ import { MemoryPhotoRepository } from "./domain/memoryPhotoRepository.js";
 import { PrismaPhotoRepository } from "./domain/prismaPhotoRepository.js";
 import type { PhotoRepository } from "./domain/photoRepository.js";
 import { PhotoStore, defaultPhotoDir } from "./storage/photoStore.js";
+import { MemoryFamilyIcloudAlbumRepository } from "./domain/memoryFamilyIcloudAlbumRepository.js";
+import { PrismaFamilyIcloudAlbumRepository } from "./domain/prismaFamilyIcloudAlbumRepository.js";
+import type { FamilyIcloudAlbumRepository } from "./domain/familyIcloudAlbumRepository.js";
 import type { AuthRepository } from "./domain/authRepository.js";
 import type { AssetRepository } from "./domain/assetRepository.js";
 import type { SubscriptionRepository } from "./domain/subscriptionRepository.js";
@@ -95,6 +98,9 @@ const calendarRepo: CalendarRepository = useMemoryAuth
 const photoRepo: PhotoRepository = useMemoryAuth
   ? new MemoryPhotoRepository()
   : new PrismaPhotoRepository(prisma);
+const icloudAlbumRepo: FamilyIcloudAlbumRepository = useMemoryAuth
+  ? new MemoryFamilyIcloudAlbumRepository()
+  : new PrismaFamilyIcloudAlbumRepository(prisma);
 let reminderDispatcher!: ReminderDispatcher;
 const pushService = new PushService(pushRepo, vapidKeys, new WebPushSender(vapidKeys), () =>
   reminderDispatcher.tick(),
@@ -115,6 +121,7 @@ const app = createApp(store, {
   calendarRepo,
   photoRepo,
   photoStore,
+  icloudAlbumRepo,
   subscriptionRepo,
   checklistRepo,
   documentRepo,

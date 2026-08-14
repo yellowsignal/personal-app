@@ -249,14 +249,19 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
 }
 
 function mockLegacyIcloudFetch(): typeof fetch {
-  return (async (input: string | URL) => {
+  return (async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
+    const method = (init?.method ?? "GET").toUpperCase();
+    if (method === "GET" && url.includes("cvws.icloud-content.com")) {
+      return new Response(JPEG_1X1, { status: 200, headers: { "content-type": "image/jpeg" } });
+    }
+    const name = url.includes("B0abcDEF12_34") ? "일상" : "가족 여행";
     if (url.includes("/webstream") && !url.includes("p12-sharedstreams")) {
       return jsonResponse(330, { "X-Apple-MMe-Host": "p12-sharedstreams.icloud.com" });
     }
     if (url.endsWith("/webstream")) {
       return jsonResponse(200, {
-        streamName: "가족 여행",
+        streamName: name,
         photos: [
           {
             photoGuid: "guid-1",
@@ -282,7 +287,7 @@ function mockLegacyIcloudFetch(): typeof fetch {
   }) as typeof fetch;
 }
 
-test("icloud album GET empty, PUT validates Apple fetch, DELETE clears", async () => {
+test("icloud albums can link several URLs, download without storing, and unlink one", async () => {
   const app = createApp(tmpStore(), {
     authRepo: new MemoryAuthRepository(),
     photoRepo: new MemoryPhotoRepository(),
@@ -296,64 +301,81 @@ test("icloud album GET empty, PUT validates Apple fetch, DELETE clears", async (
     const owner = await registerOwner(base);
     const headers = { authorization: `Bearer ${owner.token}`, "content-type": "application/json" };
 
-    const empty = await fetch(`${base}/api/photos/icloud-album`, {
+    const empty = await fetch(`${base}/api/photos/icloud-albums`, {
       headers: { authorization: `Bearer ${owner.token}` },
     });
     assert.equal(empty.status, 200);
-    const emptyBody = (await empty.json()) as { configured: boolean; photos: unknown[] };
-    assert.equal(emptyBody.configured, false);
-    assert.equal(emptyBody.photos.length, 0);
+    const emptyBody = (await empty.json()) as { albums: unknown[] };
+    assert.equal(emptyBody.albums.length, 0);
 
-    const bad = await fetch(`${base}/api/photos/icloud-album`, {
-      method: "PUT",
+    const bad = await fetch(`${base}/api/photos/icloud-albums`, {
+      method: "POST",
       headers,
       body: JSON.stringify({ url: "https://example.com/nope" }),
     });
     assert.equal(bad.status, 400);
 
-    const saved = await fetch(`${base}/api/photos/icloud-album`, {
-      method: "PUT",
+    const first = await fetch(`${base}/api/photos/icloud-albums`, {
+      method: "POST",
       headers,
       body: JSON.stringify({ url: "https://www.icloud.com/sharedalbum/#B125ON9t3mbLNC" }),
     });
-    assert.equal(saved.status, 200);
-    const savedBody = (await saved.json()) as {
-      configured: boolean;
-      url: string;
+    assert.equal(first.status, 201);
+    const firstBody = (await first.json()) as {
+      id: number;
       name: string;
       photos: Array<{ id: string; fullUrl: string }>;
     };
-    assert.equal(savedBody.configured, true);
-    assert.equal(savedBody.name, "가족 여행");
-    assert.equal(savedBody.photos.length, 1);
-    assert.equal(savedBody.photos[0].id, "guid-1");
+    assert.equal(firstBody.name, "가족 여행");
+    assert.equal(firstBody.photos.length, 1);
+    assert.equal(firstBody.photos[0].id, "guid-1");
 
-    const me = await fetch(`${base}/api/auth/me`, {
+    const dup = await fetch(`${base}/api/photos/icloud-albums`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ url: "https://www.icloud.com/sharedalbum/#B125ON9t3mbLNC" }),
+    });
+    assert.equal(dup.status, 409);
+
+    const second = await fetch(`${base}/api/photos/icloud-albums`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ url: "https://www.icloud.com/sharedalbum/#B0abcDEF12_34" }),
+    });
+    assert.equal(second.status, 201);
+    const secondBody = (await second.json()) as { id: number; name: string };
+    assert.equal(secondBody.name, "일상");
+    assert.notEqual(secondBody.id, firstBody.id);
+
+    const listed = await fetch(`${base}/api/photos/icloud-albums`, {
       headers: { authorization: `Bearer ${owner.token}` },
     });
-    const meBody = (await me.json()) as { family: { icloudSharedAlbumUrl: string | null } };
-    assert.equal(meBody.family.icloudSharedAlbumUrl, "https://www.icloud.com/sharedalbum/#B125ON9t3mbLNC");
+    const listedBody = (await listed.json()) as { albums: Array<{ id: number; name: string | null }> };
+    assert.equal(listedBody.albums.length, 2);
 
-    const listed = await fetch(`${base}/api/photos/icloud-album`, {
-      headers: { authorization: `Bearer ${owner.token}` },
-    });
-    const listedBody = (await listed.json()) as { configured: boolean; photos: unknown[] };
-    assert.equal(listedBody.configured, true);
-    assert.equal(listedBody.photos.length, 1);
+    const fileRes = await fetch(
+      `${base}/api/photos/icloud-albums/${firstBody.id}/file?photo=guid-1`,
+      { headers: { authorization: `Bearer ${owner.token}` } },
+    );
+    assert.equal(fileRes.status, 200);
+    assert.equal(fileRes.headers.get("content-type"), "image/jpeg");
+    const fileBytes = Buffer.from(await fileRes.arrayBuffer());
+    assert.deepEqual(fileBytes, JPEG_1X1);
 
-    const cleared = await fetch(`${base}/api/photos/icloud-album`, {
+    const cleared = await fetch(`${base}/api/photos/icloud-albums/${firstBody.id}`, {
       method: "DELETE",
       headers: { authorization: `Bearer ${owner.token}` },
     });
     assert.equal(cleared.status, 200);
-    const clearedBody = (await cleared.json()) as { configured: boolean };
-    assert.equal(clearedBody.configured, false);
+    const clearedBody = (await cleared.json()) as { albums: Array<{ id: number }> };
+    assert.equal(clearedBody.albums.length, 1);
+    assert.equal(clearedBody.albums[0].id, secondBody.id);
   } finally {
     server.close();
   }
 });
 
-test("icloud album PUT does not save when Apple fetch fails", async () => {
+test("icloud album POST does not save when Apple fetch fails", async () => {
   const app = createApp(tmpStore(), {
     authRepo: new MemoryAuthRepository(),
     photoRepo: new MemoryPhotoRepository(),
@@ -364,17 +386,17 @@ test("icloud album PUT does not save when Apple fetch fails", async () => {
   const { server, base } = await listen(app);
   try {
     const owner = await registerOwner(base);
-    const saved = await fetch(`${base}/api/photos/icloud-album`, {
-      method: "PUT",
+    const saved = await fetch(`${base}/api/photos/icloud-albums`, {
+      method: "POST",
       headers: { authorization: `Bearer ${owner.token}`, "content-type": "application/json" },
       body: JSON.stringify({ url: "https://www.icloud.com/sharedalbum/#B125ON9t3mbLNC" }),
     });
     assert.equal(saved.status, 400);
-    const listed = await fetch(`${base}/api/photos/icloud-album`, {
+    const listed = await fetch(`${base}/api/photos/icloud-albums`, {
       headers: { authorization: `Bearer ${owner.token}` },
     });
-    const listedBody = (await listed.json()) as { configured: boolean };
-    assert.equal(listedBody.configured, false);
+    const listedBody = (await listed.json()) as { albums: unknown[] };
+    assert.equal(listedBody.albums.length, 0);
   } finally {
     server.close();
   }
