@@ -43,6 +43,20 @@ export class PrismaFamilyIcloudAlbumRepository implements FamilyIcloudAlbumRepos
     return mapRow(row);
   }
 
+  async update(
+    id: number,
+    input: { url?: string; name?: string | null },
+  ): Promise<FamilyIcloudAlbumRecord> {
+    const row = await this.db.familyIcloudAlbum.update({
+      where: { id },
+      data: {
+        ...(input.url != null ? { url: input.url } : {}),
+        ...(input.name !== undefined ? { name: input.name } : {}),
+      },
+    });
+    return mapRow(row);
+  }
+
   async updateName(id: number, name: string | null): Promise<FamilyIcloudAlbumRecord> {
     const row = await this.db.familyIcloudAlbum.update({
       where: { id },

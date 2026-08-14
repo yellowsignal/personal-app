@@ -31,6 +31,27 @@ export class MemoryFamilyIcloudAlbumRepository implements FamilyIcloudAlbumRepos
     return { ...record };
   }
 
+  async update(
+    id: number,
+    input: { url?: string; name?: string | null },
+  ): Promise<FamilyIcloudAlbumRecord> {
+    const existing = this.rows.get(id);
+    if (!existing) throw Object.assign(new Error("album not found"), { code: "NOT_FOUND" });
+    if (input.url && input.url !== existing.url) {
+      const dup = [...this.rows.values()].some(
+        (row) => row.familyId === existing.familyId && row.url === input.url && row.id !== id,
+      );
+      if (dup) throw Object.assign(new Error("album exists"), { code: "ALBUM_EXISTS" });
+    }
+    const updated: FamilyIcloudAlbumRecord = {
+      ...existing,
+      url: input.url ?? existing.url,
+      name: input.name !== undefined ? input.name : existing.name,
+    };
+    this.rows.set(id, updated);
+    return { ...updated };
+  }
+
   async updateName(id: number, name: string | null): Promise<FamilyIcloudAlbumRecord> {
     const existing = this.rows.get(id);
     if (!existing) throw Object.assign(new Error("album not found"), { code: "NOT_FOUND" });

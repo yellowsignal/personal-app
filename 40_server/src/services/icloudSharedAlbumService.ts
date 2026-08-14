@@ -100,6 +100,35 @@ export class IcloudSharedAlbumService {
     }
   }
 
+  async update(userId: number, albumId: number, rawUrl: unknown): Promise<LinkedIcloudAlbum> {
+    const { family } = await this.requireFamily(userId);
+    const row = await this.albumRepo.findById(albumId);
+    if (!row || row.familyId !== family.id) throw new HttpError(404, "album not found", "NOT_FOUND");
+    const parsed = parseIcloudSharedAlbumUrl(rawUrl);
+    if (!parsed) throw new HttpError(400, "invalid iCloud shared album URL", "INVALID_URL");
+    const siblings = await this.albumRepo.listByFamily(family.id);
+    if (siblings.some((item) => item.id !== albumId && item.url === parsed.canonicalUrl)) {
+      throw new HttpError(409, "this iCloud album is already linked", "ALBUM_EXISTS");
+    }
+    try {
+      const album = await fetchIcloudSharedAlbum(parsed.canonicalUrl, { http: this.http });
+      const updated = await this.albumRepo.update(albumId, {
+        url: parsed.canonicalUrl,
+        name: album.name,
+      });
+      this.cache.delete(albumId);
+      this.remember(updated.id, updated.url, album);
+      return { id: updated.id, url: updated.url, name: album.name, photos: album.photos };
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      const code = (err as { code?: string }).code;
+      if (code === "P2002" || code === "ALBUM_EXISTS") {
+        throw new HttpError(409, "this iCloud album is already linked", "ALBUM_EXISTS");
+      }
+      throw new HttpError(400, "could not open iCloud album", "ICLOUD_FETCH_FAILED");
+    }
+  }
+
   async remove(userId: number, albumId: number): Promise<IcloudAlbumsResponse> {
     const { family } = await this.requireFamily(userId);
     const row = await this.albumRepo.findById(albumId);

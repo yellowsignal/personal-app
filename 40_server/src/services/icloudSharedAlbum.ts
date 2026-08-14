@@ -28,6 +28,26 @@ export interface IcloudAlbumPhoto {
   fullUrl: string;
 }
 
+function photoTime(photo: IcloudAlbumPhoto): number {
+  if (!photo.date) return Number.POSITIVE_INFINITY;
+  const t = Date.parse(photo.date);
+  return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+}
+
+export function sortIcloudPhotosOldestFirst(photos: IcloudAlbumPhoto[]): IcloudAlbumPhoto[] {
+  return [...photos].sort((a, b) => {
+    const ta = photoTime(a);
+    const tb = photoTime(b);
+    const aMissing = !Number.isFinite(ta);
+    const bMissing = !Number.isFinite(tb);
+    if (aMissing && bMissing) return a.id.localeCompare(b.id);
+    if (aMissing) return 1;
+    if (bMissing) return -1;
+    if (ta !== tb) return ta - tb;
+    return a.id.localeCompare(b.id);
+  });
+}
+
 export interface IcloudAlbum {
   name: string;
   photos: IcloudAlbumPhoto[];
@@ -422,7 +442,9 @@ export async function fetchIcloudSharedAlbum(
   const includeAssets = options.includeAssets !== false;
   const maxPhotos = options.maxPhotos ?? ICLOUD_ALBUM_MAX_PHOTOS;
   if (parsed.kind === "cloudkit") {
-    return fetchCloudKitAlbum(parsed.token, http, includeAssets, maxPhotos);
+    const album = await fetchCloudKitAlbum(parsed.token, http, includeAssets, maxPhotos);
+    return { ...album, photos: sortIcloudPhotosOldestFirst(album.photos) };
   }
-  return fetchLegacyAlbum(parsed.token, http, includeAssets, maxPhotos);
+  const album = await fetchLegacyAlbum(parsed.token, http, includeAssets, maxPhotos);
+  return { ...album, photos: sortIcloudPhotosOldestFirst(album.photos) };
 }

@@ -61,6 +61,19 @@ export function createPhotoRouter(
       }
     });
 
+    router.patch("/icloud-albums/:albumId", auth, async (req: AuthedRequest, res) => {
+      try {
+        const albumId = Number(req.params.albumId);
+        if (!Number.isFinite(albumId)) {
+          res.status(400).json({ error: "invalid id" });
+          return;
+        }
+        res.json(await icloud.update(req.userId!, albumId, req.body?.url));
+      } catch (err) {
+        sendError(res, err);
+      }
+    });
+
     router.get("/icloud-albums/:albumId/file", auth, async (req: AuthedRequest, res) => {
       try {
         const albumId = Number(req.params.albumId);

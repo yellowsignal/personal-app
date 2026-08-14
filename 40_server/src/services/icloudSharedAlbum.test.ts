@@ -4,6 +4,7 @@ import {
   fetchIcloudSharedAlbum,
   getLegacyPartition,
   parseIcloudSharedAlbumUrl,
+  sortIcloudPhotosOldestFirst,
   type FetchLike,
 } from "./icloudSharedAlbum.js";
 
@@ -38,6 +39,18 @@ test("getLegacyPartition pads single-digit partitions", () => {
   assert.equal(getLegacyPartition("B125ON9t3mbLNC").length >= 2, true);
 });
 
+test("sortIcloudPhotosOldestFirst keeps undated photos last and sorts ids stably", () => {
+  const sorted = sortIcloudPhotosOldestFirst([
+    { id: "b", caption: null, date: null, thumbUrl: "/b", fullUrl: "/b" },
+    { id: "a", caption: null, date: null, thumbUrl: "/a", fullUrl: "/a" },
+    { id: "old", caption: null, date: "2020-01-01T00:00:00Z", thumbUrl: "/o", fullUrl: "/o" },
+  ]);
+  assert.deepEqual(
+    sorted.map((p) => p.id),
+    ["old", "a", "b"],
+  );
+});
+
 function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -68,6 +81,15 @@ test("fetchIcloudSharedAlbum follows 330 redirect and maps asset URLs", async ()
             },
           },
           {
+            photoGuid: "guid-2",
+            caption: "예전",
+            dateCreated: "2025-01-01T00:00:00Z",
+            derivatives: {
+              "640": { checksum: "thumb-1", fileSize: 10 },
+              "2048": { checksum: "full-1", fileSize: 80 },
+            },
+          },
+          {
             photoGuid: "guid-vid",
             mediaAssetType: "video",
             derivatives: { PosterFrame: { checksum: "poster", fileSize: 1 } },
@@ -88,9 +110,11 @@ test("fetchIcloudSharedAlbum follows 330 redirect and maps asset URLs", async ()
 
   const album = await fetchIcloudSharedAlbum(`https://www.icloud.com/sharedalbum/#${token}`, { http });
   assert.equal(album.name, "가족 여행");
-  assert.equal(album.photos.length, 1);
-  assert.equal(album.photos[0].id, "guid-1");
-  assert.equal(album.photos[0].caption, "바다");
+  assert.equal(album.photos.length, 2);
+  assert.equal(album.photos[0].id, "guid-2");
+  assert.equal(album.photos[1].id, "guid-1");
+  assert.equal(album.photos[0].caption, "예전");
+  assert.equal(album.photos[1].caption, "바다");
   assert.equal(album.photos[0].thumbUrl, "https://cvws.icloud-content.com/t/thumb.jpg?a=1");
   assert.equal(album.photos[0].fullUrl, "https://cvws.icloud-content.com/t/full.jpg?a=1");
   assert.equal(calls.some((u) => u.includes("p12-sharedstreams.icloud.com") && u.endsWith("/webstream")), true);

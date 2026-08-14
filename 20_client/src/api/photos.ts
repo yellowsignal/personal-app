@@ -98,6 +98,14 @@ export const photosApi = {
     });
   },
 
+  updateIcloudAlbum(token: string, albumId: number, url: string) {
+    return apiFetch<LinkedIcloudAlbum>(`/api/photos/icloud-albums/${albumId}`, {
+      method: "PATCH",
+      token,
+      body: JSON.stringify({ url }),
+    });
+  },
+
   removeIcloudAlbum(token: string, albumId: number) {
     return apiFetch<IcloudAlbumsResponse>(`/api/photos/icloud-albums/${albumId}`, {
       method: "DELETE",

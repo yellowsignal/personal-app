@@ -245,6 +245,15 @@ function mockLegacyIcloudFetch(): typeof fetch {
               "2048": { checksum: "full-1", fileSize: 80 },
             },
           },
+          {
+            photoGuid: "guid-old",
+            caption: "예전",
+            dateCreated: "2025-01-01T00:00:00Z",
+            derivatives: {
+              "640": { checksum: "thumb-1", fileSize: 10 },
+              "2048": { checksum: "full-1", fileSize: 80 },
+            },
+          },
         ],
       });
     }
@@ -300,8 +309,9 @@ test("icloud albums can link several URLs, download without storing, and unlink 
       photos: Array<{ id: string; fullUrl: string }>;
     };
     assert.equal(firstBody.name, "가족 여행");
-    assert.equal(firstBody.photos.length, 1);
-    assert.equal(firstBody.photos[0].id, "guid-1");
+    assert.equal(firstBody.photos.length, 2);
+    assert.equal(firstBody.photos[0].id, "guid-old");
+    assert.equal(firstBody.photos[1].id, "guid-1");
 
     const dup = await fetch(`${base}/api/photos/icloud-albums`, {
       method: "POST",
@@ -323,8 +333,19 @@ test("icloud albums can link several URLs, download without storing, and unlink 
     const listed = await fetch(`${base}/api/photos/icloud-albums`, {
       headers: { authorization: `Bearer ${owner.token}` },
     });
-    const listedBody = (await listed.json()) as { albums: Array<{ id: number; name: string | null }> };
+    const listedBody = (await listed.json()) as {
+      albums: Array<{ id: number; name: string | null; photos: Array<{ id: string }> }>;
+    };
     assert.equal(listedBody.albums.length, 2);
+    const travel = listedBody.albums.find((a) => a.id === firstBody.id);
+    assert.equal(travel?.photos[0]?.id, "guid-old");
+
+    const clash = await fetch(`${base}/api/photos/icloud-albums/${firstBody.id}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ url: "https://www.icloud.com/sharedalbum/#B0abcDEF12_34" }),
+    });
+    assert.equal(clash.status, 409);
 
     const fileRes = await fetch(
       `${base}/api/photos/icloud-albums/${firstBody.id}/file?photo=guid-1`,
@@ -343,6 +364,17 @@ test("icloud albums can link several URLs, download without storing, and unlink 
     const clearedBody = (await cleared.json()) as { albums: Array<{ id: number }> };
     assert.equal(clearedBody.albums.length, 1);
     assert.equal(clearedBody.albums[0].id, secondBody.id);
+
+    const patched = await fetch(`${base}/api/photos/icloud-albums/${secondBody.id}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ url: "https://www.icloud.com/sharedalbum/#B125ON9t3mbLNC" }),
+    });
+    assert.equal(patched.status, 200);
+    const patchedBody = (await patched.json()) as { id: number; name: string; url: string };
+    assert.equal(patchedBody.id, secondBody.id);
+    assert.equal(patchedBody.name, "가족 여행");
+    assert.equal(patchedBody.url, "https://www.icloud.com/sharedalbum/#B125ON9t3mbLNC");
   } finally {
     server.close();
   }
