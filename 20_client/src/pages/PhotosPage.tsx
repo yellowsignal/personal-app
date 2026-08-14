@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ImagePlus, Plus, X } from "lucide-react";
+import { Cloud, ImagePlus, Plus, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
@@ -8,8 +8,14 @@ import OverlayScrim from "../components/OverlayScrim";
 import ItemDetailSheet, { DetailRow } from "../components/ItemDetailSheet";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
-import { photosApi, type PublicPhoto } from "../api/photos";
+import {
+  photosApi,
+  type IcloudAlbumPhoto,
+  type IcloudAlbumResponse,
+  type PublicPhoto,
+} from "../api/photos";
 import { ApiError } from "../api/http";
+import { MAX_PHOTO_UPLOAD, selectImageFiles } from "../utils/photoUpload";
 
 function usePhotoObjectUrls(token: string | null, ids: number[]) {
   const [urls, setUrls] = useState<Record<number, string>>({});
@@ -68,7 +74,7 @@ function formatPhotoDate(iso: string, lang: string) {
 
 export default function PhotosPage() {
   const { t, lang } = useLanguage();
-  const { token, family } = useAuth();
+  const { token, family, refresh } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [scope, setScope] = useState<ViewScope>("all");
   const [items, setItems] = useState<PublicPhoto[]>([]);
@@ -78,13 +84,23 @@ export default function PhotosPage() {
   const [confirmDelete, setConfirmDelete] = useState<PublicPhoto | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<PublicPhoto | null>(null);
-  const [pickFile, setPickFile] = useState<File | null>(null);
-  const [pickPreview, setPickPreview] = useState<string | null>(null);
+  const [pickFiles, setPickFiles] = useState<File[]>([]);
+  const [pickPreviews, setPickPreviews] = useState<string[]>([]);
   const [caption, setCaption] = useState("");
   const [isShared, setIsShared] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [icloud, setIcloud] = useState<IcloudAlbumResponse | null>(null);
+  const [icloudLoading, setIcloudLoading] = useState(false);
+  const [icloudDraft, setIcloudDraft] = useState("");
+  const [icloudFormOpen, setIcloudFormOpen] = useState(false);
+  const [icloudSaving, setIcloudSaving] = useState(false);
+  const [icloudError, setIcloudError] = useState<string | null>(null);
+  const [icloudDetail, setIcloudDetail] = useState<IcloudAlbumPhoto | null>(null);
+  const [confirmUnlink, setConfirmUnlink] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -101,9 +117,29 @@ export default function PhotosPage() {
     }
   }, [token, scope, t]);
 
+  const loadIcloud = useCallback(async () => {
+    if (!token || !family) {
+      setIcloud(null);
+      return;
+    }
+    setIcloudLoading(true);
+    try {
+      const data = await photosApi.icloudAlbum(token);
+      setIcloud(data);
+    } catch {
+      setIcloud(null);
+    } finally {
+      setIcloudLoading(false);
+    }
+  }, [token, family]);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadIcloud();
+  }, [loadIcloud]);
 
   const ids = useMemo(() => items.map((p) => p.id), [items]);
   const urls = usePhotoObjectUrls(token, ids);
@@ -122,22 +158,25 @@ export default function PhotosPage() {
   }, [items, searchParams, setSearchParams]);
 
   useEffect(() => {
-    if (!pickFile) {
-      setPickPreview(null);
+    if (pickFiles.length === 0) {
+      setPickPreviews([]);
       return;
     }
-    const url = URL.createObjectURL(pickFile);
-    setPickPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [pickFile]);
+    const created = pickFiles.map((file) => URL.createObjectURL(file));
+    setPickPreviews(created);
+    return () => {
+      for (const url of created) URL.revokeObjectURL(url);
+    };
+  }, [pickFiles]);
 
   function resetForm() {
     setFormOpen(false);
     setEditing(null);
-    setPickFile(null);
+    setPickFiles([]);
     setCaption("");
-    setIsShared(false);
+    setIsShared(Boolean(family));
     setFormError(null);
+    setUploadProgress(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -145,20 +184,27 @@ export default function PhotosPage() {
     fileInputRef.current?.click();
   }
 
-  function onFilePicked(file: File | undefined) {
-    if (!file) return;
+  function onFilesPicked(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    const selected = selectImageFiles(list);
+    if (selected.files.length === 0) {
+      setError(t("photos.needImage"));
+      return;
+    }
     setEditing(null);
-    setPickFile(file);
+    setPickFiles(selected.files);
     setCaption("");
-    setIsShared(false);
-    setFormError(null);
+    setIsShared(Boolean(family));
+    setFormError(
+      selected.truncated > 0 ? t("photos.truncated", { max: MAX_PHOTO_UPLOAD }) : null,
+    );
     setFormOpen(true);
   }
 
   function openEdit(photo: PublicPhoto) {
     setDetail(null);
     setEditing(photo);
-    setPickFile(null);
+    setPickFiles([]);
     setCaption(photo.caption ?? "");
     setIsShared(photo.isShared);
     setFormError(null);
@@ -179,23 +225,41 @@ export default function PhotosPage() {
         setItems((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
         setDetail(updated);
       } else {
-        if (!pickFile) {
+        if (pickFiles.length === 0) {
           setFormError(t("photos.needImage"));
           setSubmitting(false);
           return;
         }
-        const created = await photosApi.upload(token, pickFile, {
-          caption: caption.trim() || undefined,
-          isShared,
-        });
+        let ok = 0;
+        let fail = 0;
+        let last: PublicPhoto | null = null;
+        for (let i = 0; i < pickFiles.length; i++) {
+          setUploadProgress({ current: i + 1, total: pickFiles.length });
+          try {
+            last = await photosApi.upload(token, pickFiles[i], {
+              caption: caption.trim() || undefined,
+              isShared,
+            });
+            ok += 1;
+          } catch {
+            fail += 1;
+          }
+        }
         await load();
-        setDetail(created);
+        if (ok === 0) {
+          setFormError(t("photos.errorSave"));
+          setSubmitting(false);
+          return;
+        }
+        if (last) setDetail(last);
+        if (fail > 0) setError(t("photos.partialUpload", { ok, fail }));
       }
       resetForm();
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : t("photos.errorSave"));
     } finally {
       setSubmitting(false);
+      setUploadProgress(null);
     }
   }
 
@@ -215,7 +279,52 @@ export default function PhotosPage() {
     }
   }
 
+  async function handleSaveIcloud(e: FormEvent) {
+    e.preventDefault();
+    if (!token || icloudSaving) return;
+    const url = icloudDraft.trim();
+    if (!url) {
+      setIcloudError(t("photos.icloudNeedUrl"));
+      return;
+    }
+    setIcloudSaving(true);
+    setIcloudError(null);
+    try {
+      const data = await photosApi.saveIcloudAlbum(token, url);
+      setIcloud(data);
+      setIcloudFormOpen(false);
+      await refresh();
+    } catch (err) {
+      setIcloudError(err instanceof ApiError ? err.message : t("photos.icloudError"));
+    } finally {
+      setIcloudSaving(false);
+    }
+  }
+
+  async function handleUnlinkIcloud() {
+    if (!token || icloudSaving) return;
+    setIcloudSaving(true);
+    try {
+      const data = await photosApi.removeIcloudAlbum(token);
+      setIcloud(data);
+      setConfirmUnlink(false);
+      setIcloudDraft("");
+      await refresh();
+    } catch (err) {
+      setIcloudError(err instanceof ApiError ? err.message : t("photos.icloudError"));
+      setConfirmUnlink(false);
+    } finally {
+      setIcloudSaving(false);
+    }
+  }
+
   const liveDetail = detail ? (items.find((p) => p.id === detail.id) ?? detail) : null;
+  const icloudConfigured = Boolean(icloud?.configured && icloud.url);
+  const formTitle = editing
+    ? t("photos.edit")
+    : pickFiles.length > 1
+      ? t("photos.addCount", { n: pickFiles.length })
+      : t("photos.add");
 
   return (
     <div>
@@ -241,13 +350,140 @@ export default function PhotosPage() {
           ref={fileInputRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
+            const list = e.target.files;
             e.target.value = "";
-            onFilePicked(file);
+            onFilesPicked(list);
           }}
         />
+
+        {family ? (
+          <section className="mt-4 rounded-2xl border border-sky-100 bg-sky-50/70 p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="flex items-center gap-1.5 text-sm font-bold text-sky-900">
+                  <Cloud size={16} />
+                  {t("photos.icloudTitle")}
+                </p>
+                {icloudConfigured && icloud?.name && (
+                  <p className="mt-0.5 text-xs text-sky-700">{icloud.name}</p>
+                )}
+                {icloudConfigured && icloud?.url && (
+                  <a
+                    href={icloud.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-block text-[11px] font-semibold text-sky-700 underline"
+                  >
+                    {t("photos.icloudOpen")}
+                  </a>
+                )}
+              </div>
+              {icloudConfigured && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIcloudDraft(icloud?.url ?? "");
+                    setIcloudError(null);
+                    setIcloudFormOpen(true);
+                  }}
+                  className="text-xs font-semibold text-sky-700"
+                >
+                  {t("photos.icloudChange")}
+                </button>
+              )}
+            </div>
+            {!icloudConfigured && !icloudFormOpen && (
+              <>
+                <p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-sky-800">
+                  {t("photos.icloudHowTo")}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIcloudDraft("");
+                    setIcloudError(null);
+                    setIcloudFormOpen(true);
+                  }}
+                  className="mt-3 w-full rounded-xl bg-sky-700 py-2.5 text-sm font-semibold text-white"
+                >
+                  {t("photos.icloudSave")}
+                </button>
+              </>
+            )}
+            {icloudFormOpen && (
+              <form onSubmit={(e) => void handleSaveIcloud(e)} className="mt-3">
+                <input
+                  value={icloudDraft}
+                  onChange={(e) => setIcloudDraft(e.target.value)}
+                  placeholder={t("photos.icloudPlaceholder")}
+                  inputMode="url"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  className="w-full rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-sky-400"
+                />
+                {icloudError && <p className="mt-2 text-xs text-rose-600">{icloudError}</p>}
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIcloudFormOpen(false)}
+                    className="flex-1 rounded-xl border border-sky-200 py-2 text-sm font-semibold text-sky-800"
+                  >
+                    {t("photos.cancel")}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={icloudSaving}
+                    className="flex-1 rounded-xl bg-sky-700 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    {icloudSaving ? t("photos.icloudSaving") : t("photos.icloudSave")}
+                  </button>
+                </div>
+              </form>
+            )}
+            {icloudLoading && <p className="mt-3 text-xs text-sky-700">{t("photos.loading")}</p>}
+            {icloudConfigured && icloud?.error && (
+              <p className="mt-3 text-xs text-rose-600">{t("photos.icloudError")}</p>
+            )}
+            {icloudConfigured && !icloudLoading && !icloud?.error && (icloud?.photos.length ?? 0) === 0 && (
+              <p className="mt-3 text-xs text-sky-800">{t("photos.icloudEmpty")}</p>
+            )}
+            {icloudConfigured && icloud && icloud.photos.length > 0 && (
+              <div className="mt-3 grid grid-cols-3 gap-1.5">
+                {icloud.photos.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setIcloudDetail(p)}
+                    className="relative aspect-square overflow-hidden rounded-lg bg-white"
+                  >
+                    <img
+                      src={p.thumbUrl}
+                      alt={p.caption ?? t("photos.noCaption")}
+                      referrerPolicy="no-referrer"
+                      className="h-full w-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+            {icloudConfigured && (
+              <button
+                type="button"
+                onClick={() => setConfirmUnlink(true)}
+                className="mt-3 text-xs font-semibold text-sky-600"
+              >
+                {t("photos.icloudUnlink")}
+              </button>
+            )}
+          </section>
+        ) : (
+          <p className="mt-4 rounded-2xl bg-neutral-50 px-4 py-3 text-xs text-neutral-500">
+            {t("photos.icloudNeedFamily")}
+          </p>
+        )}
 
         <button
           type="button"
@@ -259,6 +495,7 @@ export default function PhotosPage() {
         </button>
         <p className="mt-2 rounded-2xl bg-indigo-50/60 px-4 py-3 text-xs text-indigo-700">{t("photos.hint")}</p>
 
+        <h2 className="mt-6 text-sm font-bold text-neutral-800">{t("photos.deviceSection")}</h2>
         {loading && <p className="mt-6 text-center text-sm text-neutral-400">{t("photos.loading")}</p>}
         {error && <p className="mt-4 text-center text-sm text-rose-600">{error}</p>}
         {!loading && !error && items.length === 0 && (
@@ -304,16 +541,21 @@ export default function PhotosPage() {
             className="relative w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
           >
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-base font-bold text-neutral-900">
-                {editing ? t("photos.edit") : t("photos.add")}
-              </h2>
+              <h2 className="text-base font-bold text-neutral-900">{formTitle}</h2>
               <button type="button" onClick={resetForm} className="rounded-full p-1 text-neutral-400" aria-label={t("photos.cancel")}>
                 <X size={18} />
               </button>
             </div>
-            {(pickPreview || (editing && urls[editing.id])) && (
+            {pickPreviews.length > 1 && (
+              <div className="mb-3 grid grid-cols-4 gap-1.5">
+                {pickPreviews.map((src) => (
+                  <img key={src} src={src} alt="" className="aspect-square w-full rounded-lg object-cover bg-neutral-50" />
+                ))}
+              </div>
+            )}
+            {(pickPreviews.length === 1 || (editing && urls[editing.id])) && (
               <img
-                src={pickPreview ?? urls[editing!.id]}
+                src={pickPreviews[0] ?? urls[editing!.id]}
                 alt=""
                 className="mb-3 max-h-64 w-full rounded-xl object-contain bg-neutral-50"
               />
@@ -343,7 +585,15 @@ export default function PhotosPage() {
               disabled={submitting}
               className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white disabled:opacity-60"
             >
-              {submitting ? t("photos.saving") : t("photos.save")}
+              {submitting
+                ? uploadProgress
+                  ? t("photos.savingCount", uploadProgress)
+                  : t("photos.saving")
+                : editing
+                  ? t("photos.save")
+                  : pickFiles.length > 1
+                    ? t("photos.addCount", { n: pickFiles.length })
+                    : t("photos.save")}
             </button>
           </form>
         </OverlayScrim>
@@ -377,6 +627,26 @@ export default function PhotosPage() {
         </ItemDetailSheet>
       )}
 
+      {icloudDetail && (
+        <ItemDetailSheet
+          title={icloudDetail.caption || icloud?.name || t("photos.icloudTitle")}
+          onClose={() => setIcloudDetail(null)}
+          closeLabel={t("photos.cancel")}
+          editLabel={t("photos.edit")}
+          deleteLabel={t("photos.delete")}
+        >
+          <img
+            src={icloudDetail.fullUrl}
+            alt={icloudDetail.caption ?? t("photos.noCaption")}
+            referrerPolicy="no-referrer"
+            className="mb-3 max-h-[50vh] w-full rounded-xl object-contain bg-neutral-50"
+          />
+          {icloudDetail.date && (
+            <DetailRow label={t("photos.addedAt")}>{formatPhotoDate(icloudDetail.date, lang)}</DetailRow>
+          )}
+        </ItemDetailSheet>
+      )}
+
       {confirmDelete && (
         <OverlayScrim
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
@@ -404,6 +674,37 @@ export default function PhotosPage() {
                 className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
               >
                 {t("photos.delete")}
+              </button>
+            </div>
+          </div>
+        </OverlayScrim>
+      )}
+
+      {confirmUnlink && (
+        <OverlayScrim
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+          onDismiss={() => setConfirmUnlink(false)}
+          label={t("photos.cancel")}
+          swipeToDismiss={false}
+        >
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+            <h2 className="text-base font-bold text-neutral-900">{t("photos.icloudUnlink")}</h2>
+            <p className="mt-2 text-sm text-neutral-500">{t("photos.icloudUnlinkConfirm")}</p>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmUnlink(false)}
+                className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-semibold text-neutral-600"
+              >
+                {t("photos.cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={icloudSaving}
+                onClick={() => void handleUnlinkIcloud()}
+                className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {t("photos.icloudUnlink")}
               </button>
             </div>
           </div>

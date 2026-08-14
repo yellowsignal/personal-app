@@ -2,6 +2,7 @@ import express, { Router } from "express";
 import { requireAuth, type AuthedRequest } from "../middleware/requireAuth.js";
 import { HttpError } from "../services/authService.js";
 import type { PhotoService } from "../services/photoService.js";
+import type { IcloudSharedAlbumService } from "../services/icloudSharedAlbumService.js";
 
 const imageBodyParser = express.raw({
   type: [
@@ -26,7 +27,11 @@ function sendError(res: import("express").Response, err: unknown): void {
   res.status(500).json({ error: "internal server error" });
 }
 
-export function createPhotoRouter(service: PhotoService, jwtSecret: string): Router {
+export function createPhotoRouter(
+  service: PhotoService,
+  jwtSecret: string,
+  icloud?: IcloudSharedAlbumService,
+): Router {
   const router = Router();
   const auth = requireAuth(jwtSecret);
 
@@ -38,6 +43,32 @@ export function createPhotoRouter(service: PhotoService, jwtSecret: string): Rou
       sendError(res, err);
     }
   });
+
+  if (icloud) {
+    router.get("/icloud-album", auth, async (req: AuthedRequest, res) => {
+      try {
+        res.json(await icloud.get(req.userId!));
+      } catch (err) {
+        sendError(res, err);
+      }
+    });
+
+    router.put("/icloud-album", auth, async (req: AuthedRequest, res) => {
+      try {
+        res.json(await icloud.set(req.userId!, req.body?.url));
+      } catch (err) {
+        sendError(res, err);
+      }
+    });
+
+    router.delete("/icloud-album", auth, async (req: AuthedRequest, res) => {
+      try {
+        res.json(await icloud.clear(req.userId!));
+      } catch (err) {
+        sendError(res, err);
+      }
+    });
+  }
 
   router.post("/", auth, imageBodyParser, async (req: AuthedRequest, res) => {
     try {

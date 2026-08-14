@@ -22,6 +22,7 @@ function mapFamily(family: PrismaFamily): FamilyRecord {
     id: family.id,
     familyName: family.familyName,
     inviteCode: family.inviteCode,
+    icloudSharedAlbumUrl: family.icloudSharedAlbumUrl,
     createdAt: family.createdAt,
   };
 }
@@ -104,6 +105,14 @@ export class PrismaAuthRepository implements AuthRepository {
     const family = await this.db.family.update({
       where: { id },
       data: { inviteCode: inviteCode.toUpperCase() },
+    });
+    return mapFamily(family);
+  }
+
+  async updateFamilyIcloudSharedAlbumUrl(id: number, url: string | null): Promise<FamilyRecord> {
+    const family = await this.db.family.update({
+      where: { id },
+      data: { icloudSharedAlbumUrl: url },
     });
     return mapFamily(family);
   }

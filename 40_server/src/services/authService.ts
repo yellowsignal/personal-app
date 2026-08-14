@@ -68,6 +68,7 @@ export class AuthService {
       id: family.id,
       familyName: family.familyName,
       inviteCode: family.inviteCode,
+      icloudSharedAlbumUrl: family.icloudSharedAlbumUrl,
       createdAt: family.createdAt.toISOString(),
       members: members.map((m) => ({
         id: m.id,
@@ -150,6 +151,7 @@ export class AuthService {
           id: family.id,
           familyName: family.familyName,
           inviteCode: family.inviteCode,
+          icloudSharedAlbumUrl: family.icloudSharedAlbumUrl,
           createdAt: family.createdAt.toISOString(),
           members: [
             {

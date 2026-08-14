@@ -13,6 +13,22 @@ export interface PublicPhoto {
   fileUrl: string;
 }
 
+export interface IcloudAlbumPhoto {
+  id: string;
+  caption: string | null;
+  date: string | null;
+  thumbUrl: string;
+  fullUrl: string;
+}
+
+export interface IcloudAlbumResponse {
+  configured: boolean;
+  url: string | null;
+  name: string | null;
+  photos: IcloudAlbumPhoto[];
+  error?: string;
+}
+
 export const photosApi = {
   list(token: string, scope: ViewScope = "all") {
     return apiFetch<PublicPhoto[]>(`/api/photos?scope=${scope}`, { token });
@@ -66,5 +82,24 @@ export const photosApi = {
       throw new ApiError(data.error ?? `request failed (${res.status})`, res.status, data.code);
     }
     return res.blob();
+  },
+
+  icloudAlbum(token: string) {
+    return apiFetch<IcloudAlbumResponse>("/api/photos/icloud-album", { token });
+  },
+
+  saveIcloudAlbum(token: string, url: string) {
+    return apiFetch<IcloudAlbumResponse>("/api/photos/icloud-album", {
+      method: "PUT",
+      token,
+      body: JSON.stringify({ url }),
+    });
+  },
+
+  removeIcloudAlbum(token: string) {
+    return apiFetch<IcloudAlbumResponse>("/api/photos/icloud-album", {
+      method: "DELETE",
+      token,
+    });
   },
 };

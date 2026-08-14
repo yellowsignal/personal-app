@@ -6,7 +6,7 @@
 
 | 테이블 | 모델 | 역할 |
 | --- | --- | --- |
-| `families` | `Family` | 가족 그룹 + 초대코드 |
+| `families` | `Family` | 가족 그룹 + 초대코드 + iCloud 공유 앨범 URL |
 | `users` | `User` | 계정, 언어/국가/표시통화, 역할(OWNER/MEMBER) |
 | `assets` | `Asset` | 자산·주식 (`label`은 목업 연동용 추가) |
 | `documents` | `Document` | 증명서·신분증 |

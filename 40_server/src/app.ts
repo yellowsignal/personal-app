@@ -40,6 +40,8 @@ import type { PhotoRepository } from "./domain/photoRepository.js";
 import { PhotoService } from "./services/photoService.js";
 import { createPhotoRouter } from "./routes/photoRoutes.js";
 import type { PhotoStore } from "./storage/photoStore.js";
+import { IcloudSharedAlbumService } from "./services/icloudSharedAlbumService.js";
+import type { FetchLike } from "./services/icloudSharedAlbum.js";
 
 export interface AppDeps {
   authRepo?: AuthRepository;
@@ -52,6 +54,7 @@ export interface AppDeps {
   calendarRepo?: CalendarRepository;
   photoRepo?: PhotoRepository;
   photoStore?: PhotoStore;
+  icloudFetch?: FetchLike;
   pushService?: PushService;
   reminderDispatcher?: ReminderDispatcher;
   activityRepo?: FamilyActivityRepository;
@@ -202,7 +205,8 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
 
     if (deps.photoRepo && deps.photoStore) {
       const photoService = new PhotoService(deps.authRepo, deps.photoRepo, deps.photoStore, activityService);
-      app.use("/api/photos", createPhotoRouter(photoService, jwtSecret));
+      const icloudService = new IcloudSharedAlbumService(deps.authRepo, deps.icloudFetch ?? fetch);
+      app.use("/api/photos", createPhotoRouter(photoService, jwtSecret, icloudService));
     }
 
     if (deps.pushService) {

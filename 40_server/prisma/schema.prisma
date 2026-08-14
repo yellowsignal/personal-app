@@ -21,10 +21,11 @@ enum BillingInterval {
 }
 
 model Family {
-  id         Int      @id @default(autoincrement())
-  familyName String   @map("family_name") @db.VarChar(100)
-  inviteCode String   @unique @map("invite_code") @db.VarChar(20)
-  createdAt  DateTime @default(now()) @map("created_at")
+  id                    Int      @id @default(autoincrement())
+  familyName            String   @map("family_name") @db.VarChar(100)
+  inviteCode            String   @unique @map("invite_code") @db.VarChar(20)
+  icloudSharedAlbumUrl  String?  @map("icloud_shared_album_url") @db.VarChar(500)
+  createdAt             DateTime @default(now()) @map("created_at")
 
   users            User[]
   inviteTokens     InviteToken[]

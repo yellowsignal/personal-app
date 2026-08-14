@@ -240,3 +240,142 @@ test("photos reject non-image and shared create still succeeds if activity would
     server.close();
   }
 });
+
+function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json", ...headers },
+  });
+}
+
+function mockLegacyIcloudFetch(): typeof fetch {
+  return (async (input: string | URL) => {
+    const url = String(input);
+    if (url.includes("/webstream") && !url.includes("p12-sharedstreams")) {
+      return jsonResponse(330, { "X-Apple-MMe-Host": "p12-sharedstreams.icloud.com" });
+    }
+    if (url.endsWith("/webstream")) {
+      return jsonResponse(200, {
+        streamName: "가족 여행",
+        photos: [
+          {
+            photoGuid: "guid-1",
+            caption: "바다",
+            dateCreated: "2026-08-01T00:00:00Z",
+            derivatives: {
+              "640": { checksum: "thumb-1", fileSize: 10 },
+              "2048": { checksum: "full-1", fileSize: 80 },
+            },
+          },
+        ],
+      });
+    }
+    if (url.endsWith("/webasseturls")) {
+      return jsonResponse(200, {
+        items: {
+          "thumb-1": { url_location: "cvws.icloud-content.com", url_path: "/t/thumb.jpg?a=1" },
+          "full-1": { url_location: "cvws.icloud-content.com", url_path: "/t/full.jpg?a=1" },
+        },
+      });
+    }
+    return jsonResponse(404, {});
+  }) as typeof fetch;
+}
+
+test("icloud album GET empty, PUT validates Apple fetch, DELETE clears", async () => {
+  const app = createApp(tmpStore(), {
+    authRepo: new MemoryAuthRepository(),
+    photoRepo: new MemoryPhotoRepository(),
+    photoStore: tmpPhotoStore(),
+    activityRepo: new MemoryFamilyActivityRepository(),
+    jwtSecret: "test-secret",
+    icloudFetch: mockLegacyIcloudFetch(),
+  });
+  const { server, base } = await listen(app);
+  try {
+    const owner = await registerOwner(base);
+    const headers = { authorization: `Bearer ${owner.token}`, "content-type": "application/json" };
+
+    const empty = await fetch(`${base}/api/photos/icloud-album`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(empty.status, 200);
+    const emptyBody = (await empty.json()) as { configured: boolean; photos: unknown[] };
+    assert.equal(emptyBody.configured, false);
+    assert.equal(emptyBody.photos.length, 0);
+
+    const bad = await fetch(`${base}/api/photos/icloud-album`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ url: "https://example.com/nope" }),
+    });
+    assert.equal(bad.status, 400);
+
+    const saved = await fetch(`${base}/api/photos/icloud-album`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ url: "https://www.icloud.com/sharedalbum/#B125ON9t3mbLNC" }),
+    });
+    assert.equal(saved.status, 200);
+    const savedBody = (await saved.json()) as {
+      configured: boolean;
+      url: string;
+      name: string;
+      photos: Array<{ id: string; fullUrl: string }>;
+    };
+    assert.equal(savedBody.configured, true);
+    assert.equal(savedBody.name, "가족 여행");
+    assert.equal(savedBody.photos.length, 1);
+    assert.equal(savedBody.photos[0].id, "guid-1");
+
+    const me = await fetch(`${base}/api/auth/me`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    const meBody = (await me.json()) as { family: { icloudSharedAlbumUrl: string | null } };
+    assert.equal(meBody.family.icloudSharedAlbumUrl, "https://www.icloud.com/sharedalbum/#B125ON9t3mbLNC");
+
+    const listed = await fetch(`${base}/api/photos/icloud-album`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    const listedBody = (await listed.json()) as { configured: boolean; photos: unknown[] };
+    assert.equal(listedBody.configured, true);
+    assert.equal(listedBody.photos.length, 1);
+
+    const cleared = await fetch(`${base}/api/photos/icloud-album`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(cleared.status, 200);
+    const clearedBody = (await cleared.json()) as { configured: boolean };
+    assert.equal(clearedBody.configured, false);
+  } finally {
+    server.close();
+  }
+});
+
+test("icloud album PUT does not save when Apple fetch fails", async () => {
+  const app = createApp(tmpStore(), {
+    authRepo: new MemoryAuthRepository(),
+    photoRepo: new MemoryPhotoRepository(),
+    photoStore: tmpPhotoStore(),
+    jwtSecret: "test-secret",
+    icloudFetch: (async () => new Response("nope", { status: 500 })) as typeof fetch,
+  });
+  const { server, base } = await listen(app);
+  try {
+    const owner = await registerOwner(base);
+    const saved = await fetch(`${base}/api/photos/icloud-album`, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ url: "https://www.icloud.com/sharedalbum/#B125ON9t3mbLNC" }),
+    });
+    assert.equal(saved.status, 400);
+    const listed = await fetch(`${base}/api/photos/icloud-album`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    const listedBody = (await listed.json()) as { configured: boolean };
+    assert.equal(listedBody.configured, false);
+  } finally {
+    server.close();
+  }
+});
