@@ -88,38 +88,42 @@ export class ReminderDispatcher {
     const tzByUser = new Map<number, string>();
 
     for (const ev of events) {
-      if (ev.reminderMinutesBefore == null) continue;
-      let tz = tzByUser.get(ev.userId);
-      if (!tz) {
-        const owner = await this.authRepo.findUserById(ev.userId);
-        tz = timeZoneFromCountryPref(owner?.countryPref);
-        tzByUser.set(ev.userId, tz);
-      }
-      const floatingNow = toFloatingNow(now, tz);
-      const dueKeys = this.dueOccurrenceKeys(ev, floatingNow);
-      for (const { key, start } of dueKeys) {
-        if (ev.reminderSentFor === key) continue;
-        const recipients = await this.recipientIds(ev);
-        const body = ev.isAllDay
-          ? ev.title
-          : `${String(start.getUTCHours()).padStart(2, "0")}:${String(start.getUTCMinutes()).padStart(2, "0")} · ${ev.title}`;
-        const delivered = await this.pushService.sendToUsers(recipients, {
-          title: ev.title,
-          body,
-          url: "/calendar",
-          tag: `cal-${ev.id}-${key}`,
-        });
-        if (delivered < 1) {
-          console.warn(`[reminders] no push endpoint for event ${ev.id} (${ev.title}) recipients=${recipients.join(",")}`);
-          continue;
+      try {
+        if (ev.reminderMinutesBefore == null) continue;
+        let tz = tzByUser.get(ev.userId);
+        if (!tz) {
+          const owner = await this.authRepo.findUserById(ev.userId);
+          tz = timeZoneFromCountryPref(owner?.countryPref);
+          tzByUser.set(ev.userId, tz);
         }
-        await this.calendarRepo.update(ev.id, {
-          isReminderSent: ev.recurrence ? ev.isReminderSent : true,
-          reminderSentFor: key,
-        });
-        ev.reminderSentFor = key;
-        sent += 1;
-        console.log(`[reminders] sent event=${ev.id} occ=${key} title=${ev.title} tz=${tz}`);
+        const floatingNow = toFloatingNow(now, tz);
+        const dueKeys = this.dueOccurrenceKeys(ev, floatingNow);
+        for (const { key, start } of dueKeys) {
+          if (ev.reminderSentFor === key) continue;
+          const recipients = await this.recipientIds(ev);
+          const body = ev.isAllDay
+            ? ev.title
+            : `${String(start.getUTCHours()).padStart(2, "0")}:${String(start.getUTCMinutes()).padStart(2, "0")} · ${ev.title}`;
+          const delivered = await this.pushService.sendToUsers(recipients, {
+            title: ev.title,
+            body,
+            url: "/calendar",
+            tag: `cal-${ev.id}-${key}`,
+          });
+          if (delivered < 1) {
+            console.warn(`[reminders] no push endpoint for event ${ev.id} (${ev.title}) recipients=${recipients.join(",")}`);
+            continue;
+          }
+          await this.calendarRepo.update(ev.id, {
+            isReminderSent: ev.recurrence ? ev.isReminderSent : true,
+            reminderSentFor: key,
+          });
+          ev.reminderSentFor = key;
+          sent += 1;
+          console.log(`[reminders] sent event=${ev.id} occ=${key} title=${ev.title} tz=${tz}`);
+        }
+      } catch (err) {
+        console.error(`[reminders] event ${ev.id} failed`, err);
       }
     }
     return sent;

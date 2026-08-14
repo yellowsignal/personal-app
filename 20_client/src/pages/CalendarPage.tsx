@@ -173,6 +173,32 @@ function reminderLabel(
   return t("calendar.reminderCustom", { n: minutes });
 }
 
+function clockAfterMinutes(date: string, minutesFromMidnight: number): { date: string; time: string } {
+  const base = new Date(`${date}T00:00:00.000Z`);
+  base.setUTCMinutes(minutesFromMidnight);
+  return {
+    date: `${base.getUTCFullYear()}-${String(base.getUTCMonth() + 1).padStart(2, "0")}-${String(base.getUTCDate()).padStart(2, "0")}`,
+    time: `${String(base.getUTCHours()).padStart(2, "0")}:${String(base.getUTCMinutes()).padStart(2, "0")}`,
+  };
+}
+
+function reminderFireHint(
+  eventDate: string,
+  eventTime: string,
+  minutes: number | null,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string | null {
+  if (minutes == null || !/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) return null;
+  if (!eventTime) {
+    const fire = clockAfterMinutes(eventDate, 9 * 60 - minutes);
+    return t("calendar.reminderFiresAt", { date: fire.date, time: fire.time });
+  }
+  if (!/^\d{2}:\d{2}$/.test(eventTime)) return null;
+  const [hh, mm] = eventTime.split(":").map(Number);
+  const fire = clockAfterMinutes(eventDate, hh * 60 + mm - minutes);
+  return t("calendar.reminderFiresAt", { date: fire.date, time: fire.time });
+}
+
 const REMINDER_CHOICES: Array<number | null> = [null, 10, 30, 60, 1440];
 
 function MonthGrid({
@@ -1129,7 +1155,9 @@ export default function CalendarPage() {
                 </button>
               ))}
             </div>
-            <p className="mb-3 text-[11px] text-neutral-400">{t("calendar.reminderHint")}</p>
+            <p className="mb-3 text-[11px] text-neutral-400">
+              {reminderFireHint(eventDate, eventTime, reminderMinutes, t) ?? t("calendar.reminderHint")}
+            </p>
             <RecurrencePicker
               startDate={eventDate}
               draft={repeatDraft}

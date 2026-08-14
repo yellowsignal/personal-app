@@ -14,7 +14,7 @@ export interface PushPayload {
 }
 
 export interface PushSender {
-  send(sub: PushSubscriptionRecord, payload: PushPayload): Promise<"ok" | "gone">;
+  send(sub: PushSubscriptionRecord, payload: PushPayload): Promise<"ok" | "gone" | "fail">;
 }
 
 export interface VapidKeys {
@@ -79,7 +79,7 @@ export class WebPushSender implements PushSender {
     webpush.setVapidDetails(keys.subject, keys.publicKey, keys.privateKey);
   }
 
-  async send(sub: PushSubscriptionRecord, payload: PushPayload): Promise<"ok" | "gone"> {
+  async send(sub: PushSubscriptionRecord, payload: PushPayload): Promise<"ok" | "gone" | "fail"> {
     try {
       const topic = (payload.tag ?? "calendar-reminder")
         .replace(/[^A-Za-z0-9_-]/g, "-")
@@ -98,7 +98,7 @@ export class WebPushSender implements PushSender {
       const status = (err as { statusCode?: number }).statusCode;
       if (status === 404 || status === 410) return "gone";
       console.error("[push] send failed", status ?? err);
-      return "ok";
+      return "fail";
     }
   }
 }
@@ -152,6 +152,7 @@ export class PushService {
         await this.repo.removeByEndpoint(sub.endpoint);
         continue;
       }
+      if (result === "fail") continue;
       sent += 1;
     }
     return sent;

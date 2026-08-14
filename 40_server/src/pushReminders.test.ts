@@ -40,11 +40,13 @@ test("web push subscribe and due calendar reminder is dispatched", async () => {
       return "ok";
     },
   });
+  const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
 
   const app = createApp(tmpStore(), {
     authRepo,
     calendarRepo,
     pushService,
+    reminderDispatcher: dispatcher,
     passkeyRepo: new MemoryPasskeyRepository(),
     inviteTokenRepo: new MemoryInviteTokenRepository(),
     challengeStore: new ChallengeStore(),
@@ -104,10 +106,6 @@ test("web push subscribe and due calendar reminder is dispatched", async () => {
       }),
     });
     assert.equal(created.status, 201);
-
-    const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
-    const sent = await dispatcher.tick();
-    assert.equal(sent, 1);
     assert.equal(delivered.length, 1);
     assert.equal(delivered[0]?.title, "회의");
 
@@ -353,4 +351,141 @@ test("updating event time or reminder clears reminderSentFor", async () => {
   } finally {
     server.close();
   }
+});
+
+test("failed web push is not marked sent so the next tick can retry", async () => {
+  const authRepo = new MemoryAuthRepository();
+  const calendarRepo = new MemoryCalendarRepository();
+  const pushRepo = new MemoryPushRepository();
+  let shouldFail = true;
+  const delivered: PushPayload[] = [];
+  const keys = { ...webpush.generateVAPIDKeys(), subject: "mailto:test@example.com" };
+  const pushService = new PushService(pushRepo, keys, {
+    async send(_sub, payload) {
+      if (shouldFail) return "fail";
+      delivered.push(payload);
+      return "ok";
+    },
+  });
+  const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
+
+  const { user } = await authRepo.createOwnerWithFamily({
+    email: "retry-push@example.com",
+    passwordHash: "x",
+    name: "민호",
+    familyName: "최가네",
+    inviteCode: "RETRY1",
+    languagePref: "ko",
+    countryPref: "JP",
+    currencyPref: "KRW",
+  });
+  await pushRepo.upsert({
+    userId: user.id,
+    endpoint: "https://push.example/retry",
+    p256dh: "p256",
+    auth: "auth",
+    userAgent: "test",
+  });
+  const floatingNow = toFloatingNow(new Date(), "Asia/Tokyo");
+  const start = new Date(floatingNow.getTime() + 5 * 60 * 1000);
+  await calendarRepo.create({
+    userId: user.id,
+    familyId: user.familyId,
+    title: "재시도",
+    description: null,
+    startTime: start,
+    endTime: new Date(start.getTime() + 3600_000),
+    isAllDay: false,
+    category: "personal",
+    isShared: false,
+    reminderMinutesBefore: 10,
+  });
+
+  const first = await dispatcher.tick();
+  assert.equal(first, 0);
+  const rows = await calendarRepo.listWithReminders();
+  assert.equal(rows[0]?.reminderSentFor, null);
+
+  shouldFail = false;
+  const second = await dispatcher.tick();
+  assert.equal(second, 1);
+  assert.equal(delivered[0]?.title, "재시도");
+});
+
+test("one event throwing does not skip the rest of the tick", async () => {
+  const authRepo = new MemoryAuthRepository();
+  const calendarRepo = new MemoryCalendarRepository();
+  const pushRepo = new MemoryPushRepository();
+  const delivered: PushPayload[] = [];
+  const keys = { ...webpush.generateVAPIDKeys(), subject: "mailto:test@example.com" };
+  const pushService = new PushService(pushRepo, keys, {
+    async send(_sub, payload) {
+      delivered.push(payload);
+      return "ok";
+    },
+  });
+  const originalFind = authRepo.findUserById.bind(authRepo);
+  authRepo.findUserById = async (id: number) => {
+    if (id === 1) throw new Error("boom");
+    return originalFind(id);
+  };
+  const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
+
+  const owner = await authRepo.createOwnerWithFamily({
+    email: "iso-a@example.com",
+    passwordHash: "x",
+    name: "A",
+    familyName: "가네",
+    inviteCode: "ISOA01",
+    languagePref: "ko",
+    countryPref: "JP",
+    currencyPref: "KRW",
+  });
+  const member = await authRepo.createUser({
+    email: "iso-b@example.com",
+    passwordHash: "x",
+    name: "B",
+    familyId: owner.user.familyId,
+    role: "MEMBER",
+    languagePref: "ko",
+    countryPref: "JP",
+    currencyPref: "KRW",
+  });
+  await pushRepo.upsert({
+    userId: member.id,
+    endpoint: "https://push.example/b",
+    p256dh: "p256",
+    auth: "auth",
+    userAgent: "test",
+  });
+  const floatingNow = toFloatingNow(new Date(), "Asia/Tokyo");
+  const start = new Date(floatingNow.getTime() + 5 * 60 * 1000);
+  await calendarRepo.create({
+    userId: owner.user.id,
+    familyId: owner.user.familyId,
+    title: "broken-owner",
+    description: null,
+    startTime: start,
+    endTime: new Date(start.getTime() + 3600_000),
+    isAllDay: false,
+    category: "personal",
+    isShared: false,
+    reminderMinutesBefore: 10,
+  });
+  await calendarRepo.create({
+    userId: member.id,
+    familyId: member.familyId,
+    title: "ok-member",
+    description: null,
+    startTime: start,
+    endTime: new Date(start.getTime() + 3600_000),
+    isAllDay: false,
+    category: "personal",
+    isShared: false,
+    reminderMinutesBefore: 10,
+  });
+
+  const sent = await dispatcher.tick();
+  assert.equal(sent, 1);
+  assert.equal(delivered[0]?.title, "ok-member");
 });

@@ -114,7 +114,17 @@ export class CalendarService {
     private readonly recurringRepo: RecurringDepositRepository | null = null,
     private readonly assetRepo: AssetRepository | null = null,
     private readonly activityService: FamilyActivityService | null = null,
+    private readonly onReminderMaybeDue: (() => Promise<unknown>) | null = null,
   ) {}
+
+  private async kickReminders(): Promise<void> {
+    if (!this.onReminderMaybeDue) return;
+    try {
+      await this.onReminderMaybeDue();
+    } catch (err) {
+      console.error("[calendar] reminder kick failed", err);
+    }
+  }
 
   private async requireUser(userId: number) {
     const user = await this.authRepo.findUserById(userId);
@@ -357,6 +367,7 @@ export class CalendarService {
         console.error("[calendar] family activity after create failed", err);
       }
     }
+    await this.kickReminders();
     return toPublicCalendarEvent(record, user.name, true);
   }
 
@@ -454,6 +465,7 @@ export class CalendarService {
         ? { isReminderSent: false, reminderSentFor: null as string | null }
         : {}),
     });
+    await this.kickReminders();
     return toPublicCalendarEvent(updated, user.name, true);
   }
 

@@ -89,6 +89,7 @@ const vapidKeys = loadOrCreateVapidKeys(
   vapidSubject,
 );
 const pushService = new PushService(pushRepo, vapidKeys, new WebPushSender(vapidKeys));
+const reminderDispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
 const passkeyRepo = useMemoryAuth ? new MemoryPasskeyRepository() : new PrismaPasskeyRepository(prisma);
 const inviteTokenRepo = useMemoryAuth
   ? new MemoryInviteTokenRepository()
@@ -110,6 +111,7 @@ const app = createApp(store, {
   challengeStore,
   jwtSecret: JWT_SECRET,
   pushService,
+  reminderDispatcher,
   activityRepo,
 });
 
@@ -121,7 +123,6 @@ app.listen(PORT, () => {
       useMemoryAuth ? "memory" : "prisma"
     })`,
   );
-  const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
-  startReminderScheduler(dispatcher);
+  startReminderScheduler(reminderDispatcher);
   console.log("[server] calendar reminder dispatcher started");
 });

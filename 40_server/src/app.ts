@@ -33,6 +33,7 @@ import { CalendarService } from "./services/calendarService.js";
 import { createCalendarRouter } from "./routes/calendarRoutes.js";
 import { PushService } from "./services/pushService.js";
 import { createPushRouter } from "./routes/pushRoutes.js";
+import type { ReminderDispatcher } from "./services/reminderDispatcher.js";
 import type { FamilyActivityRepository } from "./domain/familyActivityTypes.js";
 import { FamilyActivityService } from "./services/familyActivityService.js";
 
@@ -46,6 +47,7 @@ export interface AppDeps {
   documentRepo?: DocumentRepository;
   calendarRepo?: CalendarRepository;
   pushService?: PushService;
+  reminderDispatcher?: ReminderDispatcher;
   activityRepo?: FamilyActivityRepository;
   documentScanStore?: DocumentScanStore;
   passkeyRepo?: PasskeyRepository;
@@ -180,6 +182,7 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
         deps.recurringDepositRepo ?? null,
         deps.assetRepo ?? null,
         activityService,
+        deps.reminderDispatcher ? () => deps.reminderDispatcher!.tick() : null,
       );
       app.use("/api/calendar", createCalendarRouter(calendarService, jwtSecret));
     }
