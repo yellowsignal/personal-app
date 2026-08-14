@@ -1,3 +1,4 @@
+import { appendFileSync } from "node:fs";
 import type { AuthRepository } from "../domain/authRepository.js";
 import type { AssetRepository } from "../domain/assetRepository.js";
 import type { CalendarRepository } from "../domain/calendarRepository.js";
@@ -29,6 +30,19 @@ import {
 } from "../domain/recurrence.js";
 import { HttpError } from "./authService.js";
 import type { FamilyActivityService } from "./familyActivityService.js";
+
+// #region agent log
+function agentLog(hypothesisId: string, location: string, message: string, data: Record<string, unknown>) {
+  try {
+    appendFileSync(
+      "/opt/cursor/logs/debug.log",
+      JSON.stringify({ hypothesisId, location, message, data, timestamp: Date.now() }) + "\n",
+    );
+  } catch {
+    /* ignore */
+  }
+}
+// #endregion
 
 const USER_CATEGORIES = new Set(["personal", "family", "holiday"]);
 const REMINDER_MINUTES = new Set([10, 30, 60, 1440]);
@@ -329,28 +343,96 @@ export class CalendarService {
       throw new HttpError(400, "join a family before sharing events", "NO_FAMILY");
     }
 
-    const record = await this.calendarRepo.create({
+    let reminderMinutesBefore: number | null;
+    try {
+      reminderMinutesBefore = parseReminderMinutes(body.reminderMinutesBefore, 60);
+    } catch (err) {
+      // #region agent log
+      agentLog("A", "calendarService.ts:create", "parseReminderMinutes failed", {
+        raw: body.reminderMinutesBefore,
+        msg: err instanceof Error ? err.message : String(err),
+      });
+      // #endregion
+      throw err;
+    }
+
+    // #region agent log
+    agentLog("A,E", "calendarService.ts:create", "before calendarRepo.create", {
       userId: user.id,
-      familyId: isShared ? user.familyId : null,
-      title: body.title.trim().slice(0, 200),
-      description: typeof body.description === "string" ? body.description.trim().slice(0, 2000) || null : null,
-      startTime,
-      endTime,
-      isAllDay,
+      familyId: user.familyId,
       category,
       isShared,
-      recurrence,
-      reminderMinutesBefore: parseReminderMinutes(body.reminderMinutesBefore, 60),
+      isAllDay,
+      startTime: startTime.toISOString(),
+      endTime: endTime.toISOString(),
+      reminderMinutesBefore,
+      hasRecurrence: recurrence != null,
+      hasActivityService: this.activityService != null,
     });
-    if (isShared) {
-      await this.activityService?.recordSharedCreate({
-        familyId: record.familyId,
-        actorUserId: user.id,
-        actorName: user.name,
-        entityType: "CALENDAR_EVENT",
-        entityId: record.id,
-        title: record.title,
+    // #endregion
+
+    let record;
+    try {
+      record = await this.calendarRepo.create({
+        userId: user.id,
+        familyId: isShared ? user.familyId : null,
+        title: body.title.trim().slice(0, 200),
+        description: typeof body.description === "string" ? body.description.trim().slice(0, 2000) || null : null,
+        startTime,
+        endTime,
+        isAllDay,
+        category,
+        isShared,
+        recurrence,
+        reminderMinutesBefore,
       });
+    } catch (err) {
+      // #region agent log
+      agentLog("E", "calendarService.ts:create", "calendarRepo.create threw", {
+        msg: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : typeof err,
+      });
+      // #endregion
+      throw err;
+    }
+
+    // #region agent log
+    agentLog("A,E", "calendarService.ts:create", "after calendarRepo.create", {
+      id: record.id,
+      reminderMinutesBefore: record.reminderMinutesBefore,
+      isReminderSent: record.isReminderSent,
+      reminderSentFor: record.reminderSentFor,
+    });
+    // #endregion
+
+    if (isShared) {
+      // #region agent log
+      agentLog("B", "calendarService.ts:create", "before recordSharedCreate", {
+        familyId: record.familyId,
+        entityId: record.id,
+        hasActivityService: this.activityService != null,
+      });
+      // #endregion
+      try {
+        await this.activityService?.recordSharedCreate({
+          familyId: record.familyId,
+          actorUserId: user.id,
+          actorName: user.name,
+          entityType: "CALENDAR_EVENT",
+          entityId: record.id,
+          title: record.title,
+        });
+      } catch (err) {
+        // #region agent log
+        agentLog("B", "calendarService.ts:create", "recordSharedCreate threw", {
+          msg: err instanceof Error ? err.message : String(err),
+        });
+        // #endregion
+        throw err;
+      }
+      // #region agent log
+      agentLog("B", "calendarService.ts:create", "after recordSharedCreate", { entityId: record.id });
+      // #endregion
     }
     return toPublicCalendarEvent(record, user.name, true);
   }
@@ -424,6 +506,15 @@ export class CalendarService {
       endTime.getTime() !== existing.endTime.getTime() ||
       isAllDay !== existing.isAllDay ||
       (reminderMinutesBefore !== undefined && reminderMinutesBefore !== existing.reminderMinutesBefore);
+
+    // #region agent log
+    agentLog("D", "calendarService.ts:update", "scheduleChanged check", {
+      id,
+      scheduleChanged,
+      reminderMinutesBefore,
+      willResetReminder: scheduleChanged,
+    });
+    // #endregion
 
     const updated = await this.calendarRepo.update(id, {
       title:
