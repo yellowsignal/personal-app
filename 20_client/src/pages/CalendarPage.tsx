@@ -36,15 +36,12 @@ import {
 import { ApiError } from "../api/http";
 import { enableHomeScreenPush } from "../api/push";
 import { LONG_PRESS_MS } from "../utils/swipeGesture";
-
-const ALL_CATEGORIES: CalendarCategory[] = [
-  "personal",
-  "family",
-  "holiday",
-  "document_expiry",
-  "subscription_billing",
-  "recurring_deposit",
-];
+import {
+  ALL_CALENDAR_CATEGORIES as ALL_CATEGORIES,
+  readActiveCalendarCategories,
+  toggleCalendarCategory,
+  writeActiveCalendarCategories,
+} from "../utils/calendarCategoryFilters";
 
 function todayKey(): string {
   const d = new Date();
@@ -389,7 +386,7 @@ export default function CalendarPage() {
   const now = new Date();
   const [cursor, setCursor] = useState({ year: now.getFullYear(), month: now.getMonth() });
   const [scope, setScope] = useState<ViewScope>("all");
-  const [activeCats, setActiveCats] = useState<Set<CalendarCategory>>(new Set(ALL_CATEGORIES));
+  const [activeCats, setActiveCats] = useState<Set<CalendarCategory>>(() => readActiveCalendarCategories());
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [events, setEvents] = useState<PublicCalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -522,9 +519,8 @@ export default function CalendarPage() {
 
   function toggleCategory(cat: CalendarCategory) {
     setActiveCats((prev) => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
+      const next = toggleCalendarCategory(prev, cat);
+      writeActiveCalendarCategories(next);
       return next;
     });
   }
