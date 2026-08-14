@@ -3,7 +3,8 @@ export type FamilyActivityEntityType =
   | "DOCUMENT"
   | "CHECKLIST"
   | "ASSET"
-  | "SUBSCRIPTION";
+  | "SUBSCRIPTION"
+  | "PHOTO";
 
 export interface FamilyActivityRecord {
   id: number;
@@ -44,6 +45,8 @@ export function pathForEntity(type: FamilyActivityEntityType, entityId: number):
       return `/assets?id=${entityId}`;
     case "SUBSCRIPTION":
       return `/subscriptions?id=${entityId}`;
+    case "PHOTO":
+      return `/photos?id=${entityId}`;
     default:
       return "/";
   }

@@ -5,7 +5,8 @@ export type FamilyActivityEntityType =
   | "DOCUMENT"
   | "CHECKLIST"
   | "ASSET"
-  | "SUBSCRIPTION";
+  | "SUBSCRIPTION"
+  | "PHOTO";
 
 export interface PublicFamilyActivity {
   id: number;

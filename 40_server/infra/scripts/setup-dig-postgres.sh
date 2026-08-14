@@ -47,6 +47,7 @@ set -a
 source .env
 set +a
 npx prisma migrate deploy
+mkdir -p "${REPO_ROOT}/30_data/photos"
 
 echo "==> Writing systemd unit (no MEMORY_AUTH)"
 # NOTE: systemd EnvironmentFile= overrides Environment= for the same key.
@@ -73,6 +74,7 @@ Environment=WEBAUTHN_ORIGIN=https://sumicchogurashi-dev.duckdns.org
 Environment=WEBAUTHN_RP_NAME=すみっチョぐらし
 Environment=DATA_FILE=${REPO_ROOT}/30_data/tasks-dev.json
 Environment=DOCUMENT_SCAN_DIR=${REPO_ROOT}/30_data/document-scans
+Environment=PHOTO_DIR=${REPO_ROOT}/30_data/photos
 # MEMORY_AUTH intentionally unset — use Prisma/Postgres
 # TZ=UTC keeps floating calendar DateTime components stable with Prisma/Postgres.
 ExecStart=/usr/bin/node ${SERVER_DIR}/dist/index.js

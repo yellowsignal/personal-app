@@ -21,6 +21,10 @@ import {
 } from "./domain/prismaPasskeyRepository.js";
 import { ChallengeStore } from "./auth/challengeStore.js";
 import { DocumentScanStore, defaultDocumentScanDir } from "./storage/documentScanStore.js";
+import { MemoryPhotoRepository } from "./domain/memoryPhotoRepository.js";
+import { PrismaPhotoRepository } from "./domain/prismaPhotoRepository.js";
+import type { PhotoRepository } from "./domain/photoRepository.js";
+import { PhotoStore, defaultPhotoDir } from "./storage/photoStore.js";
 import type { AuthRepository } from "./domain/authRepository.js";
 import type { AssetRepository } from "./domain/assetRepository.js";
 import type { SubscriptionRepository } from "./domain/subscriptionRepository.js";
@@ -88,6 +92,9 @@ const vapidKeys = loadOrCreateVapidKeys(
 const calendarRepo: CalendarRepository = useMemoryAuth
   ? new MemoryCalendarRepository()
   : new PrismaCalendarRepository(prisma);
+const photoRepo: PhotoRepository = useMemoryAuth
+  ? new MemoryPhotoRepository()
+  : new PrismaPhotoRepository(prisma);
 let reminderDispatcher!: ReminderDispatcher;
 const pushService = new PushService(pushRepo, vapidKeys, new WebPushSender(vapidKeys), () =>
   reminderDispatcher.tick(),
@@ -99,12 +106,15 @@ const inviteTokenRepo = useMemoryAuth
   : new PrismaInviteTokenRepository(prisma);
 const challengeStore = new ChallengeStore();
 const documentScanStore = new DocumentScanStore(defaultDocumentScanDir());
+const photoStore = new PhotoStore(defaultPhotoDir());
 const app = createApp(store, {
   authRepo,
   assetRepo,
   transactionRepo,
   recurringDepositRepo,
   calendarRepo,
+  photoRepo,
+  photoStore,
   subscriptionRepo,
   checklistRepo,
   documentRepo,
@@ -122,7 +132,7 @@ app.listen(PORT, () => {
   console.log(`[server] personal-app API listening on http://localhost:${PORT}`);
   console.log(`[server] persisting tasks to ${DATA_FILE}`);
   console.log(
-    `[server] auth/family/assets/subscriptions/checklists/documents/calendar/passkey/push routes enabled (JWT, store=${
+    `[server] auth/family/assets/subscriptions/checklists/documents/calendar/photos/passkey/push routes enabled (JWT, store=${
       useMemoryAuth ? "memory" : "prisma"
     })`,
   );

@@ -53,6 +53,7 @@ if [[ "$FRONTEND_ONLY" -eq 0 ]]; then
   cd "$REPO_ROOT/40_server"
   npx prisma migrate deploy
   cd "$REPO_ROOT"
+  mkdir -p "$REPO_ROOT/30_data/photos"
 fi
 
 echo "==> build client"

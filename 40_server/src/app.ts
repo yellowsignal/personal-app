@@ -36,6 +36,10 @@ import { createPushRouter } from "./routes/pushRoutes.js";
 import type { ReminderDispatcher } from "./services/reminderDispatcher.js";
 import type { FamilyActivityRepository } from "./domain/familyActivityTypes.js";
 import { FamilyActivityService } from "./services/familyActivityService.js";
+import type { PhotoRepository } from "./domain/photoRepository.js";
+import { PhotoService } from "./services/photoService.js";
+import { createPhotoRouter } from "./routes/photoRoutes.js";
+import type { PhotoStore } from "./storage/photoStore.js";
 
 export interface AppDeps {
   authRepo?: AuthRepository;
@@ -46,6 +50,8 @@ export interface AppDeps {
   checklistRepo?: ChecklistRepository;
   documentRepo?: DocumentRepository;
   calendarRepo?: CalendarRepository;
+  photoRepo?: PhotoRepository;
+  photoStore?: PhotoStore;
   pushService?: PushService;
   reminderDispatcher?: ReminderDispatcher;
   activityRepo?: FamilyActivityRepository;
@@ -192,6 +198,11 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
         deps.reminderDispatcher ? () => deps.reminderDispatcher!.tick() : null,
       );
       app.use("/api/calendar", createCalendarRouter(calendarService, jwtSecret));
+    }
+
+    if (deps.photoRepo && deps.photoStore) {
+      const photoService = new PhotoService(deps.authRepo, deps.photoRepo, deps.photoStore, activityService);
+      app.use("/api/photos", createPhotoRouter(photoService, jwtSecret));
     }
 
     if (deps.pushService) {

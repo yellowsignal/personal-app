@@ -44,6 +44,8 @@ function pushCopy(
         return ja ? "家族の資産" : "가족 자산";
       case "SUBSCRIPTION":
         return ja ? "家族のサブスク" : "가족 구독";
+      case "PHOTO":
+        return ja ? "家族の写真" : "가족 사진";
       default:
         return ja ? "家族の共有" : "가족 공유";
     }

@@ -374,6 +374,7 @@ enum FamilyActivityEntityType {
   CHECKLIST
   ASSET
   SUBSCRIPTION
+  PHOTO
 }
 
 model FamilyActivity {
