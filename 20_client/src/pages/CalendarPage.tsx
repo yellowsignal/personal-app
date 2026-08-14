@@ -368,6 +368,7 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<PublicCalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [editingEvent, setEditingEvent] = useState<PublicCalendarEvent | null>(null);
   const [detailEvent, setDetailEvent] = useState<PublicCalendarEvent | null>(null);
@@ -629,6 +630,7 @@ export default function CalendarPage() {
     setIsShared(false);
     setRepeatDraft(emptyRecurrenceDraft(start));
     setReminderMinutes(60);
+    setFormError(null);
     setShowCreate(true);
   }
 
@@ -657,6 +659,7 @@ export default function CalendarPage() {
     setIsShared(ev.isShared);
     setRepeatDraft(draftFromRecurrence(ev.recurrence, ev.date));
     setReminderMinutes(ev.reminderMinutesBefore ?? null);
+    setFormError(null);
     setShowCreate(true);
   }
 
@@ -682,6 +685,7 @@ export default function CalendarPage() {
   function closeForm() {
     setShowCreate(false);
     setEditingEvent(null);
+    setFormError(null);
   }
 
   function handleDayTap(key: string) {
@@ -702,7 +706,7 @@ export default function CalendarPage() {
     e.preventDefault();
     if (!token || !title.trim()) return;
     setSubmitting(true);
-    setError(null);
+    setFormError(null);
     const hasRecurrence = recurrenceFromDraft(repeatDraft, eventDate) != null;
     const allDay = !eventTime && !eventEndTime;
     const payload = {
@@ -732,7 +736,7 @@ export default function CalendarPage() {
       await load();
       setSelectedDate(eventDate);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("calendar.errorSave"));
+      setFormError(err instanceof ApiError ? err.message : t("calendar.errorSave"));
     } finally {
       setSubmitting(false);
     }
@@ -1171,6 +1175,9 @@ export default function CalendarPage() {
               />
               {t("calendar.shareWithFamily")}
             </label>
+            {formError ? (
+              <p className="mb-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-600">{formError}</p>
+            ) : null}
             <button
               type="submit"
               disabled={submitting || !title.trim()}

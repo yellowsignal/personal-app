@@ -67,7 +67,11 @@ export class FamilyActivityService {
     return user;
   }
 
-  /** Record a shared create and notify other family members (best-effort push). */
+  /**
+   * Record a shared create and notify other family members.
+   * Best-effort: never throws — callers (calendar/assets/…) must not fail the primary create
+   * if the activity feed or push side-effect breaks (missing table, Prisma error, etc.).
+   */
   async recordSharedCreate(input: {
     familyId: number | null | undefined;
     actorUserId: number;
@@ -78,31 +82,35 @@ export class FamilyActivityService {
   }): Promise<void> {
     if (input.familyId == null) return;
     const title = input.title.trim().slice(0, 200) || "(untitled)";
-    const activity = await this.activityRepo.create({
-      familyId: input.familyId,
-      actorUserId: input.actorUserId,
-      entityType: input.entityType,
-      entityId: input.entityId,
-      title,
-    });
-
-    if (!this.pushService) return;
     try {
-      const members = await this.authRepo.listFamilyMembers(input.familyId);
-      const recipients = members.filter((m) => m.id !== input.actorUserId);
-      for (const member of recipients) {
-        const unreadCount = await this.activityRepo.countUnreadForUser(input.familyId, member.id);
-        const copy = pushCopy(member.languagePref, input.actorName, input.entityType, title);
-        await this.pushService.sendToUsers([member.id], {
-          title: copy.title,
-          body: copy.body,
-          url: "/",
-          tag: `family-activity-${activity.id}`,
-          unreadCount,
-        });
+      const activity = await this.activityRepo.create({
+        familyId: input.familyId,
+        actorUserId: input.actorUserId,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        title,
+      });
+
+      if (!this.pushService) return;
+      try {
+        const members = await this.authRepo.listFamilyMembers(input.familyId);
+        const recipients = members.filter((m) => m.id !== input.actorUserId);
+        for (const member of recipients) {
+          const unreadCount = await this.activityRepo.countUnreadForUser(input.familyId, member.id);
+          const copy = pushCopy(member.languagePref, input.actorName, input.entityType, title);
+          await this.pushService.sendToUsers([member.id], {
+            title: copy.title,
+            body: copy.body,
+            url: "/",
+            tag: `family-activity-${activity.id}`,
+            unreadCount,
+          });
+        }
+      } catch (err) {
+        console.error("[family-activity] push failed", err);
       }
     } catch (err) {
-      console.error("[family-activity] push failed", err);
+      console.error("[family-activity] recordSharedCreate failed", err);
     }
   }
 

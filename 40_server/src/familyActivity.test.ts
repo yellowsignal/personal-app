@@ -8,6 +8,7 @@ import { TaskStore } from "./store.js";
 import { MemoryAuthRepository } from "./domain/memoryAuthRepository.js";
 import { MemoryCalendarRepository } from "./domain/memoryCalendarRepository.js";
 import { MemoryFamilyActivityRepository } from "./domain/memoryFamilyActivityRepository.js";
+import type { FamilyActivityRepository } from "./domain/familyActivityTypes.js";
 import { MemoryPushRepository } from "./domain/memoryPushRepository.js";
 import { ChallengeStore } from "./auth/challengeStore.js";
 import { MemoryPasskeyRepository } from "./domain/memoryPasskeyRepository.js";
@@ -142,6 +143,82 @@ test("shared calendar create notifies family activity feed and push", async () =
     assert.equal(read.status, 200);
     const readBody = (await read.json()) as { unreadCount: number };
     assert.equal(readBody.unreadCount, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("shared calendar create still returns 201 when activityRepo.create throws", async () => {
+  const authRepo = new MemoryAuthRepository();
+  const calendarRepo = new MemoryCalendarRepository();
+  const activityRepo: FamilyActivityRepository = {
+    async create() {
+      throw new Error("simulated family_activity insert failure");
+    },
+    async listForFamily() {
+      return [];
+    },
+    async countUnreadForUser() {
+      return 0;
+    },
+    async listUnreadIdsForUser() {
+      return [];
+    },
+    async markRead() {},
+    async markAllRead() {},
+  };
+
+  const app = createApp(tmpStore(), {
+    authRepo,
+    calendarRepo,
+    activityRepo,
+    passkeyRepo: new MemoryPasskeyRepository(),
+    inviteTokenRepo: new MemoryInviteTokenRepository(),
+    challengeStore: new ChallengeStore(),
+    jwtSecret: "test-secret",
+  });
+
+  const { server, base } = await listen(app);
+  try {
+    const ownerRes = await fetch(`${base}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "activity-fail-owner@example.com",
+        password: "password123",
+        name: "민호",
+        familyName: "최가네",
+      }),
+    });
+    assert.equal(ownerRes.status, 201);
+    const owner = (await ownerRes.json()) as { token: string };
+
+    const created = await fetch(`${base}/api/calendar/events`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        title: "공유 일정",
+        date: "2026-09-02",
+        time: "15:00",
+        category: "family",
+        isShared: true,
+        reminderMinutesBefore: 60,
+      }),
+    });
+    assert.equal(created.status, 201);
+    const body = (await created.json()) as { id: string; title: string; isShared: boolean };
+    assert.equal(body.title, "공유 일정");
+    assert.equal(body.isShared, true);
+
+    const list = await fetch(`${base}/api/calendar/events?from=2026-09-01&to=2026-09-30&scope=all`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(list.status, 200);
+    const items = (await list.json()) as Array<{ title: string }>;
+    assert.ok(items.some((e) => e.title === "공유 일정"));
   } finally {
     server.close();
   }

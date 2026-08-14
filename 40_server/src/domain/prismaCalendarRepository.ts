@@ -70,47 +70,23 @@ export class PrismaCalendarRepository implements CalendarRepository {
   }
 
   async create(input: CreateCalendarEventInput): Promise<CalendarEventRecord> {
-    try {
-      const row = await this.db.calendarEvent.create({
-        data: {
-          userId: input.userId,
-          familyId: input.familyId,
-          title: input.title,
-          description: input.description,
-          startTime: input.startTime,
-          endTime: input.endTime,
-          isAllDay: input.isAllDay,
-          category: input.category,
-          sourceDocumentId: input.sourceDocumentId ?? null,
-          reminderMinutesBefore: input.reminderMinutesBefore ?? null,
-          isShared: input.isShared,
-          recurrence: recurrenceJson(input.recurrence ?? null),
-        },
-      });
-      return map(row);
-    } catch (err) {
-      // #region agent log
-      try {
-        const { appendFileSync } = await import("node:fs");
-        appendFileSync(
-          "/opt/cursor/logs/debug.log",
-          JSON.stringify({
-            hypothesisId: "E",
-            location: "prismaCalendarRepository.ts:create",
-            message: "Prisma calendarEvent.create failed",
-            data: {
-              msg: err instanceof Error ? err.message : String(err),
-              code: (err as { code?: string })?.code,
-            },
-            timestamp: Date.now(),
-          }) + "\n",
-        );
-      } catch {
-        /* ignore */
-      }
-      // #endregion
-      throw err;
-    }
+    const row = await this.db.calendarEvent.create({
+      data: {
+        userId: input.userId,
+        familyId: input.familyId,
+        title: input.title,
+        description: input.description,
+        startTime: input.startTime,
+        endTime: input.endTime,
+        isAllDay: input.isAllDay,
+        category: input.category,
+        sourceDocumentId: input.sourceDocumentId ?? null,
+        reminderMinutesBefore: input.reminderMinutesBefore ?? null,
+        isShared: input.isShared,
+        recurrence: recurrenceJson(input.recurrence ?? null),
+      },
+    });
+    return map(row);
   }
 
   async update(id: number, input: UpdateCalendarEventInput): Promise<CalendarEventRecord> {
