@@ -5,7 +5,7 @@ import {
   visualViewportBottom,
 } from "../utils/composerKeyboard";
 
-const GAP_PX = 8;
+const GAP_PX = 12;
 
 function readScroller(): HTMLElement {
   return document.scrollingElement instanceof HTMLElement
@@ -14,8 +14,8 @@ function readScroller(): HTMLElement {
 }
 
 /**
- * While the checklist composer is focused, keep the last list item just above
- * the field instead of letting iOS scroll into empty page padding.
+ * While the checklist composer is focused, keep the composer (input) just above
+ * the software keyboard / visual viewport bottom.
  */
 export function useKeepLastItemAboveComposer(
   focused: boolean,
@@ -25,9 +25,8 @@ export function useKeepLastItemAboveComposer(
 ) {
   const sync = useCallback(() => {
     if (!focused) return;
-    const listEnd = listEndRef.current;
     const composer = composerRef.current;
-    if (!listEnd || !composer) return;
+    if (!composer) return;
 
     const vv = window.visualViewport;
     const visibleBottom = visualViewportBottom(
@@ -35,14 +34,33 @@ export function useKeepLastItemAboveComposer(
       vv ? { height: vv.height, offsetTop: vv.offsetTop } : null,
     );
     const scroller = readScroller();
-    const next = scrollYToPlaceAboveVisibleBottom({
-      elementBottomInViewport: listEnd.getBoundingClientRect().bottom,
+    const currentScrollY = window.scrollY || scroller.scrollTop;
+    const maxScrollY = maxWindowScrollY(scroller.scrollHeight, scroller.clientHeight);
+
+    // Primary: keep the composer itself above the keyboard.
+    let next = scrollYToPlaceAboveVisibleBottom({
+      elementBottomInViewport: composer.getBoundingClientRect().bottom,
       visibleBottom,
-      marginPx: composer.getBoundingClientRect().height + GAP_PX,
-      currentScrollY: window.scrollY || scroller.scrollTop,
-      maxScrollY: maxWindowScrollY(scroller.scrollHeight, scroller.clientHeight),
+      marginPx: GAP_PX,
+      currentScrollY,
+      maxScrollY,
     });
-    if (Math.abs(next - (window.scrollY || scroller.scrollTop)) > 2) {
+
+    // Also keep a little list context above the field when possible.
+    const listEnd = listEndRef.current;
+    if (listEnd) {
+      const withContext = scrollYToPlaceAboveVisibleBottom({
+        elementBottomInViewport: listEnd.getBoundingClientRect().bottom,
+        visibleBottom,
+        marginPx: composer.getBoundingClientRect().height + GAP_PX,
+        currentScrollY: next,
+        maxScrollY,
+      });
+      // Prefer whichever scrolls farther down so both composer and list end stay visible.
+      next = Math.max(next, withContext);
+    }
+
+    if (Math.abs(next - currentScrollY) > 2) {
       window.scrollTo(0, next);
     }
   }, [composerRef, focused, listEndRef]);
@@ -50,7 +68,7 @@ export function useKeepLastItemAboveComposer(
   useEffect(() => {
     if (!focused) return;
     sync();
-    const delays = [50, 200, 400].map((ms) => window.setTimeout(sync, ms));
+    const delays = [50, 200, 350, 500].map((ms) => window.setTimeout(sync, ms));
     const vv = window.visualViewport;
     window.addEventListener("resize", sync);
     vv?.addEventListener("resize", sync);

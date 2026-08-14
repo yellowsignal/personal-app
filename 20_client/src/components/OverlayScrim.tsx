@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import SwipeToDismiss from "./SwipeToDismiss";
 
 /** Dimmed overlay that closes when the user taps outside the sheet (and optionally swipes down). */
@@ -21,6 +22,7 @@ export default function OverlayScrim({
   lockBackground?: boolean;
 }) {
   const [dragY, setDragY] = useState(0);
+  const keyboardInset = useKeyboardInset();
   const enableSwipe = Boolean(onDismiss && swipeToDismiss);
   const dim = enableSwipe ? Math.max(0, 0.4 * (1 - dragY / 320)) : undefined;
   useBodyScrollLock(lockBackground);
@@ -32,7 +34,11 @@ export default function OverlayScrim({
         ...(dim != null ? { backgroundColor: `rgba(0,0,0,${dim})` } : null),
         overscrollBehavior: "none",
         touchAction: "none",
+        // Lift bottom sheets above the software keyboard (iOS Safari / PWA).
+        paddingBottom: keyboardInset > 0 ? keyboardInset : undefined,
+        ["--keyboard-inset" as string]: `${keyboardInset}px`,
       }}
+      data-keyboard-inset={keyboardInset}
       onTouchMove={(e) => {
         // Stop iOS scroll chaining into the page behind the sheet.
         if (e.target === e.currentTarget) e.preventDefault();

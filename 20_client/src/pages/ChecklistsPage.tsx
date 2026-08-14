@@ -419,7 +419,7 @@ export default function ChecklistsPage() {
           <form
             ref={composerRef}
             onSubmit={(e) => void handleAddItem(e)}
-            className="mt-3 rounded-2xl border border-black/5 bg-white/95 p-3 shadow-sm backdrop-blur"
+            className="sticky bottom-2 z-10 mt-3 rounded-2xl border border-black/5 bg-white/95 p-3 shadow-sm backdrop-blur"
           >
             <div>
               {parentForAdd && (
