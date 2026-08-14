@@ -27,11 +27,25 @@ import {
   parseCalendarEventId,
   shiftDateTime,
 } from "../domain/recurrence.js";
+import { appendFileSync } from "node:fs";
 import { HttpError } from "./authService.js";
 import type { FamilyActivityService } from "./familyActivityService.js";
 
 const USER_CATEGORIES = new Set(["personal", "family", "holiday"]);
 const REMINDER_MINUTES = new Set([10, 30, 60, 1440]);
+
+// #region agent log
+function dbgCal(hypothesisId: string, location: string, message: string, data: Record<string, unknown>) {
+  try {
+    appendFileSync(
+      "/opt/cursor/logs/debug.log",
+      `${JSON.stringify({ hypothesisId, location, message, data, timestamp: Date.now() })}\n`,
+    );
+  } catch {
+    /* ignore */
+  }
+}
+// #endregion
 
 function parseReminderMinutes(raw: unknown, fallback: number | null): number | null {
   if (raw === undefined) return fallback;
@@ -329,6 +343,21 @@ export class CalendarService {
       throw new HttpError(400, "join a family before sharing events", "NO_FAMILY");
     }
 
+    const reminderMinutesBefore = parseReminderMinutes(body.reminderMinutesBefore, 60);
+    // #region agent log
+    dbgCal(isAllDay ? "B" : "A", "calendarService.ts:create", "event_created_times", {
+      title: body.title,
+      rawDate: body.date,
+      rawTime: time,
+      rawEndTime: endTimeClock,
+      startIso: startTime.toISOString(),
+      endIso: endTime.toISOString(),
+      isAllDay,
+      reminderMinutesBefore,
+      bodyReminderRaw: body.reminderMinutesBefore ?? "__default__",
+    });
+    // #endregion
+
     const record = await this.calendarRepo.create({
       userId: user.id,
       familyId: isShared ? user.familyId : null,
@@ -340,7 +369,7 @@ export class CalendarService {
       category,
       isShared,
       recurrence,
-      reminderMinutesBefore: parseReminderMinutes(body.reminderMinutesBefore, 60),
+      reminderMinutesBefore,
     });
     if (isShared) {
       await this.activityService?.recordSharedCreate({

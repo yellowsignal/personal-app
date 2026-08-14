@@ -1,3 +1,4 @@
+import { appendFileSync } from "node:fs";
 import type { AuthRepository } from "../domain/authRepository.js";
 import type { CalendarRepository } from "../domain/calendarRepository.js";
 import type { CalendarEventRecord } from "../domain/calendarTypes.js";
@@ -10,6 +11,19 @@ import type { PushService } from "./pushService.js";
 const CATCHUP_AFTER_START_MS = 2 * 60 * 60 * 1000;
 /** All-day reminders are anchored to this floating clock on the occurrence day. */
 const ALL_DAY_ANCHOR_HOUR_UTC = 9;
+
+// #region agent log
+function dbg(hypothesisId: string, location: string, message: string, data: Record<string, unknown>) {
+  try {
+    appendFileSync(
+      "/opt/cursor/logs/debug.log",
+      `${JSON.stringify({ hypothesisId, location, message, data, timestamp: Date.now() })}\n`,
+    );
+  } catch {
+    /* ignore */
+  }
+}
+// #endregion
 
 export function reminderFireAt(start: Date, minutesBefore: number, isAllDay: boolean): Date {
   if (!isAllDay) {
@@ -40,11 +54,44 @@ export class ReminderDispatcher {
   async tick(now = new Date()): Promise<number> {
     const events = await this.calendarRepo.listWithReminders();
     let sent = 0;
+    // #region agent log
+    dbg("E", "reminderDispatcher.ts:tick", "tick_start", {
+      nowIso: now.toISOString(),
+      eventCount: events.length,
+      titles: events.map((e) => ({
+        id: e.id,
+        title: e.title,
+        minutes: e.reminderMinutesBefore,
+        isAllDay: e.isAllDay,
+        start: e.startTime.toISOString(),
+        reminderSentFor: e.reminderSentFor,
+        isReminderSent: e.isReminderSent,
+      })),
+    });
+    // #endregion
     for (const ev of events) {
       if (ev.reminderMinutesBefore == null) continue;
       const dueKeys = this.dueOccurrenceKeys(ev, now);
+      // #region agent log
+      dbg("A", "reminderDispatcher.ts:tick", "due_keys", {
+        eventId: ev.id,
+        title: ev.title,
+        dueCount: dueKeys.length,
+        dueKeys: dueKeys.map((d) => d.key),
+      });
+      // #endregion
       for (const { key, start } of dueKeys) {
-        if (ev.reminderSentFor === key) continue;
+        if (ev.reminderSentFor === key) {
+          // #region agent log
+          dbg("C", "reminderDispatcher.ts:tick", "skip_already_sent", {
+            eventId: ev.id,
+            key,
+            reminderSentFor: ev.reminderSentFor,
+            isReminderSent: ev.isReminderSent,
+          });
+          // #endregion
+          continue;
+        }
         const recipients = await this.recipientIds(ev);
         const body = ev.isAllDay
           ? ev.title
@@ -55,6 +102,16 @@ export class ReminderDispatcher {
           url: "/calendar",
           tag: `cal-${ev.id}-${key}`,
         });
+        // #region agent log
+        dbg("D", "reminderDispatcher.ts:tick", "push_result", {
+          eventId: ev.id,
+          key,
+          recipients,
+          delivered,
+          isShared: ev.isShared,
+          familyId: ev.familyId,
+        });
+        // #endregion
         if (delivered < 1) {
           console.warn(`[reminders] no push endpoint for event ${ev.id} (${ev.title}) recipients=${recipients.join(",")}`);
           continue;
@@ -68,6 +125,9 @@ export class ReminderDispatcher {
         console.log(`[reminders] sent event=${ev.id} occ=${key} title=${ev.title}`);
       }
     }
+    // #region agent log
+    dbg("E", "reminderDispatcher.ts:tick", "tick_end", { nowIso: now.toISOString(), sent });
+    // #endregion
     return sent;
   }
 
@@ -81,7 +141,25 @@ export class ReminderDispatcher {
     if (!ev.recurrence) {
       const fireAt = reminderFireAt(ev.startTime, minutes, ev.isAllDay);
       const latestAt = reminderLatestAt(ev.startTime, ev.endTime, ev.isAllDay);
-      if (isReminderDue(now, fireAt, latestAt)) {
+      const due = isReminderDue(now, fireAt, latestAt);
+      // #region agent log
+      dbg(ev.isAllDay ? "B" : "A", "reminderDispatcher.ts:dueOccurrenceKeys", "window_check", {
+        eventId: ev.id,
+        title: ev.title,
+        isAllDay: ev.isAllDay,
+        minutes,
+        startIso: ev.startTime.toISOString(),
+        endIso: ev.endTime.toISOString(),
+        fireAtIso: fireAt.toISOString(),
+        latestAtIso: latestAt.toISOString(),
+        nowIso: now.toISOString(),
+        due,
+        msUntilFire: fireAt.getTime() - now.getTime(),
+        msUntilLatest: latestAt.getTime() - now.getTime(),
+        reminderSentFor: ev.reminderSentFor,
+      });
+      // #endregion
+      if (due) {
         out.push({ key: toDateKey(ev.startTime), start: ev.startTime });
       }
       return out;
@@ -115,6 +193,9 @@ export class ReminderDispatcher {
 
 export function startReminderScheduler(dispatcher: ReminderDispatcher, intervalMs = 60_000): () => void {
   const run = () => {
+    // #region agent log
+    dbg("E", "reminderDispatcher.ts:scheduler", "scheduler_run", { at: new Date().toISOString() });
+    // #endregion
     void dispatcher.tick().catch((err) => {
       console.error("[reminders] tick failed", err);
     });
