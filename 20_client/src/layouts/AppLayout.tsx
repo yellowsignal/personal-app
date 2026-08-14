@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import BottomNav from "../components/BottomNav";
 import PushOnboardingSheet from "../components/PushOnboardingSheet";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 export default function AppLayout() {
   const { pathname } = useLocation();
@@ -10,16 +11,19 @@ export default function AppLayout() {
 
   useEffect(() => {
     // SPA route changes keep window scroll; home is a fixed viewport and would clip if scrollY > 0.
+    // Reset before locking so home never inherits the previous page's offset.
     window.scrollTo(0, 0);
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
   }, [pathname]);
 
+  useBodyScrollLock(isHome);
+
   return (
-    <div className={`flex justify-center bg-neutral-200 ${isHome ? "h-[100dvh] overflow-hidden" : "min-h-screen"}`}>
+    <div className={`flex justify-center bg-neutral-200 ${isHome ? "h-[100dvh] overflow-hidden overscroll-none" : "min-h-screen"}`}>
       <div
         className={`relative flex w-full max-w-md flex-col bg-[#f2f2f7] shadow-2xl ${
-          isHome ? "h-[100dvh] max-h-[100dvh] overflow-hidden" : "min-h-screen"
+          isHome ? "h-[100dvh] max-h-[100dvh] overflow-hidden overscroll-none" : "min-h-screen"
         }`}
       >
         <div

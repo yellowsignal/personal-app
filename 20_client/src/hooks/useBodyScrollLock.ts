@@ -9,6 +9,7 @@ let savedStyles: {
   left: string;
   width: string;
   paddingRight: string;
+  htmlOverflow: string;
 } | null = null;
 
 function lockBody() {
@@ -26,6 +27,7 @@ function lockBody() {
     left: body.style.left,
     width: body.style.width,
     paddingRight: body.style.paddingRight,
+    htmlOverflow: html.style.overflow,
   };
 
   const scrollbarGap = window.innerWidth - html.clientWidth;
@@ -37,6 +39,7 @@ function lockBody() {
   if (scrollbarGap > 0) {
     body.style.paddingRight = `${scrollbarGap}px`;
   }
+  html.style.overflow = "hidden";
   html.style.overscrollBehavior = "none";
 }
 
@@ -53,6 +56,7 @@ function unlockBody() {
   body.style.left = savedStyles.left;
   body.style.width = savedStyles.width;
   body.style.paddingRight = savedStyles.paddingRight;
+  html.style.overflow = savedStyles.htmlOverflow;
   html.style.overscrollBehavior = "";
   savedStyles = null;
   window.scrollTo(0, savedScrollY);

@@ -275,7 +275,7 @@ export default function DashboardPage() {
     : t("dashboard.noFamilyActivity");
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden overscroll-none" style={{ touchAction: "none" }}>
       <div className="shrink-0">
         <TopBar
           title={t("dashboard.greeting", { name: displayName })}
