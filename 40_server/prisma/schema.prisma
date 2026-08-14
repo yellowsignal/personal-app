@@ -250,8 +250,9 @@ model CalendarEvent {
   familyId              Int?     @map("family_id")
   title                 String   @db.VarChar(200)
   description           String?  @db.Text
-  startTime             DateTime @map("start_time")
-  endTime               DateTime @map("end_time")
+  /// Floating wall-clock stored as UTC components (HH:mm via setUTCHours). Process TZ must be UTC.
+  startTime             DateTime @map("start_time") @db.Timestamptz(3)
+  endTime               DateTime @map("end_time") @db.Timestamptz(3)
   isAllDay              Boolean  @default(false) @map("is_all_day")
   /// personal | family | holiday | document_expiry
   category              String   @default("personal") @db.VarChar(50)

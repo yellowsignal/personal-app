@@ -108,6 +108,7 @@ export class PushService {
     private readonly repo: PushRepository,
     private readonly keys: VapidKeys,
     private readonly sender: PushSender,
+    private readonly onSubscribed: (() => Promise<unknown>) | null = null,
   ) {}
 
   publicKey(): string {
@@ -129,6 +130,14 @@ export class PushService {
       auth,
       userAgent: userAgent?.slice(0, 500) ?? null,
     });
+    // Already-due calendar reminders may have been skipped before this device subscribed.
+    if (this.onSubscribed) {
+      try {
+        await this.onSubscribed();
+      } catch (err) {
+        console.error("[push] reminder kick after subscribe failed", err);
+      }
+    }
     return { id: record.id, endpoint: record.endpoint };
   }
 

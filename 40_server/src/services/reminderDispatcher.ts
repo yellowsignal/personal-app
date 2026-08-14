@@ -104,11 +104,14 @@ export class ReminderDispatcher {
           const body = ev.isAllDay
             ? ev.title
             : `${String(start.getUTCHours()).padStart(2, "0")}:${String(start.getUTCMinutes()).padStart(2, "0")} · ${ev.title}`;
+          // Unique tag/topic per attempt (parity with settings test push) so iOS/APNs
+          // does not collapse a calendar reminder into a prior undelivered topic.
+          const tag = `cal-${ev.id}-${key.replace(/-/g, "").slice(4)}-${Date.now().toString(36)}`;
           const delivered = await this.pushService.sendToUsers(recipients, {
             title: ev.title,
             body,
             url: "/calendar",
-            tag: `cal-${ev.id}-${key}`,
+            tag,
           });
           if (delivered < 1) {
             console.warn(`[reminders] no push endpoint for event ${ev.id} (${ev.title}) recipients=${recipients.join(",")}`);

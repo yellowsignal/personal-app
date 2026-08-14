@@ -749,14 +749,19 @@ export default function CalendarPage() {
       reminderMinutesBefore: reminderMinutes,
     };
     try {
+      // Subscribe before create so the server-side reminder kick can deliver immediately.
+      if (reminderMinutes != null) {
+        try {
+          await enableHomeScreenPush(token);
+        } catch {
+          /* permission / unsupported — create still proceeds */
+        }
+      }
       if (editingEvent) {
         const id = editingEvent.seriesId ?? editingEvent.id.split(":")[0] ?? editingEvent.id;
         await calendarApi.update(token, id, payload);
       } else {
         await calendarApi.create(token, payload);
-      }
-      if (reminderMinutes != null) {
-        void enableHomeScreenPush(token);
       }
       closeForm();
       await load();

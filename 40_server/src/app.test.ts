@@ -26,8 +26,16 @@ test("health endpoint responds ok", async () => {
   try {
     const res = await fetch(`${base}/api/health`);
     assert.equal(res.status, 200);
-    const body = (await res.json()) as { status: string };
+    const body = (await res.json()) as {
+      status: string;
+      time: string;
+      tz: string | null;
+      resolvedTimeZone: string;
+    };
     assert.equal(body.status, "ok");
+    assert.ok(typeof body.time === "string");
+    assert.ok(typeof body.resolvedTimeZone === "string");
+    assert.ok("tz" in body);
   } finally {
     server.close();
   }

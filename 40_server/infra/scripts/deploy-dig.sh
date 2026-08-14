@@ -65,6 +65,15 @@ sudo rsync -a --delete "$REPO_ROOT/20_client/dist/" "$DEST/"
 if [[ "$FRONTEND_ONLY" -eq 0 ]]; then
   echo "==> build server"
   npm run build --workspace @personal-app/server
+  GIT_COMMIT="$(git rev-parse --short HEAD)"
+  echo "==> ensure systemd TZ=UTC + GIT_COMMIT=${GIT_COMMIT}"
+  sudo mkdir -p /etc/systemd/system/myfamilyhub-dev-api.service.d
+  sudo tee /etc/systemd/system/myfamilyhub-dev-api.service.d/override.conf >/dev/null <<EOF
+[Service]
+Environment=TZ=UTC
+Environment=GIT_COMMIT=${GIT_COMMIT}
+EOF
+  sudo systemctl daemon-reload
   echo "==> restart myfamilyhub-dev-api"
   sudo systemctl restart myfamilyhub-dev-api
   sleep 1

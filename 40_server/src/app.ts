@@ -62,7 +62,14 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", time: new Date().toISOString() });
+    const now = new Date();
+    res.json({
+      status: "ok",
+      time: now.toISOString(),
+      tz: process.env.TZ ?? null,
+      resolvedTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      gitCommit: process.env.GIT_COMMIT ?? null,
+    });
   });
 
   app.get("/api/tasks", (_req, res) => {

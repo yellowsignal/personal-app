@@ -412,6 +412,61 @@ test("failed web push is not marked sent so the next tick can retry", async () =
   assert.equal(delivered[0]?.title, "재시도");
 });
 
+test("push subscribe kicks already-due reminders", async () => {
+  const authRepo = new MemoryAuthRepository();
+  const calendarRepo = new MemoryCalendarRepository();
+  const pushRepo = new MemoryPushRepository();
+  const delivered: PushPayload[] = [];
+  const keys = { ...webpush.generateVAPIDKeys(), subject: "mailto:test@example.com" };
+  let dispatcher!: ReminderDispatcher;
+  const pushService = new PushService(
+    pushRepo,
+    keys,
+    {
+      async send(_sub, payload) {
+        delivered.push(payload);
+        return "ok";
+      },
+    },
+    () => dispatcher.tick(new Date("2026-08-14T04:46:00.000Z")),
+  );
+  dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
+
+  const { user } = await authRepo.createOwnerWithFamily({
+    email: "sub-kick@example.com",
+    passwordHash: "x",
+    name: "민호",
+    familyName: "최가네",
+    inviteCode: "SUBKICK",
+    languagePref: "ko",
+    countryPref: "JP",
+    currencyPref: "KRW",
+  });
+
+  await calendarRepo.create({
+    userId: user.id,
+    familyId: user.familyId,
+    title: "already due",
+    description: null,
+    startTime: new Date("2026-08-14T14:00:00.000Z"),
+    endTime: new Date("2026-08-14T15:00:00.000Z"),
+    isAllDay: false,
+    category: "personal",
+    isShared: false,
+    reminderMinutesBefore: 60,
+  });
+
+  assert.equal(delivered.length, 0);
+  await pushService.subscribe(
+    user.id,
+    { endpoint: "https://push.example/sub-kick", keys: { p256dh: "p", auth: "a" } },
+    "iPhone",
+  );
+  assert.equal(delivered.length, 1);
+  assert.equal(delivered[0]?.title, "already due");
+  assert.match(String(delivered[0]?.tag), /^cal-\d+-/);
+});
+
 test("one event throwing does not skip the rest of the tick", async () => {
   const authRepo = new MemoryAuthRepository();
   const calendarRepo = new MemoryCalendarRepository();

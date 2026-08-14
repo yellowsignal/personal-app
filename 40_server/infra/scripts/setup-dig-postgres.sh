@@ -67,12 +67,14 @@ User=ubuntu
 WorkingDirectory=${SERVER_DIR}
 EnvironmentFile=${ENV_FILE}
 Environment=PORT=3002
+Environment=TZ=UTC
 Environment=WEBAUTHN_RP_ID=sumicchogurashi-dev.duckdns.org
 Environment=WEBAUTHN_ORIGIN=https://sumicchogurashi-dev.duckdns.org
 Environment=WEBAUTHN_RP_NAME=すみっチョぐらし
 Environment=DATA_FILE=${REPO_ROOT}/30_data/tasks-dev.json
 Environment=DOCUMENT_SCAN_DIR=${REPO_ROOT}/30_data/document-scans
 # MEMORY_AUTH intentionally unset — use Prisma/Postgres
+# TZ=UTC keeps floating calendar DateTime components stable with Prisma/Postgres.
 ExecStart=/usr/bin/node ${SERVER_DIR}/dist/index.js
 Restart=on-failure
 RestartSec=3

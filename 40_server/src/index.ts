@@ -72,9 +72,6 @@ const transactionRepo: TransactionRepository = useMemoryAuth
 const recurringDepositRepo: RecurringDepositRepository = useMemoryAuth
   ? new MemoryRecurringDepositRepository()
   : new PrismaRecurringDepositRepository(prisma);
-const calendarRepo: CalendarRepository = useMemoryAuth
-  ? new MemoryCalendarRepository()
-  : new PrismaCalendarRepository(prisma);
 const pushRepo = useMemoryAuth ? new MemoryPushRepository() : new PrismaPushRepository(prisma);
 const activityRepo = useMemoryAuth
   ? new MemoryFamilyActivityRepository()
@@ -88,8 +85,14 @@ const vapidKeys = loadOrCreateVapidKeys(
   process.env.VAPID_FILE ?? resolve(__dirname, "../../30_data/vapid.json"),
   vapidSubject,
 );
-const pushService = new PushService(pushRepo, vapidKeys, new WebPushSender(vapidKeys));
-const reminderDispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
+const calendarRepo: CalendarRepository = useMemoryAuth
+  ? new MemoryCalendarRepository()
+  : new PrismaCalendarRepository(prisma);
+let reminderDispatcher!: ReminderDispatcher;
+const pushService = new PushService(pushRepo, vapidKeys, new WebPushSender(vapidKeys), () =>
+  reminderDispatcher.tick(),
+);
+reminderDispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
 const passkeyRepo = useMemoryAuth ? new MemoryPasskeyRepository() : new PrismaPasskeyRepository(prisma);
 const inviteTokenRepo = useMemoryAuth
   ? new MemoryInviteTokenRepository()
@@ -122,6 +125,9 @@ app.listen(PORT, () => {
     `[server] auth/family/assets/subscriptions/checklists/documents/calendar/passkey/push routes enabled (JWT, store=${
       useMemoryAuth ? "memory" : "prisma"
     })`,
+  );
+  console.log(
+    `[server] TZ=${process.env.TZ ?? "(unset)"} resolved=${Intl.DateTimeFormat().resolvedOptions().timeZone} commit=${process.env.GIT_COMMIT ?? "n/a"}`,
   );
   startReminderScheduler(reminderDispatcher);
   console.log("[server] calendar reminder dispatcher started");
