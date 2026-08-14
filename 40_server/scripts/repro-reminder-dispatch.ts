@@ -118,8 +118,9 @@ async function createEvent(
     headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
-  assert.equal(created.status, 201, await created.text());
-  return (await created.json()) as {
+  const text = await created.text();
+  assert.equal(created.status, 201, text);
+  return JSON.parse(text) as {
     id: string;
     time: string | null;
     isAllDay: boolean;
@@ -282,24 +283,50 @@ async function scenarioE_B_C_F() {
 }
 
 async function scenarioH() {
-  const { authRepo, calendarRepo, pushService, delivered, server, base } = await boot();
+  const { authRepo, calendarRepo, pushRepo, pushService, delivered, server, base } = await boot();
   try {
     const owner = await register(base, "boom@example.com", "KR");
     await subscribe(base, owner.token, "https://push.example/boom");
     await createEvent(base, owner.token, {
-      title: "boom-event-1",
+      title: "boom-event",
       date: "2026-08-14",
       time: "15:00",
       reminderMinutesBefore: 60,
     });
-    await createEvent(base, owner.token, {
-      title: "boom-event-2",
-      date: "2026-08-14",
-      time: "15:00",
-      reminderMinutesBefore: 60,
+    const sibling = await authRepo.createOwnerWithFamily({
+      email: "ok-sibling@example.com",
+      passwordHash: "x",
+      name: "ok",
+      familyName: "B",
+      inviteCode: "OKSIBL01",
+      languagePref: "ko",
+      countryPref: "KR",
+      currencyPref: "KRW",
     });
-    authRepo.findUserById = async () => {
-      throw new Error("simulated findUserById failure");
+    await calendarRepo.create({
+      userId: sibling.user.id,
+      familyId: sibling.family.id,
+      title: "ok-event",
+      description: null,
+      startTime: new Date("2026-08-14T15:00:00.000Z"),
+      endTime: new Date("2026-08-14T16:00:00.000Z"),
+      isAllDay: false,
+      category: "personal",
+      reminderMinutesBefore: 60,
+      isShared: false,
+    });
+    await pushRepo.upsert({
+      userId: sibling.user.id,
+      endpoint: "https://push.example/ok-sibling",
+      p256dh: "p256",
+      auth: "auth-token",
+      userAgent: null,
+    });
+    const boomUser = await authRepo.findUserByEmail("boom@example.com");
+    const original = authRepo.findUserById.bind(authRepo);
+    authRepo.findUserById = async (id: number) => {
+      if (id === boomUser?.id) throw new Error("simulated findUserById failure");
+      return original(id);
     };
     const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
     let threw = false;
@@ -311,8 +338,8 @@ async function scenarioH() {
     }
     record(
       "H-tick-abort",
-      threw && delivered.length === 0 ? "FAIL" : threw ? "INFO" : "PASS",
-      `findUserById throw → threw=${threw} sent=${sent} delivered=${delivered.length} (aborting whole tick is a smoking gun if any owner lookup fails)`,
+      !threw && sent === 1 && delivered.some((p) => p.title === "ok-event") ? "PASS" : "FAIL",
+      `findUserById throw isolated → threw=${threw} sent=${sent} titles=${delivered.map((p) => p.title).join(",")}`,
     );
   } finally {
     server.close();

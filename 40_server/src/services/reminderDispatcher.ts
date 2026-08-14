@@ -108,97 +108,106 @@ export class ReminderDispatcher {
     // #endregion
 
     for (const ev of events) {
-      if (ev.reminderMinutesBefore == null) continue;
-      let tz = tzByUser.get(ev.userId);
-      if (!tz) {
-        let ownerCountry: string | null | undefined;
-        try {
-          const owner = await this.authRepo.findUserById(ev.userId);
-          ownerCountry = owner?.countryPref ?? null;
-          tz = timeZoneFromCountryPref(ownerCountry);
-          tzByUser.set(ev.userId, tz);
-          // #region agent log
-          agentLog("H", "reminderDispatcher.ts:tick", "findUserById ok", {
-            eventId: ev.id,
-            userId: ev.userId,
-            countryPref: ownerCountry,
-            tz,
-          });
-          // #endregion
-        } catch (err) {
-          // #region agent log
-          agentLog("H", "reminderDispatcher.ts:tick", "findUserById threw — aborting tick", {
-            eventId: ev.id,
-            userId: ev.userId,
-            err: err instanceof Error ? err.message : String(err),
-          });
-          // #endregion
-          throw err;
-        }
+      try {
+        sent += await this.dispatchEvent(ev, now, tzByUser);
+      } catch (err) {
+        console.error(`[reminders] event ${ev.id} failed`, err);
+        // #region agent log
+        agentLog("H", "reminderDispatcher.ts:tick", "event failed isolated", {
+          eventId: ev.id,
+          userId: ev.userId,
+          err: err instanceof Error ? err.message : String(err),
+          runId: "post-fix",
+        });
+        // #endregion
       }
-      const floatingNow = toFloatingNow(now, tz);
-      const minutes = ev.reminderMinutesBefore;
-      const fireAt = reminderFireAt(ev.startTime, minutes, ev.isAllDay);
-      const latestAt = reminderLatestAt(ev.startTime, ev.endTime, ev.isAllDay);
-      const dueKeys = this.dueOccurrenceKeys(ev, floatingNow);
+    }
+    return sent;
+  }
+
+  private async dispatchEvent(
+    ev: CalendarEventRecord,
+    now: Date,
+    tzByUser: Map<number, string>,
+  ): Promise<number> {
+    if (ev.reminderMinutesBefore == null) return 0;
+    let sent = 0;
+    let tz = tzByUser.get(ev.userId);
+    if (!tz) {
+      const owner = await this.authRepo.findUserById(ev.userId);
+      const ownerCountry = owner?.countryPref ?? null;
+      tz = timeZoneFromCountryPref(ownerCountry);
+      tzByUser.set(ev.userId, tz);
       // #region agent log
-      agentLog("A", "reminderDispatcher.ts:tick", "due check", {
+      agentLog("H", "reminderDispatcher.ts:tick", "findUserById ok", {
         eventId: ev.id,
-        title: ev.title,
-        isAllDay: ev.isAllDay,
-        minutes,
-        startIso: ev.startTime.toISOString(),
-        utcHours: ev.startTime.getUTCHours(),
-        fireAt: fireAt.toISOString(),
-        latestAt: latestAt.toISOString(),
-        floatingNow: floatingNow.toISOString(),
-        realNow: now.toISOString(),
+        userId: ev.userId,
+        countryPref: ownerCountry,
         tz,
-        due: dueKeys.length > 0,
-        dueKeys: dueKeys.map((d) => d.key),
-        reminderSentFor: ev.reminderSentFor,
-        windowHours:
-          (latestAt.getTime() - fireAt.getTime()) / 3_600_000,
       });
       // #endregion
-      for (const { key, start } of dueKeys) {
-        if (ev.reminderSentFor === key) {
-          // #region agent log
-          agentLog("F", "reminderDispatcher.ts:tick", "skip already sent", {
-            eventId: ev.id,
-            key,
-          });
-          // #endregion
-          continue;
-        }
-        const recipients = await this.recipientIds(ev);
-        const body = ev.isAllDay
-          ? ev.title
-          : `${String(start.getUTCHours()).padStart(2, "0")}:${String(start.getUTCMinutes()).padStart(2, "0")} · ${ev.title}`;
-        const delivered = await this.pushService.sendToUsers(recipients, {
-          title: ev.title,
-          body,
-          url: "/calendar",
-          tag: `cal-${ev.id}-${key}`,
+    }
+    const floatingNow = toFloatingNow(now, tz);
+    const minutes = ev.reminderMinutesBefore;
+    const fireAt = reminderFireAt(ev.startTime, minutes, ev.isAllDay);
+    const latestAt = reminderLatestAt(ev.startTime, ev.endTime, ev.isAllDay);
+    const dueKeys = this.dueOccurrenceKeys(ev, floatingNow);
+    // #region agent log
+    agentLog("A", "reminderDispatcher.ts:tick", "due check", {
+      eventId: ev.id,
+      title: ev.title,
+      isAllDay: ev.isAllDay,
+      minutes,
+      startIso: ev.startTime.toISOString(),
+      utcHours: ev.startTime.getUTCHours(),
+      fireAt: fireAt.toISOString(),
+      latestAt: latestAt.toISOString(),
+      floatingNow: floatingNow.toISOString(),
+      realNow: now.toISOString(),
+      tz,
+      due: dueKeys.length > 0,
+      dueKeys: dueKeys.map((d) => d.key),
+      reminderSentFor: ev.reminderSentFor,
+      windowHours: (latestAt.getTime() - fireAt.getTime()) / 3_600_000,
+    });
+    // #endregion
+    for (const { key, start } of dueKeys) {
+      if (ev.reminderSentFor === key) {
+        // #region agent log
+        agentLog("F", "reminderDispatcher.ts:tick", "skip already sent", {
+          eventId: ev.id,
+          key,
         });
-        if (delivered < 1) {
-          console.warn(`[reminders] no push endpoint for event ${ev.id} (${ev.title}) recipients=${recipients.join(",")}`);
-          // #region agent log
-          agentLog("C", "reminderDispatcher.ts:tick", "delivered=0 not marked sent", {
-            eventId: ev.id,
-            recipients,
-          });
-          // #endregion
-          continue;
-        }
-        await this.calendarRepo.update(ev.id, {
-          isReminderSent: ev.recurrence ? ev.isReminderSent : true,
-          reminderSentFor: key,
-        });
-        ev.reminderSentFor = key;
-        sent += 1;
-        console.log(`[reminders] sent event=${ev.id} occ=${key} title=${ev.title} tz=${tz}`);
+        // #endregion
+        continue;
       }
+      const recipients = await this.recipientIds(ev);
+      const body = ev.isAllDay
+        ? ev.title
+        : `${String(start.getUTCHours()).padStart(2, "0")}:${String(start.getUTCMinutes()).padStart(2, "0")} · ${ev.title}`;
+      const delivered = await this.pushService.sendToUsers(recipients, {
+        title: ev.title,
+        body,
+        url: "/calendar",
+        tag: `cal-${ev.id}-${key}`,
+      });
+      if (delivered < 1) {
+        console.warn(`[reminders] no push endpoint for event ${ev.id} (${ev.title}) recipients=${recipients.join(",")}`);
+        // #region agent log
+        agentLog("C", "reminderDispatcher.ts:tick", "delivered=0 not marked sent", {
+          eventId: ev.id,
+          recipients,
+        });
+        // #endregion
+        continue;
+      }
+      await this.calendarRepo.update(ev.id, {
+        isReminderSent: ev.recurrence ? ev.isReminderSent : true,
+        reminderSentFor: key,
+      });
+      ev.reminderSentFor = key;
+      sent += 1;
+      console.log(`[reminders] sent event=${ev.id} occ=${key} title=${ev.title} tz=${tz}`);
     }
     return sent;
   }
