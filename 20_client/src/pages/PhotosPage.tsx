@@ -1,121 +1,27 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Cloud, Download, ImagePlus, Plus, X } from "lucide-react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Cloud, Plus } from "lucide-react";
 import TopBar from "../components/TopBar";
 import OverlayScrim from "../components/OverlayScrim";
-import ItemDetailSheet, { DetailRow } from "../components/ItemDetailSheet";
+import PhotoLightbox from "../components/PhotoLightbox";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
-import {
-  photosApi,
-  type IcloudAlbumPhoto,
-  type LinkedIcloudAlbum,
-  type PublicPhoto,
-} from "../api/photos";
+import { photosApi, type LinkedIcloudAlbum } from "../api/photos";
 import { ApiError } from "../api/http";
-import { MAX_ICLOUD_ALBUMS, MAX_PHOTO_UPLOAD, saveBlobLocally, selectImageFiles } from "../utils/photoUpload";
-
-function usePhotoObjectUrls(token: string | null, ids: number[]) {
-  const [urls, setUrls] = useState<Record<number, string>>({});
-  const idsKey = ids.join(",");
-
-  useEffect(() => {
-    if (!token || ids.length === 0) {
-      setUrls({});
-      return;
-    }
-    let cancelled = false;
-    const created: string[] = [];
-    void (async () => {
-      const entries = await Promise.all(
-        ids.map(async (id) => {
-          try {
-            const blob = await photosApi.downloadFile(token, id);
-            const url = URL.createObjectURL(blob);
-            created.push(url);
-            return [id, url] as const;
-          } catch {
-            return [id, ""] as const;
-          }
-        }),
-      );
-      if (cancelled) {
-        for (const u of created) URL.revokeObjectURL(u);
-        return;
-      }
-      const next: Record<number, string> = {};
-      for (const [id, url] of entries) {
-        if (url) next[id] = url;
-      }
-      setUrls(next);
-    })();
-    return () => {
-      cancelled = true;
-      for (const u of created) URL.revokeObjectURL(u);
-    };
-  }, [token, idsKey]);
-
-  return urls;
-}
-
-function formatPhotoDate(iso: string, lang: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(lang === "ja" ? "ja-JP" : "ko-KR", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import { MAX_ICLOUD_ALBUMS, saveBlobLocally } from "../utils/photoUpload";
 
 export default function PhotosPage() {
-  const { t, lang } = useLanguage();
+  const { t } = useLanguage();
   const { token, family } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [items, setItems] = useState<PublicPhoto[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [detail, setDetail] = useState<PublicPhoto | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<PublicPhoto | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<PublicPhoto | null>(null);
-  const [pickFiles, setPickFiles] = useState<File[]>([]);
-  const [pickPreviews, setPickPreviews] = useState<string[]>([]);
-  const [caption, setCaption] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   const [icloudAlbums, setIcloudAlbums] = useState<LinkedIcloudAlbum[]>([]);
   const [icloudLoading, setIcloudLoading] = useState(false);
   const [icloudDraft, setIcloudDraft] = useState("");
   const [icloudFormOpen, setIcloudFormOpen] = useState(false);
   const [icloudSaving, setIcloudSaving] = useState(false);
   const [icloudError, setIcloudError] = useState<string | null>(null);
-  const [icloudDetail, setIcloudDetail] = useState<{
-    album: LinkedIcloudAlbum;
-    photo: IcloudAlbumPhoto;
-  } | null>(null);
+  const [viewer, setViewer] = useState<{ albumId: number; index: number } | null>(null);
   const [confirmUnlink, setConfirmUnlink] = useState<LinkedIcloudAlbum | null>(null);
   const [icloudDownloading, setIcloudDownloading] = useState(false);
-
-  const load = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await photosApi.list(token);
-      setItems(data);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("photos.errorLoad"));
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [token, t]);
+  const [pageError, setPageError] = useState<string | null>(null);
 
   const loadIcloud = useCallback(async () => {
     if (!token || !family) {
@@ -134,145 +40,19 @@ export default function PhotosPage() {
   }, [token, family]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
     void loadIcloud();
   }, [loadIcloud]);
 
-  const ids = useMemo(() => items.map((p) => p.id), [items]);
-  const urls = usePhotoObjectUrls(token, ids);
+  const canAddAlbum = icloudAlbums.length < MAX_ICLOUD_ALBUMS;
+  const viewerAlbum = viewer ? (icloudAlbums.find((a) => a.id === viewer.albumId) ?? null) : null;
+  const viewerPhotos = viewerAlbum?.photos ?? [];
+  const viewerIndex = viewer ? Math.min(viewer.index, Math.max(0, viewerPhotos.length - 1)) : 0;
 
-  useEffect(() => {
-    const raw = searchParams.get("id");
-    if (!raw || items.length === 0) return;
-    const id = Number(raw);
-    if (!Number.isFinite(id)) return;
-    const found = items.find((p) => p.id === id);
-    if (!found) return;
-    setDetail(found);
-    const next = new URLSearchParams(searchParams);
-    next.delete("id");
-    setSearchParams(next, { replace: true });
-  }, [items, searchParams, setSearchParams]);
-
-  useEffect(() => {
-    if (pickFiles.length === 0) {
-      setPickPreviews([]);
-      return;
-    }
-    const created = pickFiles.map((file) => URL.createObjectURL(file));
-    setPickPreviews(created);
-    return () => {
-      for (const url of created) URL.revokeObjectURL(url);
-    };
-  }, [pickFiles]);
-
-  function resetForm() {
-    setFormOpen(false);
-    setEditing(null);
-    setPickFiles([]);
-    setCaption("");
-    setFormError(null);
-    setUploadProgress(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
-
-  function openCreatePicker() {
-    if (!family) return;
-    fileInputRef.current?.click();
-  }
-
-  function onFilesPicked(list: FileList | null) {
-    if (!list || list.length === 0) return;
-    const selected = selectImageFiles(list);
-    if (selected.files.length === 0) {
-      setError(t("photos.needImage"));
-      return;
-    }
-    setEditing(null);
-    setPickFiles(selected.files);
-    setCaption("");
-    setFormError(
-      selected.truncated > 0 ? t("photos.truncated", { max: MAX_PHOTO_UPLOAD }) : null,
-    );
-    setFormOpen(true);
-  }
-
-  function openEdit(photo: PublicPhoto) {
-    setDetail(null);
-    setEditing(photo);
-    setPickFiles([]);
-    setCaption(photo.caption ?? "");
-    setFormError(null);
-    setFormOpen(true);
-  }
-
-  async function handleSave(e: FormEvent) {
-    e.preventDefault();
-    if (!token || submitting) return;
-    setSubmitting(true);
-    setFormError(null);
-    try {
-      if (editing) {
-        const updated = await photosApi.update(token, editing.id, {
-          caption: caption.trim() || null,
-        });
-        setItems((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-        setDetail(updated);
-      } else {
-        if (pickFiles.length === 0) {
-          setFormError(t("photos.needImage"));
-          setSubmitting(false);
-          return;
-        }
-        let ok = 0;
-        let fail = 0;
-        let last: PublicPhoto | null = null;
-        for (let i = 0; i < pickFiles.length; i++) {
-          setUploadProgress({ current: i + 1, total: pickFiles.length });
-          try {
-            last = await photosApi.upload(token, pickFiles[i], {
-              caption: caption.trim() || undefined,
-            });
-            ok += 1;
-          } catch {
-            fail += 1;
-          }
-        }
-        await load();
-        if (ok === 0) {
-          setFormError(t("photos.errorSave"));
-          setSubmitting(false);
-          return;
-        }
-        if (last) setDetail(last);
-        if (fail > 0) setError(t("photos.partialUpload", { ok, fail }));
-      }
-      resetForm();
-    } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : t("photos.errorSave"));
-    } finally {
-      setSubmitting(false);
-      setUploadProgress(null);
-    }
-  }
-
-  async function handleDeleteConfirmed() {
-    if (!token || !confirmDelete || !confirmDelete.editable) return;
-    setSubmitting(true);
-    try {
-      await photosApi.remove(token, confirmDelete.id);
-      setItems((prev) => prev.filter((p) => p.id !== confirmDelete.id));
-      if (detail?.id === confirmDelete.id) setDetail(null);
-      setConfirmDelete(null);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("photos.errorDelete"));
-      setConfirmDelete(null);
-    } finally {
-      setSubmitting(false);
-    }
+  function openAlbumForm() {
+    if (!family || !canAddAlbum) return;
+    setIcloudDraft("");
+    setIcloudError(null);
+    setIcloudFormOpen(true);
   }
 
   async function handleSaveIcloud(e: FormEvent) {
@@ -303,7 +83,7 @@ export default function PhotosPage() {
     try {
       const data = await photosApi.removeIcloudAlbum(token, confirmUnlink.id);
       setIcloudAlbums(data.albums);
-      if (icloudDetail?.album.id === confirmUnlink.id) setIcloudDetail(null);
+      if (viewer?.albumId === confirmUnlink.id) setViewer(null);
       setConfirmUnlink(null);
     } catch (err) {
       setIcloudError(err instanceof ApiError ? err.message : t("photos.icloudError"));
@@ -314,26 +94,20 @@ export default function PhotosPage() {
   }
 
   async function handleDownloadIcloud() {
-    if (!token || !icloudDetail || icloudDownloading) return;
+    if (!token || !viewerAlbum || icloudDownloading) return;
+    const photo = viewerPhotos[viewerIndex];
+    if (!photo) return;
     setIcloudDownloading(true);
     try {
-      const blob = await photosApi.downloadIcloudPhoto(token, icloudDetail.album.id, icloudDetail.photo.id);
-      const name = `${icloudDetail.photo.caption || icloudDetail.album.name || "icloud"}.jpg`;
+      const blob = await photosApi.downloadIcloudPhoto(token, viewerAlbum.id, photo.id);
+      const name = `${photo.caption || viewerAlbum.name || "icloud"}.jpg`;
       await saveBlobLocally(blob, name);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("photos.icloudDownloadError"));
+      setPageError(err instanceof ApiError ? err.message : t("photos.icloudDownloadError"));
     } finally {
       setIcloudDownloading(false);
     }
   }
-
-  const liveDetail = detail ? (items.find((p) => p.id === detail.id) ?? detail) : null;
-  const canAddAlbum = icloudAlbums.length < MAX_ICLOUD_ALBUMS;
-  const formTitle = editing
-    ? t("photos.edit")
-    : pickFiles.length > 1
-      ? t("photos.addCount", { n: pickFiles.length })
-      : t("photos.add");
 
   return (
     <div>
@@ -341,12 +115,12 @@ export default function PhotosPage() {
         title={t("photos.title")}
         subtitle={t("photos.subtitle")}
         right={
-          family ? (
+          family && canAddAlbum ? (
             <button
               type="button"
-              onClick={openCreatePicker}
+              onClick={openAlbumForm}
               className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-white"
-              aria-label={t("photos.add")}
+              aria-label={t("photos.icloudAdd")}
             >
               <Plus size={18} />
             </button>
@@ -355,21 +129,8 @@ export default function PhotosPage() {
       />
 
       <div className="mx-auto max-w-md px-4 pt-4 pb-8">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            const list = e.target.files;
-            e.target.value = "";
-            onFilesPicked(list);
-          }}
-        />
-
         {family ? (
-          <section className="mt-4 rounded-2xl border border-sky-100 bg-sky-50/70 p-4">
+          <section className="rounded-2xl border border-sky-100 bg-sky-50/70 p-4">
             <div className="flex items-start justify-between gap-2">
               <p className="flex items-center gap-1.5 text-sm font-bold text-sky-900">
                 <Cloud size={16} />
@@ -378,34 +139,24 @@ export default function PhotosPage() {
               {canAddAlbum && icloudAlbums.length > 0 && !icloudFormOpen && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setIcloudDraft("");
-                    setIcloudError(null);
-                    setIcloudFormOpen(true);
-                  }}
+                  onClick={openAlbumForm}
                   className="text-xs font-semibold text-sky-700"
                 >
                   {t("photos.icloudAdd")}
                 </button>
               )}
             </div>
+            <p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-sky-800">
+              {icloudAlbums.length === 0 ? t("photos.icloudHowTo") : t("photos.hint")}
+            </p>
             {icloudAlbums.length === 0 && !icloudFormOpen && (
-              <>
-                <p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-sky-800">
-                  {t("photos.icloudHowTo")}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIcloudDraft("");
-                    setIcloudError(null);
-                    setIcloudFormOpen(true);
-                  }}
-                  className="mt-3 w-full rounded-xl bg-sky-700 py-2.5 text-sm font-semibold text-white"
-                >
-                  {t("photos.icloudSave")}
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={openAlbumForm}
+                className="mt-3 w-full rounded-xl bg-sky-700 py-2.5 text-sm font-semibold text-white"
+              >
+                {t("photos.icloudSave")}
+              </button>
             )}
             {icloudFormOpen && (
               <form onSubmit={(e) => void handleSaveIcloud(e)} className="mt-3">
@@ -439,6 +190,7 @@ export default function PhotosPage() {
             )}
             {icloudLoading && <p className="mt-3 text-xs text-sky-700">{t("photos.loading")}</p>}
             {icloudError && !icloudFormOpen && <p className="mt-2 text-xs text-rose-600">{icloudError}</p>}
+            {pageError && <p className="mt-2 text-xs text-rose-600">{pageError}</p>}
             {icloudAlbums.map((album) => (
               <div key={album.id} className="mt-4 border-t border-sky-100 pt-3 first:mt-3 first:border-0 first:pt-0">
                 <div className="flex items-start justify-between gap-2">
@@ -467,11 +219,11 @@ export default function PhotosPage() {
                 )}
                 {album.photos.length > 0 && (
                   <div className="mt-2 grid grid-cols-3 gap-1.5">
-                    {album.photos.map((p) => (
+                    {album.photos.map((p, photoIndex) => (
                       <button
                         key={p.id}
                         type="button"
-                        onClick={() => setIcloudDetail({ album, photo: p })}
+                        onClick={() => setViewer({ albumId: album.id, index: photoIndex })}
                         className="relative aspect-square overflow-hidden rounded-lg bg-white"
                       >
                         <img
@@ -488,198 +240,22 @@ export default function PhotosPage() {
             ))}
           </section>
         ) : (
-          <p className="mt-4 rounded-2xl bg-neutral-50 px-4 py-3 text-xs text-neutral-500">
+          <p className="rounded-2xl bg-neutral-50 px-4 py-3 text-xs text-neutral-500">
             {t("photos.needFamily")}
           </p>
         )}
-
-        {family && (
-          <>
-        <button
-          type="button"
-          onClick={openCreatePicker}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-sm"
-        >
-          <ImagePlus size={18} />
-          {t("photos.add")}
-        </button>
-        <p className="mt-2 rounded-2xl bg-indigo-50/60 px-4 py-3 text-xs text-indigo-700">{t("photos.hint")}</p>
-
-        <h2 className="mt-6 text-sm font-bold text-neutral-800">{t("photos.deviceSection")}</h2>
-        {loading && <p className="mt-6 text-center text-sm text-neutral-400">{t("photos.loading")}</p>}
-        {error && <p className="mt-4 text-center text-sm text-rose-600">{error}</p>}
-        {!loading && !error && items.length === 0 && (
-          <p className="mt-8 text-center text-sm text-neutral-400">{t("photos.empty")}</p>
-        )}
-
-        <div className="mt-4 grid grid-cols-3 gap-1.5">
-          {items.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setDetail(p)}
-              className="group relative aspect-square overflow-hidden rounded-lg bg-neutral-100"
-            >
-              {urls[p.id] ? (
-                <img src={urls[p.id]} alt={p.caption ?? t("photos.noCaption")} className="h-full w-full object-cover" />
-              ) : (
-                <div className="h-full w-full bg-neutral-200" />
-              )}
-              {p.caption && (
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-1.5 pb-1 pt-3">
-                  <p className="truncate text-left text-[10px] font-medium text-white">{p.caption}</p>
-                </div>
-              )}
-            </button>
-          ))}
-        </div>
-          </>
-        )}
       </div>
 
-      {formOpen && (
-        <OverlayScrim
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
-          onDismiss={resetForm}
-          label={t("photos.cancel")}
-        >
-          <form
-            onSubmit={(e) => void handleSave(e)}
-            className="relative w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
-          >
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-base font-bold text-neutral-900">{formTitle}</h2>
-              <button type="button" onClick={resetForm} className="rounded-full p-1 text-neutral-400" aria-label={t("photos.cancel")}>
-                <X size={18} />
-              </button>
-            </div>
-            {pickPreviews.length > 1 && (
-              <div className="mb-3 grid grid-cols-4 gap-1.5">
-                {pickPreviews.map((src) => (
-                  <img key={src} src={src} alt="" className="aspect-square w-full rounded-lg object-cover bg-neutral-50" />
-                ))}
-              </div>
-            )}
-            {(pickPreviews.length === 1 || (editing && urls[editing.id])) && (
-              <img
-                src={pickPreviews[0] ?? urls[editing!.id]}
-                alt=""
-                className="mb-3 max-h-64 w-full rounded-xl object-contain bg-neutral-50"
-              />
-            )}
-            <label className="text-xs font-semibold text-neutral-500">{t("photos.caption")}</label>
-            <input
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              maxLength={200}
-              placeholder={t("photos.captionPlaceholder")}
-              className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
-            />
-            {formError && <p className="mt-3 text-sm text-rose-600">{formError}</p>}
-            <button
-              type="submit"
-              disabled={submitting}
-              className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white disabled:opacity-60"
-            >
-              {submitting
-                ? uploadProgress
-                  ? t("photos.savingCount", uploadProgress)
-                  : t("photos.saving")
-                : editing
-                  ? t("photos.save")
-                  : pickFiles.length > 1
-                    ? t("photos.addCount", { n: pickFiles.length })
-                    : t("photos.save")}
-            </button>
-          </form>
-        </OverlayScrim>
-      )}
-
-      {liveDetail && (
-        <ItemDetailSheet
-          title={liveDetail.caption || t("photos.noCaption")}
-          onClose={() => setDetail(null)}
-          onEdit={liveDetail.editable ? () => openEdit(liveDetail) : undefined}
-          onDelete={liveDetail.editable ? () => setConfirmDelete(liveDetail) : undefined}
-          canManage={liveDetail.editable}
-          closeLabel={t("photos.cancel")}
-          editLabel={t("photos.edit")}
-          deleteLabel={t("photos.delete")}
-        >
-          {urls[liveDetail.id] ? (
-            <img
-              src={urls[liveDetail.id]}
-              alt={liveDetail.caption ?? t("photos.noCaption")}
-              className="mb-3 max-h-[50vh] w-full rounded-xl object-contain bg-neutral-50"
-            />
-          ) : (
-            <div className="mb-3 h-40 rounded-xl bg-neutral-100" />
-          )}
-          <DetailRow label={t("photos.registeredBy")}>{liveDetail.ownerName}</DetailRow>
-          <DetailRow label={t("photos.addedAt")}>{formatPhotoDate(liveDetail.createdAt, lang)}</DetailRow>
-        </ItemDetailSheet>
-      )}
-
-      {icloudDetail && (
-        <ItemDetailSheet
-          title={icloudDetail.photo.caption || icloudDetail.album.name || t("photos.icloudTitle")}
-          onClose={() => setIcloudDetail(null)}
-          closeLabel={t("photos.cancel")}
-          editLabel={t("photos.edit")}
-          deleteLabel={t("photos.delete")}
-        >
-          <img
-            src={icloudDetail.photo.fullUrl}
-            alt={icloudDetail.photo.caption ?? t("photos.noCaption")}
-            referrerPolicy="no-referrer"
-            className="mb-3 max-h-[50vh] w-full rounded-xl object-contain bg-neutral-50"
-          />
-          {icloudDetail.photo.date && (
-            <DetailRow label={t("photos.addedAt")}>{formatPhotoDate(icloudDetail.photo.date, lang)}</DetailRow>
-          )}
-          <button
-            type="button"
-            disabled={icloudDownloading}
-            onClick={() => void handleDownloadIcloud()}
-            className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl bg-sky-700 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            <Download size={16} />
-            {icloudDownloading ? t("photos.icloudDownloading") : t("photos.icloudDownload")}
-          </button>
-        </ItemDetailSheet>
-      )}
-
-      {confirmDelete && (
-        <OverlayScrim
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
-          onDismiss={() => setConfirmDelete(null)}
-          label={t("photos.cancel")}
-          swipeToDismiss={false}
-        >
-          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
-            <h2 className="text-base font-bold text-neutral-900">{t("photos.delete")}</h2>
-            <p className="mt-2 text-sm text-neutral-500">
-              {t("photos.deleteConfirm", { name: confirmDelete.caption || t("photos.noCaption") })}
-            </p>
-            <div className="mt-5 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(null)}
-                className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-semibold text-neutral-600"
-              >
-                {t("photos.cancel")}
-              </button>
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => void handleDeleteConfirmed()}
-                className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {t("photos.delete")}
-              </button>
-            </div>
-          </div>
-        </OverlayScrim>
+      {viewer && viewerPhotos.length > 0 && (
+        <PhotoLightbox
+          photos={viewerPhotos}
+          index={viewerIndex}
+          albumTitle={viewerAlbum?.name ?? undefined}
+          onIndexChange={(next) => setViewer({ albumId: viewer.albumId, index: next })}
+          onClose={() => setViewer(null)}
+          onDownload={() => void handleDownloadIcloud()}
+          downloading={icloudDownloading}
+        />
       )}
 
       {confirmUnlink && (
