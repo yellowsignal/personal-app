@@ -1,10 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  lockPhotoViewerAxis,
   PHOTO_VIEWER_AXIS_LOCK_PX,
+  PHOTO_ZOOM_DOUBLE_TAP,
+  PHOTO_ZOOM_MAX,
+  PHOTO_ZOOM_MIN,
+  clampPhotoPan,
+  clampPhotoZoom,
+  isPhotoZoomed,
+  lockPhotoViewerAxis,
+  nextDoubleTapZoom,
   photoViewerBackdropOpacity,
   photoViewerDragOffset,
+  photoZoomAtPoint,
+  pinchScale,
+  pointerDistance,
+  pointerMidpoint,
   settlePhotoViewerGesture,
 } from "./photoViewer";
 
@@ -136,4 +147,33 @@ test("photoViewerDragOffset damps horizontal drag at the edges and ignores upwar
     { x: 0, y: 0 },
   );
   assert.ok(photoViewerBackdropOpacity(210) < photoViewerBackdropOpacity(0));
+});
+
+test("clampPhotoZoom stays between min and max", () => {
+  assert.equal(clampPhotoZoom(0.2), PHOTO_ZOOM_MIN);
+  assert.equal(clampPhotoZoom(9), PHOTO_ZOOM_MAX);
+  assert.equal(clampPhotoZoom(2.25), 2.25);
+});
+
+test("clampPhotoPan resets when not zoomed and clamps when zoomed", () => {
+  assert.deepEqual(clampPhotoPan(40, -20, 1, 400, 600), { tx: 0, ty: 0 });
+  assert.deepEqual(clampPhotoPan(500, -500, 2, 400, 600), { tx: 200, ty: -300 });
+});
+
+test("nextDoubleTapZoom toggles between 1x and double-tap zoom", () => {
+  assert.equal(nextDoubleTapZoom(1), PHOTO_ZOOM_DOUBLE_TAP);
+  assert.equal(nextDoubleTapZoom(2.5), PHOTO_ZOOM_MIN);
+});
+
+test("pinchScale and photoZoomAtPoint keep focal geometry", () => {
+  assert.equal(pinchScale(1, 100, 200), 2);
+  assert.equal(pinchScale(2, 100, 50), 1);
+  const next = photoZoomAtPoint({ scale: 1, tx: 0, ty: 0 }, 2, 100, 50, 400, 600);
+  assert.equal(next.scale, 2);
+  assert.equal(next.tx, -100);
+  assert.equal(next.ty, -50);
+  assert.equal(isPhotoZoomed(1), false);
+  assert.equal(isPhotoZoomed(1.2), true);
+  assert.equal(pointerDistance({ x: 0, y: 0 }, { x: 3, y: 4 }), 5);
+  assert.deepEqual(pointerMidpoint({ x: 0, y: 0 }, { x: 10, y: 20 }), { x: 5, y: 10 });
 });
