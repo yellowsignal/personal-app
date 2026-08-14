@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import BottomNav from "../components/BottomNav";
 import PushOnboardingSheet from "../components/PushOnboardingSheet";
-import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { resetWindowScroll, useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 export default function AppLayout() {
   const { pathname } = useLocation();
@@ -10,14 +10,24 @@ export default function AppLayout() {
   const isHome = pathname === "/";
 
   useEffect(() => {
-    // SPA route changes keep window scroll; home is a fixed viewport and would clip if scrollY > 0.
-    // Reset before locking so home never inherits the previous page's offset.
-    window.scrollTo(0, 0);
-    document.documentElement.scrollTop = 0;
-    document.body.scrollTop = 0;
+    // SPA route changes keep window scroll; home lock/unlock can also re-apply an old offset on iOS.
+    // Reset immediately and again on the next frames so TopBar is never clipped after navigation.
+    resetWindowScroll();
+    const raf1 = window.requestAnimationFrame(() => {
+      resetWindowScroll();
+      window.requestAnimationFrame(resetWindowScroll);
+    });
+    const t0 = window.setTimeout(resetWindowScroll, 0);
+    const t1 = window.setTimeout(resetWindowScroll, 50);
+    return () => {
+      window.cancelAnimationFrame(raf1);
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
+    };
   }, [pathname]);
 
-  useBodyScrollLock(isHome);
+  // Home uses a fixed viewport; do not restore the previous page's scrollY when leaving home.
+  useBodyScrollLock(isHome, { restoreScroll: false });
 
   return (
     <div className={`flex justify-center bg-neutral-200 ${isHome ? "h-[100dvh] overflow-hidden overscroll-none" : "min-h-screen"}`}>

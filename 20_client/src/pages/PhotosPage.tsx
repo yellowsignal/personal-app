@@ -103,7 +103,11 @@ export default function PhotosPage() {
       }
       closeForm();
     } catch (err) {
-      setIcloudError(err instanceof ApiError ? err.message : t("photos.icloudError"));
+      if (err instanceof ApiError && err.code === "ICLOUD_NOT_FOUND") {
+        setIcloudError(t("photos.icloudNotPublic"));
+      } else {
+        setIcloudError(err instanceof ApiError ? err.message : t("photos.icloudError"));
+      }
     } finally {
       setIcloudSaving(false);
     }

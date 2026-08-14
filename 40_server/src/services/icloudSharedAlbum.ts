@@ -219,10 +219,29 @@ async function fetchLegacyAlbum(
   includeAssets: boolean,
   maxPhotos: number,
 ): Promise<IcloudAlbum> {
-  const firstHost = `p${getLegacyPartition(token)}-sharedstreams.icloud.com`;
   const body = JSON.stringify({ streamCtag: null });
-  let host = firstHost;
+  // Prefer a bootstrap host that returns 330 + X-Apple-MMe-Host; computed partition can 404
+  // immediately on some albums even when the redirect host is the same.
+  const bootstrapHosts = [
+    `p${getLegacyPartition(token)}-sharedstreams.icloud.com`,
+    "sharedstreams.icloud.com",
+    "p01-sharedstreams.icloud.com",
+    "p12-sharedstreams.icloud.com",
+  ];
+
+  let host = bootstrapHosts[0]!;
   let streamRes = await postJson(http, `https://${host}/${token}/sharedstreams/webstream`, body);
+
+  if (streamRes.status !== 200 && streamRes.status !== 330) {
+    for (const candidate of bootstrapHosts.slice(1)) {
+      const attempt = await postJson(http, `https://${candidate}/${token}/sharedstreams/webstream`, body);
+      if (attempt.status === 200 || attempt.status === 330) {
+        host = candidate;
+        streamRes = attempt;
+        break;
+      }
+    }
+  }
 
   if (streamRes.status === 330) {
     const payload = asRecord(streamRes.json);
@@ -235,7 +254,9 @@ async function fetchLegacyAlbum(
     streamRes = await postJson(http, `https://${host}/${token}/sharedstreams/webstream`, body);
   }
 
-  if (streamRes.status !== 200) throw new IcloudAlbumError("iCloud album was not found");
+  if (streamRes.status !== 200) {
+    throw new IcloudAlbumError("iCloud album was not found");
+  }
   const stream = asRecord(streamRes.json);
   if (!stream) throw new IcloudAlbumError("iCloud album was not found");
   const name = str(stream.streamName) ?? "Shared Album";

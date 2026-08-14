@@ -406,3 +406,27 @@ test("icloud album POST does not save when Apple fetch fails", async () => {
     server.close();
   }
 });
+
+test("icloud album POST returns ICLOUD_NOT_FOUND when Apple responds 404", async () => {
+  const app = createApp(tmpStore(), {
+    authRepo: new MemoryAuthRepository(),
+    photoRepo: new MemoryPhotoRepository(),
+    photoStore: tmpPhotoStore(),
+    jwtSecret: "test-secret",
+    icloudFetch: (async () => new Response("", { status: 404 })) as typeof fetch,
+  });
+  const { server, base } = await listen(app);
+  try {
+    const owner = await registerOwner(base);
+    const saved = await fetch(`${base}/api/photos/icloud-albums`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${owner.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ url: "https://www.icloud.com/sharedalbum/#B2cJtdOXmGRtmE5" }),
+    });
+    assert.equal(saved.status, 400);
+    const body = (await saved.json()) as { code?: string };
+    assert.equal(body.code, "ICLOUD_NOT_FOUND");
+  } finally {
+    server.close();
+  }
+});

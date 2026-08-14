@@ -96,6 +96,13 @@ export class IcloudSharedAlbumService {
       return { id: row.id, url: row.url, name: album.name, photos: album.photos };
     } catch (err) {
       if (err instanceof HttpError) throw err;
+      if (err instanceof IcloudAlbumError && /not found/i.test(err.message)) {
+        throw new HttpError(
+          400,
+          "iCloud album not found — enable Public Website in the Photos app, then copy the link again",
+          "ICLOUD_NOT_FOUND",
+        );
+      }
       throw new HttpError(400, "could not open iCloud album", "ICLOUD_FETCH_FAILED");
     }
   }
@@ -124,6 +131,13 @@ export class IcloudSharedAlbumService {
       const code = (err as { code?: string }).code;
       if (code === "P2002" || code === "ALBUM_EXISTS") {
         throw new HttpError(409, "this iCloud album is already linked", "ALBUM_EXISTS");
+      }
+      if (err instanceof IcloudAlbumError && /not found/i.test(err.message)) {
+        throw new HttpError(
+          400,
+          "iCloud album not found — enable Public Website in the Photos app, then copy the link again",
+          "ICLOUD_NOT_FOUND",
+        );
       }
       throw new HttpError(400, "could not open iCloud album", "ICLOUD_FETCH_FAILED");
     }

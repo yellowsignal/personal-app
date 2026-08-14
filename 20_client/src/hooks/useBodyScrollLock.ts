@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 let lockCount = 0;
 let savedScrollY = 0;
+let restoreOnUnlock = true;
 let savedStyles: {
   overflow: string;
   position: string;
@@ -12,14 +13,26 @@ let savedStyles: {
   htmlOverflow: string;
 } | null = null;
 
-function lockBody() {
+export function resetWindowScroll(): void {
+  if (typeof window === "undefined") return;
+  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+}
+
+function lockBody(options?: { restoreScroll?: boolean }) {
   if (typeof document === "undefined") return;
   lockCount += 1;
   if (lockCount !== 1) return;
 
   const body = document.body;
   const html = document.documentElement;
-  savedScrollY = window.scrollY || html.scrollTop || 0;
+  // When restoreScroll is false (home viewport lock), never re-apply a previous page offset on unlock.
+  restoreOnUnlock = options?.restoreScroll !== false;
+  savedScrollY = restoreOnUnlock ? window.scrollY || html.scrollTop || 0 : 0;
+  if (!restoreOnUnlock) {
+    resetWindowScroll();
+  }
   savedStyles = {
     overflow: body.style.overflow,
     position: body.style.position,
@@ -33,7 +46,7 @@ function lockBody() {
   const scrollbarGap = window.innerWidth - html.clientWidth;
   body.style.overflow = "hidden";
   body.style.position = "fixed";
-  body.style.top = `-${savedScrollY}px`;
+  body.style.top = restoreOnUnlock ? `-${savedScrollY}px` : "0";
   body.style.left = "0";
   body.style.width = "100%";
   if (scrollbarGap > 0) {
@@ -50,6 +63,8 @@ function unlockBody() {
 
   const body = document.body;
   const html = document.documentElement;
+  const shouldRestore = restoreOnUnlock;
+  const y = savedScrollY;
   body.style.overflow = savedStyles.overflow;
   body.style.position = savedStyles.position;
   body.style.top = savedStyles.top;
@@ -59,14 +74,26 @@ function unlockBody() {
   html.style.overflow = savedStyles.htmlOverflow;
   html.style.overscrollBehavior = "";
   savedStyles = null;
-  window.scrollTo(0, savedScrollY);
+  restoreOnUnlock = true;
+  savedScrollY = 0;
+  if (shouldRestore) {
+    window.scrollTo(0, y);
+  } else {
+    resetWindowScroll();
+  }
 }
 
+export type BodyScrollLockOptions = {
+  /** When false, unlock always returns to the top (used for the home fixed viewport). Default true. */
+  restoreScroll?: boolean;
+};
+
 /** Lock page scroll while a modal/sheet is open (ref-counted for stacked overlays). */
-export function useBodyScrollLock(active = true) {
+export function useBodyScrollLock(active = true, options: BodyScrollLockOptions = {}) {
+  const restoreScroll = options.restoreScroll !== false;
   useEffect(() => {
     if (!active) return;
-    lockBody();
+    lockBody({ restoreScroll });
     return () => unlockBody();
-  }, [active]);
+  }, [active, restoreScroll]);
 }
