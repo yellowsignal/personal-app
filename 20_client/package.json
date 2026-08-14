@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "typecheck": "tsc -b --noEmit",
-    "test": "node --import tsx --test src/utils/swipeGesture.test.ts src/utils/sheetDismiss.test.ts src/utils/calendarCategoryFilters.test.ts src/api/pushOnboarding.test.ts src/utils/photoUpload.test.ts src/utils/photoViewer.test.ts"
+    "test": "node --import tsx --test src/utils/swipeGesture.test.ts src/utils/sheetDismiss.test.ts src/utils/calendarCategoryFilters.test.ts src/api/pushOnboarding.test.ts src/utils/photoUpload.test.ts src/utils/photoViewer.test.ts src/utils/composerKeyboard.test.ts"
   },
   "dependencies": {
     "@simplewebauthn/browser": "^13.3.0",

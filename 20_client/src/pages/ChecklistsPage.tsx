@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useKeepLastItemAboveComposer } from "../hooks/useKeepLastItemAboveComposer";
 import { ArrowLeft, Check, ListChecks, Plus, Share2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
@@ -71,6 +72,11 @@ export default function ChecklistsPage() {
   const [editingList, setEditingList] = useState<PublicChecklist | PublicChecklistDetail | null>(null);
   const [listTitleDraft, setListTitleDraft] = useState("");
   const [listSharedDraft, setListSharedDraft] = useState(false);
+  const [composerFocused, setComposerFocused] = useState(false);
+  const listEndRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLFormElement | null>(null);
+
+  useKeepLastItemAboveComposer(composerFocused, listEndRef, composerRef, detail?.itemCount ?? 0);
 
   const loadLists = useCallback(async () => {
     if (!token) return;
@@ -361,6 +367,7 @@ export default function ChecklistsPage() {
                 setEditingItem(null);
                 setItemMeta(null);
                 setSwipeItemId(null);
+                setComposerFocused(false);
               }}
               className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-neutral-600"
               aria-label={t("checklists.back")}
@@ -370,7 +377,7 @@ export default function ChecklistsPage() {
           }
         />
 
-        <div className="mx-auto max-w-md px-4 pt-3 pb-28">
+        <div className="mx-auto max-w-md px-4 pt-3 pb-6" style={{ overflowAnchor: "none" }}>
           <div className="mb-3 flex items-center justify-between px-1">
             <p className="text-xs text-neutral-400">
               {detail.ownerName} · {t("checklists.itemCount", { n: detail.itemCount })}
@@ -407,11 +414,14 @@ export default function ChecklistsPage() {
             </ul>
           )}
 
+          <div ref={listEndRef} />
+
           <form
+            ref={composerRef}
             onSubmit={(e) => void handleAddItem(e)}
-            className="fixed inset-x-0 bottom-16 z-10 border-t border-black/5 bg-white/95 px-4 py-3 backdrop-blur safe-bottom"
+            className="mt-3 rounded-2xl border border-black/5 bg-white/95 p-3 shadow-sm backdrop-blur"
           >
-            <div className="mx-auto max-w-md">
+            <div>
               {parentForAdd && (
                 <div className="mb-2 flex items-center justify-between rounded-lg bg-indigo-50 px-3 py-1.5 text-xs text-indigo-700">
                   <span>{t("checklists.addingUnder", { title: parentForAdd.title })}</span>
@@ -428,11 +438,12 @@ export default function ChecklistsPage() {
                 <input
                   value={itemDraft}
                   onChange={(e) => setItemDraft(e.target.value)}
+                  onFocus={() => setComposerFocused(true)}
+                  onBlur={() => setComposerFocused(false)}
                   placeholder={
                     parentForAdd ? t("checklists.placeholderChild") : t("checklists.placeholderItem")
                   }
                   className="min-w-0 flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
-                  autoFocus
                 />
                 <button
                   type="submit"
