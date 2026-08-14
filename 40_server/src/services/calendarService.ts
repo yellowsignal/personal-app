@@ -414,6 +414,17 @@ export class CalendarService {
       throw new HttpError(400, "join a family before sharing events", "NO_FAMILY");
     }
 
+    const reminderMinutesBefore =
+      body.reminderMinutesBefore === undefined
+        ? undefined
+        : parseReminderMinutes(body.reminderMinutesBefore, null);
+
+    const scheduleChanged =
+      startTime.getTime() !== existing.startTime.getTime() ||
+      endTime.getTime() !== existing.endTime.getTime() ||
+      isAllDay !== existing.isAllDay ||
+      (reminderMinutesBefore !== undefined && reminderMinutesBefore !== existing.reminderMinutesBefore);
+
     const updated = await this.calendarRepo.update(id, {
       title:
         typeof body.title === "string" && body.title.trim()
@@ -433,10 +444,10 @@ export class CalendarService {
       familyId: isShared === undefined ? undefined : isShared ? user.familyId : null,
       recurrence:
         body.recurrence === undefined ? undefined : nextRecurrence,
-      reminderMinutesBefore:
-        body.reminderMinutesBefore === undefined
-          ? undefined
-          : parseReminderMinutes(body.reminderMinutesBefore, null),
+      reminderMinutesBefore,
+      ...(scheduleChanged
+        ? { isReminderSent: false, reminderSentFor: null as string | null }
+        : {}),
     });
     return toPublicCalendarEvent(updated, user.name, true);
   }

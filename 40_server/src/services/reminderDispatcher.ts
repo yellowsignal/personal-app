@@ -10,6 +10,51 @@ import type { PushService } from "./pushService.js";
 const CATCHUP_AFTER_START_MS = 2 * 60 * 60 * 1000;
 /** All-day reminders are anchored to this floating clock on the occurrence day. */
 const ALL_DAY_ANCHOR_HOUR_UTC = 9;
+/** Product default when country pref is missing / BOTH / unknown. */
+const DEFAULT_REMINDER_TZ = "Asia/Tokyo";
+
+/**
+ * Map holiday country pref → IANA zone for reminder wall-clock.
+ * KR/JP are both UTC+9 (no DST); BOTH defaults to Tokyo.
+ */
+export function timeZoneFromCountryPref(pref: string | null | undefined): string {
+  const p = (pref ?? "JP").trim().toUpperCase();
+  if (p === "KR") return "Asia/Seoul";
+  return DEFAULT_REMINDER_TZ;
+}
+
+/**
+ * Calendar times are stored as floating UTC (HH:mm via setUTCHours).
+ * Project real `now` into the same floating timeline using the owner's wall clock.
+ */
+export function toFloatingNow(now: Date, timeZone: string): Date {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(now)
+      .filter((p) => p.type !== "literal")
+      .map((p) => [p.type, p.value]),
+  ) as Record<string, string>;
+  return new Date(
+    Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+      Number(parts.second),
+      now.getUTCMilliseconds(),
+    ),
+  );
+}
 
 export function reminderFireAt(start: Date, minutesBefore: number, isAllDay: boolean): Date {
   if (!isAllDay) {
@@ -40,9 +85,18 @@ export class ReminderDispatcher {
   async tick(now = new Date()): Promise<number> {
     const events = await this.calendarRepo.listWithReminders();
     let sent = 0;
+    const tzByUser = new Map<number, string>();
+
     for (const ev of events) {
       if (ev.reminderMinutesBefore == null) continue;
-      const dueKeys = this.dueOccurrenceKeys(ev, now);
+      let tz = tzByUser.get(ev.userId);
+      if (!tz) {
+        const owner = await this.authRepo.findUserById(ev.userId);
+        tz = timeZoneFromCountryPref(owner?.countryPref);
+        tzByUser.set(ev.userId, tz);
+      }
+      const floatingNow = toFloatingNow(now, tz);
+      const dueKeys = this.dueOccurrenceKeys(ev, floatingNow);
       for (const { key, start } of dueKeys) {
         if (ev.reminderSentFor === key) continue;
         const recipients = await this.recipientIds(ev);
@@ -65,7 +119,7 @@ export class ReminderDispatcher {
         });
         ev.reminderSentFor = key;
         sent += 1;
-        console.log(`[reminders] sent event=${ev.id} occ=${key} title=${ev.title}`);
+        console.log(`[reminders] sent event=${ev.id} occ=${key} title=${ev.title} tz=${tz}`);
       }
     }
     return sent;
@@ -73,7 +127,7 @@ export class ReminderDispatcher {
 
   private dueOccurrenceKeys(
     ev: CalendarEventRecord,
-    now: Date,
+    floatingNow: Date,
   ): Array<{ key: string; start: Date }> {
     const minutes = ev.reminderMinutesBefore ?? 0;
     const out: Array<{ key: string; start: Date }> = [];
@@ -81,7 +135,7 @@ export class ReminderDispatcher {
     if (!ev.recurrence) {
       const fireAt = reminderFireAt(ev.startTime, minutes, ev.isAllDay);
       const latestAt = reminderLatestAt(ev.startTime, ev.endTime, ev.isAllDay);
-      if (isReminderDue(now, fireAt, latestAt)) {
+      if (isReminderDue(floatingNow, fireAt, latestAt)) {
         out.push({ key: toDateKey(ev.startTime), start: ev.startTime });
       }
       return out;
@@ -89,15 +143,15 @@ export class ReminderDispatcher {
 
     const startDay = utcDateOnly(ev.startTime);
     // Look far enough back that a "1 day before" all-day reminder can still catch up on the day.
-    const from = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000 - minutes * 60_000);
-    const to = new Date(now.getTime() + minutes * 60_000 + 24 * 60 * 60 * 1000);
+    const from = new Date(floatingNow.getTime() - 3 * 24 * 60 * 60 * 1000 - minutes * 60_000);
+    const to = new Date(floatingNow.getTime() + minutes * 60_000 + 24 * 60 * 60 * 1000);
     const occs = expandRecurrence(ev.recurrence, startDay, from, to);
     for (const occ of occs) {
       const start = shiftDateTime(ev.startTime, startDay, occ);
       const end = shiftDateTime(ev.endTime, startDay, occ);
       const fireAt = reminderFireAt(start, minutes, ev.isAllDay);
       const latestAt = reminderLatestAt(start, end, ev.isAllDay);
-      if (isReminderDue(now, fireAt, latestAt)) {
+      if (isReminderDue(floatingNow, fireAt, latestAt)) {
         out.push({ key: toDateKey(occ), start });
       }
     }
