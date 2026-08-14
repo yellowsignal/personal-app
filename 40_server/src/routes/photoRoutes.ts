@@ -37,7 +37,7 @@ export function createPhotoRouter(
 
   router.get("/", auth, async (req: AuthedRequest, res) => {
     try {
-      const items = await service.list(req.userId!, req.query.scope);
+      const items = await service.list(req.userId!);
       res.json(items);
     } catch (err) {
       sendError(res, err);

@@ -1,5 +1,4 @@
 import { apiFetch, ApiError } from "./http";
-import type { ViewScope } from "../components/ScopeToggle";
 
 export interface PublicPhoto {
   id: number;
@@ -34,18 +33,17 @@ export interface IcloudAlbumsResponse {
 }
 
 export const photosApi = {
-  list(token: string, scope: ViewScope = "all") {
-    return apiFetch<PublicPhoto[]>(`/api/photos?scope=${scope}`, { token });
+  list(token: string) {
+    return apiFetch<PublicPhoto[]>("/api/photos", { token });
   },
 
   async upload(
     token: string,
     file: Blob,
-    opts: { caption?: string; isShared?: boolean } = {},
+    opts: { caption?: string } = {},
   ): Promise<PublicPhoto> {
     const params = new URLSearchParams();
     if (opts.caption) params.set("caption", opts.caption);
-    if (opts.isShared) params.set("isShared", "true");
     const qs = params.toString();
     const res = await fetch(`/api/photos${qs ? `?${qs}` : ""}`, {
       method: "POST",
@@ -62,7 +60,7 @@ export const photosApi = {
     return data;
   },
 
-  update(token: string, id: number, body: { caption?: string | null; isShared?: boolean }) {
+  update(token: string, id: number, body: { caption?: string | null }) {
     return apiFetch<PublicPhoto>(`/api/photos/${id}`, {
       method: "PATCH",
       token,

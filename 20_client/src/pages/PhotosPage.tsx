@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { useSearchParams } from "react-router-dom";
 import { Cloud, Download, ImagePlus, Plus, X } from "lucide-react";
 import TopBar from "../components/TopBar";
-import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
-import SharedBadge from "../components/SharedBadge";
 import OverlayScrim from "../components/OverlayScrim";
 import ItemDetailSheet, { DetailRow } from "../components/ItemDetailSheet";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -76,7 +74,6 @@ export default function PhotosPage() {
   const { t, lang } = useLanguage();
   const { token, family } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [scope, setScope] = useState<ViewScope>("all");
   const [items, setItems] = useState<PublicPhoto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +84,6 @@ export default function PhotosPage() {
   const [pickFiles, setPickFiles] = useState<File[]>([]);
   const [pickPreviews, setPickPreviews] = useState<string[]>([]);
   const [caption, setCaption] = useState("");
-  const [isShared, setIsShared] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
@@ -111,7 +107,7 @@ export default function PhotosPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await photosApi.list(token, scope);
+      const data = await photosApi.list(token);
       setItems(data);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("photos.errorLoad"));
@@ -119,7 +115,7 @@ export default function PhotosPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, scope, t]);
+  }, [token, t]);
 
   const loadIcloud = useCallback(async () => {
     if (!token || !family) {
@@ -178,13 +174,13 @@ export default function PhotosPage() {
     setEditing(null);
     setPickFiles([]);
     setCaption("");
-    setIsShared(Boolean(family));
     setFormError(null);
     setUploadProgress(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function openCreatePicker() {
+    if (!family) return;
     fileInputRef.current?.click();
   }
 
@@ -198,7 +194,6 @@ export default function PhotosPage() {
     setEditing(null);
     setPickFiles(selected.files);
     setCaption("");
-    setIsShared(Boolean(family));
     setFormError(
       selected.truncated > 0 ? t("photos.truncated", { max: MAX_PHOTO_UPLOAD }) : null,
     );
@@ -210,7 +205,6 @@ export default function PhotosPage() {
     setEditing(photo);
     setPickFiles([]);
     setCaption(photo.caption ?? "");
-    setIsShared(photo.isShared);
     setFormError(null);
     setFormOpen(true);
   }
@@ -224,7 +218,6 @@ export default function PhotosPage() {
       if (editing) {
         const updated = await photosApi.update(token, editing.id, {
           caption: caption.trim() || null,
-          isShared,
         });
         setItems((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
         setDetail(updated);
@@ -242,7 +235,6 @@ export default function PhotosPage() {
           try {
             last = await photosApi.upload(token, pickFiles[i], {
               caption: caption.trim() || undefined,
-              isShared,
             });
             ok += 1;
           } catch {
@@ -349,20 +341,20 @@ export default function PhotosPage() {
         title={t("photos.title")}
         subtitle={t("photos.subtitle")}
         right={
-          <button
-            type="button"
-            onClick={openCreatePicker}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-white"
-            aria-label={t("photos.add")}
-          >
-            <Plus size={18} />
-          </button>
+          family ? (
+            <button
+              type="button"
+              onClick={openCreatePicker}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-white"
+              aria-label={t("photos.add")}
+            >
+              <Plus size={18} />
+            </button>
+          ) : undefined
         }
       />
 
       <div className="mx-auto max-w-md px-4 pt-4 pb-8">
-        <ScopeToggle value={scope} onChange={setScope} />
-
         <input
           ref={fileInputRef}
           type="file"
@@ -497,10 +489,12 @@ export default function PhotosPage() {
           </section>
         ) : (
           <p className="mt-4 rounded-2xl bg-neutral-50 px-4 py-3 text-xs text-neutral-500">
-            {t("photos.icloudNeedFamily")}
+            {t("photos.needFamily")}
           </p>
         )}
 
+        {family && (
+          <>
         <button
           type="button"
           onClick={openCreatePicker}
@@ -531,11 +525,6 @@ export default function PhotosPage() {
               ) : (
                 <div className="h-full w-full bg-neutral-200" />
               )}
-              {p.isShared && (
-                <span className="absolute right-1 top-1 rounded-full bg-black/30 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                  {t("photos.familyBadge")}
-                </span>
-              )}
               {p.caption && (
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-1.5 pb-1 pt-3">
                   <p className="truncate text-left text-[10px] font-medium text-white">{p.caption}</p>
@@ -544,6 +533,8 @@ export default function PhotosPage() {
             </button>
           ))}
         </div>
+          </>
+        )}
       </div>
 
       {formOpen && (
@@ -584,17 +575,6 @@ export default function PhotosPage() {
               placeholder={t("photos.captionPlaceholder")}
               className="mt-1 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
             />
-            <label className={`mt-4 flex items-center gap-2 text-sm ${family ? "text-neutral-700" : "text-neutral-400"}`}>
-              <input
-                type="checkbox"
-                checked={isShared}
-                disabled={!family}
-                onChange={(e) => setIsShared(e.target.checked)}
-                className="rounded border-neutral-300"
-              />
-              {t("photos.shareWithFamily")}
-            </label>
-            {!family && <p className="mt-1 text-[11px] text-neutral-400">{t("photos.needFamilyToShare")}</p>}
             {formError && <p className="mt-3 text-sm text-rose-600">{formError}</p>}
             <button
               type="submit"
@@ -635,9 +615,6 @@ export default function PhotosPage() {
           ) : (
             <div className="mb-3 h-40 rounded-xl bg-neutral-100" />
           )}
-          <DetailRow label={t("photos.shareWithFamily")}>
-            <SharedBadge isShared={liveDetail.isShared} />
-          </DetailRow>
           <DetailRow label={t("photos.registeredBy")}>{liveDetail.ownerName}</DetailRow>
           <DetailRow label={t("photos.addedAt")}>{formatPhotoDate(liveDetail.createdAt, lang)}</DetailRow>
         </ItemDetailSheet>

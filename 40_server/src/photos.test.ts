@@ -72,7 +72,7 @@ test("sniffPhotoMime reads jpeg/png when content-type is missing", () => {
   assert.equal(sniffPhotoMime(Buffer.from("not-an-image")), null);
 });
 
-test("photos create/list/file/delete and personal vs family scope", async () => {
+test("photos create is always family-shared; members can view, only owner deletes", async () => {
   const app = photoApp();
   const { server, base } = await listen(app);
   try {
@@ -81,7 +81,7 @@ test("photos create/list/file/delete and personal vs family scope", async () => 
       headers: { authorization: `Bearer ${owner.token}` },
     }).then((r) => r.json())) as { inviteCode: string };
 
-    const privateRes = await fetch(`${base}/api/photos?caption=${encodeURIComponent("개인")}`, {
+    const created = await fetch(`${base}/api/photos?caption=${encodeURIComponent("가족")}`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${owner.token}`,
@@ -89,50 +89,28 @@ test("photos create/list/file/delete and personal vs family scope", async () => 
       },
       body: PNG_1X1,
     });
-    assert.equal(privateRes.status, 201);
-    const privatePhoto = (await privateRes.json()) as {
+    assert.equal(created.status, 201);
+    const photo = (await created.json()) as {
       id: number;
       caption: string;
       isShared: boolean;
       fileUrl: string;
       editable: boolean;
     };
-    assert.equal(privatePhoto.caption, "개인");
-    assert.equal(privatePhoto.isShared, false);
-    assert.equal(privatePhoto.editable, true);
+    assert.equal(photo.caption, "가족");
+    assert.equal(photo.isShared, true);
+    assert.equal(photo.editable, true);
 
-    const sharedRes = await fetch(
-      `${base}/api/photos?caption=${encodeURIComponent("가족")}&isShared=true`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${owner.token}`,
-          "content-type": "application/octet-stream",
-        },
-        body: JPEG_1X1,
-      },
-    );
-    assert.equal(sharedRes.status, 201);
-    const sharedPhoto = (await sharedRes.json()) as { id: number; isShared: boolean };
-    assert.equal(sharedPhoto.isShared, true);
-
-    const personalList = await fetch(`${base}/api/photos?scope=personal`, {
+    const listed = await fetch(`${base}/api/photos`, {
       headers: { authorization: `Bearer ${owner.token}` },
     });
-    assert.equal(personalList.status, 200);
-    const personalItems = (await personalList.json()) as Array<{ caption: string }>;
-    assert.equal(personalItems.length, 1);
-    assert.equal(personalItems[0].caption, "개인");
+    assert.equal(listed.status, 200);
+    const items = (await listed.json()) as Array<{ caption: string; isShared: boolean }>;
+    assert.equal(items.length, 1);
+    assert.equal(items[0].caption, "가족");
+    assert.equal(items[0].isShared, true);
 
-    const familyList = await fetch(`${base}/api/photos?scope=family`, {
-      headers: { authorization: `Bearer ${owner.token}` },
-    });
-    assert.equal(familyList.status, 200);
-    const familyItems = (await familyList.json()) as Array<{ caption: string }>;
-    assert.equal(familyItems.length, 1);
-    assert.equal(familyItems[0].caption, "가족");
-
-    const fileRes = await fetch(`${base}${privatePhoto.fileUrl}`, {
+    const fileRes = await fetch(`${base}${photo.fileUrl}`, {
       headers: { authorization: `Bearer ${owner.token}` },
     });
     assert.equal(fileRes.status, 200);
@@ -153,42 +131,37 @@ test("photos create/list/file/delete and personal vs family scope", async () => 
     assert.equal(memberReg.status, 201);
     const member = (await memberReg.json()) as { token: string };
 
-    const memberFamilyList = await fetch(`${base}/api/photos?scope=family`, {
+    const memberList = await fetch(`${base}/api/photos`, {
       headers: { authorization: `Bearer ${member.token}` },
     });
-    assert.equal(memberFamilyList.status, 200);
-    const memberFamilyItems = (await memberFamilyList.json()) as Array<{
+    assert.equal(memberList.status, 200);
+    const memberItems = (await memberList.json()) as Array<{
       id: number;
       caption: string;
       editable: boolean;
     }>;
-    assert.equal(memberFamilyItems.length, 1);
-    assert.equal(memberFamilyItems[0].caption, "가족");
-    assert.equal(memberFamilyItems[0].editable, false);
+    assert.equal(memberItems.length, 1);
+    assert.equal(memberItems[0].caption, "가족");
+    assert.equal(memberItems[0].editable, false);
 
-    const memberSharedFile = await fetch(`${base}/api/photos/${sharedPhoto.id}/file`, {
+    const memberFile = await fetch(`${base}/api/photos/${photo.id}/file`, {
       headers: { authorization: `Bearer ${member.token}` },
     });
-    assert.equal(memberSharedFile.status, 200);
+    assert.equal(memberFile.status, 200);
 
-    const memberPrivateFile = await fetch(`${base}/api/photos/${privatePhoto.id}/file`, {
-      headers: { authorization: `Bearer ${member.token}` },
-    });
-    assert.equal(memberPrivateFile.status, 403);
-
-    const memberDelete = await fetch(`${base}/api/photos/${sharedPhoto.id}`, {
+    const memberDelete = await fetch(`${base}/api/photos/${photo.id}`, {
       method: "DELETE",
       headers: { authorization: `Bearer ${member.token}` },
     });
     assert.equal(memberDelete.status, 403);
 
-    const ownerDelete = await fetch(`${base}/api/photos/${privatePhoto.id}`, {
+    const ownerDelete = await fetch(`${base}/api/photos/${photo.id}`, {
       method: "DELETE",
       headers: { authorization: `Bearer ${owner.token}` },
     });
     assert.equal(ownerDelete.status, 204);
 
-    const afterDelete = await fetch(`${base}/api/photos?scope=personal`, {
+    const afterDelete = await fetch(`${base}/api/photos`, {
       headers: { authorization: `Bearer ${owner.token}` },
     });
     const afterItems = (await afterDelete.json()) as unknown[];

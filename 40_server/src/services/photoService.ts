@@ -35,17 +35,11 @@ export class PhotoService {
     return Boolean(record.isShared && user.familyId && record.familyId === user.familyId);
   }
 
-  async list(userId: number, scopeRaw: unknown): Promise<PublicPhoto[]> {
+  async list(userId: number): Promise<PublicPhoto[]> {
     const user = await this.requireUser(userId);
-    const scope = scopeRaw === "personal" || scopeRaw === "family" ? scopeRaw : "all";
     const rows = await this.photoRepo.listForUser(user.id, user.familyId);
-    const filtered = rows.filter((p) => {
-      if (scope === "personal") return p.userId === user.id && !p.isShared;
-      if (scope === "family") return p.isShared;
-      return true;
-    });
     const out: PublicPhoto[] = [];
-    for (const row of filtered) {
+    for (const row of rows.filter((p) => p.isShared)) {
       out.push(toPublicPhoto(row, await this.ownerName(row.userId), user.id));
     }
     return out;
@@ -57,6 +51,7 @@ export class PhotoService {
     file: { bytes: Buffer; mime: string | undefined },
   ): Promise<PublicPhoto> {
     const user = await this.requireUser(userId);
+    if (!user.familyId) throw new HttpError(400, "join a family before adding photos", "NO_FAMILY");
     if (!file.bytes.length) throw new HttpError(400, "image is required");
     if (file.bytes.length > MAX_BYTES) throw new HttpError(400, "image is too large (max 12MB)");
     const mime = sniffPhotoMime(file.bytes, file.mime);
@@ -64,17 +59,13 @@ export class PhotoService {
 
     const caption =
       typeof body.caption === "string" ? body.caption.trim().slice(0, 200) || null : null;
-    const isShared = body.isShared === true || body.isShared === "true";
-    if (isShared && !user.familyId) {
-      throw new HttpError(400, "join a family before sharing photos", "NO_FAMILY");
-    }
 
     const record = await this.photoRepo.create({
       userId: user.id,
-      familyId: isShared ? user.familyId : null,
+      familyId: user.familyId,
       photoUrl: "",
       caption,
-      isShared,
+      isShared: true,
     });
     try {
       await this.store.save(record.id, file.bytes, mime);
@@ -86,19 +77,17 @@ export class PhotoService {
       photoUrl: `/api/photos/${record.id}/file`,
     });
 
-    if (isShared) {
-      try {
-        await this.activityService?.recordSharedCreate({
-          familyId: saved.familyId,
-          actorUserId: user.id,
-          actorName: user.name,
-          entityType: "PHOTO",
-          entityId: saved.id,
-          title: caption || "photo",
-        });
-      } catch (err) {
-        console.error("[photos] family activity after create failed", err);
-      }
+    try {
+      await this.activityService?.recordSharedCreate({
+        familyId: saved.familyId,
+        actorUserId: user.id,
+        actorName: user.name,
+        entityType: "PHOTO",
+        entityId: saved.id,
+        title: caption || "photo",
+      });
+    } catch (err) {
+      console.error("[photos] family activity after create failed", err);
     }
     return toPublicPhoto(saved, user.name, user.id);
   }
@@ -109,12 +98,6 @@ export class PhotoService {
     if (!existing) throw new HttpError(404, "photo not found", "NOT_FOUND");
     if (existing.userId !== user.id) throw new HttpError(403, "only the owner can edit this photo", "FORBIDDEN");
 
-    let isShared = existing.isShared;
-    if (body.isShared !== undefined) isShared = body.isShared === true || body.isShared === "true";
-    if (isShared && !user.familyId) {
-      throw new HttpError(400, "join a family before sharing photos", "NO_FAMILY");
-    }
-
     const updated = await this.photoRepo.update(id, {
       caption:
         body.caption === undefined
@@ -122,23 +105,9 @@ export class PhotoService {
           : typeof body.caption === "string"
             ? body.caption.trim().slice(0, 200) || null
             : null,
-      isShared: body.isShared === undefined ? undefined : isShared,
-      familyId: body.isShared === undefined ? undefined : isShared ? user.familyId : null,
+      isShared: true,
+      familyId: user.familyId ?? existing.familyId,
     });
-    if (isShared && !existing.isShared) {
-      try {
-        await this.activityService?.recordSharedCreate({
-          familyId: updated.familyId,
-          actorUserId: user.id,
-          actorName: user.name,
-          entityType: "PHOTO",
-          entityId: updated.id,
-          title: updated.caption || "photo",
-        });
-      } catch (err) {
-        console.error("[photos] family activity after share failed", err);
-      }
-    }
     return toPublicPhoto(updated, user.name, user.id);
   }
 
