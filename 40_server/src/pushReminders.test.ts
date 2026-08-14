@@ -354,3 +354,247 @@ test("updating event time or reminder clears reminderSentFor", async () => {
     server.close();
   }
 });
+
+test("UI default empty time is all-day and 1h reminder fires during the morning", async () => {
+  const authRepo = new MemoryAuthRepository();
+  const calendarRepo = new MemoryCalendarRepository();
+  const pushRepo = new MemoryPushRepository();
+  const delivered: PushPayload[] = [];
+  const keys = { ...webpush.generateVAPIDKeys(), subject: "mailto:test@example.com" };
+  const pushService = new PushService(pushRepo, keys, {
+    async send(_sub, payload) {
+      delivered.push(payload);
+      return "ok";
+    },
+  });
+  const app = createApp(tmpStore(), {
+    authRepo,
+    calendarRepo,
+    pushService,
+    passkeyRepo: new MemoryPasskeyRepository(),
+    inviteTokenRepo: new MemoryInviteTokenRepository(),
+    challengeStore: new ChallengeStore(),
+    jwtSecret: "test-secret",
+  });
+  const { server, base } = await listen(app);
+  try {
+    const register = await fetch(`${base}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "ui-default@example.com",
+        password: "password123",
+        name: "민호",
+        familyName: "최가네",
+        countryPref: "KR",
+      }),
+    });
+    assert.equal(register.status, 201);
+    const owner = (await register.json()) as { token: string };
+    await fetch(`${base}/api/push/subscribe`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${owner.token}` },
+      body: JSON.stringify({
+        endpoint: "https://push.example/ui-default",
+        keys: { p256dh: "p256", auth: "auth-token" },
+      }),
+    });
+    const created = await fetch(`${base}/api/calendar/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${owner.token}` },
+      body: JSON.stringify({
+        title: "종일",
+        date: "2026-08-14",
+        time: null,
+        reminderMinutesBefore: 60,
+      }),
+    });
+    assert.equal(created.status, 201);
+    const ev = (await created.json()) as { isAllDay: boolean; time: string | null };
+    assert.equal(ev.isAllDay, true);
+    assert.equal(ev.time, null);
+    const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
+    const sent = await dispatcher.tick(new Date("2026-08-14T02:20:00.000Z"));
+    assert.equal(sent, 1);
+    assert.equal(delivered[0]?.title, "종일");
+  } finally {
+    server.close();
+  }
+});
+
+test("timed 15:00 1h reminder is not due at 11:20 KST", async () => {
+  const authRepo = new MemoryAuthRepository();
+  const calendarRepo = new MemoryCalendarRepository();
+  const pushRepo = new MemoryPushRepository();
+  const keys = { ...webpush.generateVAPIDKeys(), subject: "mailto:test@example.com" };
+  const pushService = new PushService(pushRepo, keys, {
+    async send() {
+      return "ok";
+    },
+  });
+  const app = createApp(tmpStore(), {
+    authRepo,
+    calendarRepo,
+    pushService,
+    passkeyRepo: new MemoryPasskeyRepository(),
+    inviteTokenRepo: new MemoryInviteTokenRepository(),
+    challengeStore: new ChallengeStore(),
+    jwtSecret: "test-secret",
+  });
+  const { server, base } = await listen(app);
+  try {
+    const register = await fetch(`${base}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "too-early@example.com",
+        password: "password123",
+        name: "민호",
+        familyName: "최가네",
+        countryPref: "KR",
+      }),
+    });
+    const owner = (await register.json()) as { token: string };
+    await fetch(`${base}/api/push/subscribe`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${owner.token}` },
+      body: JSON.stringify({
+        endpoint: "https://push.example/too-early",
+        keys: { p256dh: "p256", auth: "auth-token" },
+      }),
+    });
+    await fetch(`${base}/api/calendar/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${owner.token}` },
+      body: JSON.stringify({
+        title: "오후",
+        date: "2026-08-14",
+        time: "15:00",
+        reminderMinutesBefore: 60,
+      }),
+    });
+    const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
+    const sent = await dispatcher.tick(new Date("2026-08-14T02:20:00.000Z"));
+    assert.equal(sent, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test("no push subscription leaves reminder unsent for retry", async () => {
+  const authRepo = new MemoryAuthRepository();
+  const calendarRepo = new MemoryCalendarRepository();
+  const pushRepo = new MemoryPushRepository();
+  const keys = { ...webpush.generateVAPIDKeys(), subject: "mailto:test@example.com" };
+  const pushService = new PushService(pushRepo, keys, {
+    async send() {
+      return "ok";
+    },
+  });
+  const app = createApp(tmpStore(), {
+    authRepo,
+    calendarRepo,
+    pushService,
+    passkeyRepo: new MemoryPasskeyRepository(),
+    inviteTokenRepo: new MemoryInviteTokenRepository(),
+    challengeStore: new ChallengeStore(),
+    jwtSecret: "test-secret",
+  });
+  const { server, base } = await listen(app);
+  try {
+    const register = await fetch(`${base}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "nosub@example.com",
+        password: "password123",
+        name: "민호",
+        familyName: "최가네",
+        countryPref: "KR",
+      }),
+    });
+    const owner = (await register.json()) as { token: string };
+    const created = await fetch(`${base}/api/calendar/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${owner.token}` },
+      body: JSON.stringify({
+        title: "구독없음",
+        date: "2026-08-14",
+        time: "15:00",
+        reminderMinutesBefore: 60,
+      }),
+    });
+    const ev = (await created.json()) as { id: string };
+    const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
+    const sent = await dispatcher.tick(new Date("2026-08-14T05:00:00.000Z"));
+    assert.equal(sent, 0);
+    const row = await calendarRepo.findById(Number(ev.id));
+    assert.equal(row?.reminderSentFor, null);
+  } finally {
+    server.close();
+  }
+});
+
+test("findUserById throw aborts the whole tick", async () => {
+  const authRepo = new MemoryAuthRepository();
+  const calendarRepo = new MemoryCalendarRepository();
+  const pushRepo = new MemoryPushRepository();
+  const delivered: PushPayload[] = [];
+  const keys = { ...webpush.generateVAPIDKeys(), subject: "mailto:test@example.com" };
+  const pushService = new PushService(pushRepo, keys, {
+    async send(_sub, payload) {
+      delivered.push(payload);
+      return "ok";
+    },
+  });
+  const app = createApp(tmpStore(), {
+    authRepo,
+    calendarRepo,
+    pushService,
+    passkeyRepo: new MemoryPasskeyRepository(),
+    inviteTokenRepo: new MemoryInviteTokenRepository(),
+    challengeStore: new ChallengeStore(),
+    jwtSecret: "test-secret",
+  });
+  const { server, base } = await listen(app);
+  try {
+    const register = await fetch(`${base}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "boom-tick@example.com",
+        password: "password123",
+        name: "boom",
+        familyName: "A",
+        countryPref: "KR",
+      }),
+    });
+    const owner = (await register.json()) as { token: string };
+    await fetch(`${base}/api/push/subscribe`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${owner.token}` },
+      body: JSON.stringify({
+        endpoint: "https://push.example/boom-tick",
+        keys: { p256dh: "p256", auth: "auth-token" },
+      }),
+    });
+    await fetch(`${base}/api/calendar/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${owner.token}` },
+      body: JSON.stringify({ title: "boom-event-1", date: "2026-08-14", time: "15:00", reminderMinutesBefore: 60 }),
+    });
+    await fetch(`${base}/api/calendar/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${owner.token}` },
+      body: JSON.stringify({ title: "boom-event-2", date: "2026-08-14", time: "15:00", reminderMinutesBefore: 60 }),
+    });
+    authRepo.findUserById = async () => {
+      throw new Error("simulated findUserById failure");
+    };
+    const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
+    await assert.rejects(() => dispatcher.tick(new Date("2026-08-14T05:00:00.000Z")));
+    assert.equal(delivered.length, 0);
+  } finally {
+    server.close();
+  }
+});

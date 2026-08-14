@@ -4,6 +4,7 @@ import type { CalendarEventRecord } from "../domain/calendarTypes.js";
 import { toDateKey } from "../domain/calendarTypes.js";
 import { expandRecurrence, shiftDateTime } from "../domain/recurrence.js";
 import { utcDateOnly } from "../domain/recurringDepositTypes.js";
+import { agentLog } from "../debugNdjson.js";
 import type { PushService } from "./pushService.js";
 
 /** Still deliver if we missed the exact fire minute (scheduler lag / create-after-fire). */
@@ -86,19 +87,90 @@ export class ReminderDispatcher {
     const events = await this.calendarRepo.listWithReminders();
     let sent = 0;
     const tzByUser = new Map<number, string>();
+    // #region agent log
+    agentLog("D", "reminderDispatcher.ts:tick", "tick start", {
+      eventCount: events.length,
+      withReminder: events.filter((e) => e.reminderMinutesBefore != null).length,
+      nowIso: now.toISOString(),
+      processTz: process.env.TZ ?? null,
+      resolvedTz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+    agentLog("B", "reminderDispatcher.ts:tick", "listWithReminders sample", {
+      minutes: events.slice(0, 8).map((e) => ({
+        id: e.id,
+        minutes: e.reminderMinutesBefore,
+        isAllDay: e.isAllDay,
+        startIso: e.startTime.toISOString(),
+        utcHours: e.startTime.getUTCHours(),
+        sentFor: e.reminderSentFor,
+      })),
+    });
+    // #endregion
 
     for (const ev of events) {
       if (ev.reminderMinutesBefore == null) continue;
       let tz = tzByUser.get(ev.userId);
       if (!tz) {
-        const owner = await this.authRepo.findUserById(ev.userId);
-        tz = timeZoneFromCountryPref(owner?.countryPref);
-        tzByUser.set(ev.userId, tz);
+        let ownerCountry: string | null | undefined;
+        try {
+          const owner = await this.authRepo.findUserById(ev.userId);
+          ownerCountry = owner?.countryPref ?? null;
+          tz = timeZoneFromCountryPref(ownerCountry);
+          tzByUser.set(ev.userId, tz);
+          // #region agent log
+          agentLog("H", "reminderDispatcher.ts:tick", "findUserById ok", {
+            eventId: ev.id,
+            userId: ev.userId,
+            countryPref: ownerCountry,
+            tz,
+          });
+          // #endregion
+        } catch (err) {
+          // #region agent log
+          agentLog("H", "reminderDispatcher.ts:tick", "findUserById threw — aborting tick", {
+            eventId: ev.id,
+            userId: ev.userId,
+            err: err instanceof Error ? err.message : String(err),
+          });
+          // #endregion
+          throw err;
+        }
       }
       const floatingNow = toFloatingNow(now, tz);
+      const minutes = ev.reminderMinutesBefore;
+      const fireAt = reminderFireAt(ev.startTime, minutes, ev.isAllDay);
+      const latestAt = reminderLatestAt(ev.startTime, ev.endTime, ev.isAllDay);
       const dueKeys = this.dueOccurrenceKeys(ev, floatingNow);
+      // #region agent log
+      agentLog("A", "reminderDispatcher.ts:tick", "due check", {
+        eventId: ev.id,
+        title: ev.title,
+        isAllDay: ev.isAllDay,
+        minutes,
+        startIso: ev.startTime.toISOString(),
+        utcHours: ev.startTime.getUTCHours(),
+        fireAt: fireAt.toISOString(),
+        latestAt: latestAt.toISOString(),
+        floatingNow: floatingNow.toISOString(),
+        realNow: now.toISOString(),
+        tz,
+        due: dueKeys.length > 0,
+        dueKeys: dueKeys.map((d) => d.key),
+        reminderSentFor: ev.reminderSentFor,
+        windowHours:
+          (latestAt.getTime() - fireAt.getTime()) / 3_600_000,
+      });
+      // #endregion
       for (const { key, start } of dueKeys) {
-        if (ev.reminderSentFor === key) continue;
+        if (ev.reminderSentFor === key) {
+          // #region agent log
+          agentLog("F", "reminderDispatcher.ts:tick", "skip already sent", {
+            eventId: ev.id,
+            key,
+          });
+          // #endregion
+          continue;
+        }
         const recipients = await this.recipientIds(ev);
         const body = ev.isAllDay
           ? ev.title
@@ -111,6 +183,12 @@ export class ReminderDispatcher {
         });
         if (delivered < 1) {
           console.warn(`[reminders] no push endpoint for event ${ev.id} (${ev.title}) recipients=${recipients.join(",")}`);
+          // #region agent log
+          agentLog("C", "reminderDispatcher.ts:tick", "delivered=0 not marked sent", {
+            eventId: ev.id,
+            recipients,
+          });
+          // #endregion
           continue;
         }
         await this.calendarRepo.update(ev.id, {
@@ -168,9 +246,20 @@ export class ReminderDispatcher {
 }
 
 export function startReminderScheduler(dispatcher: ReminderDispatcher, intervalMs = 60_000): () => void {
+  // #region agent log
+  agentLog("D", "reminderDispatcher.ts:startReminderScheduler", "scheduler armed", {
+    intervalMs,
+    firstTickDelayMs: 8_000,
+  });
+  // #endregion
   const run = () => {
     void dispatcher.tick().catch((err) => {
       console.error("[reminders] tick failed", err);
+      // #region agent log
+      agentLog("D", "reminderDispatcher.ts:startReminderScheduler", "tick failed", {
+        err: err instanceof Error ? err.message : String(err),
+      });
+      // #endregion
     });
   };
   const delay = setTimeout(run, 8_000);

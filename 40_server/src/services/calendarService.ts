@@ -29,6 +29,7 @@ import {
 } from "../domain/recurrence.js";
 import { HttpError } from "./authService.js";
 import type { FamilyActivityService } from "./familyActivityService.js";
+import { agentLog } from "../debugNdjson.js";
 
 const USER_CATEGORIES = new Set(["personal", "family", "holiday"]);
 const REMINDER_MINUTES = new Set([10, 30, 60, 1440]);
@@ -342,6 +343,17 @@ export class CalendarService {
       recurrence,
       reminderMinutesBefore: parseReminderMinutes(body.reminderMinutesBefore, 60),
     });
+    // #region agent log
+    agentLog("E", "calendarService.ts:create", "event persisted", {
+      id: record.id,
+      isAllDay: record.isAllDay,
+      reminderMinutesBefore: record.reminderMinutesBefore,
+      startIso: record.startTime.toISOString(),
+      utcHours: record.startTime.getUTCHours(),
+      timeIn: typeof body.time === "string" ? body.time : null,
+      dateIn: body.date,
+    });
+    // #endregion
     if (isShared) {
       // Activity feed must never roll back / fail an already-persisted calendar create.
       try {

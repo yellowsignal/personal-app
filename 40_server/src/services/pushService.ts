@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import webpush from "web-push";
 import type { PushRepository, PushSubscriptionRecord } from "../domain/pushRepository.js";
+import { agentLog } from "../debugNdjson.js";
 import { HttpError } from "./authService.js";
 
 export interface PushPayload {
@@ -80,10 +81,10 @@ export class WebPushSender implements PushSender {
   }
 
   async send(sub: PushSubscriptionRecord, payload: PushPayload): Promise<"ok" | "gone"> {
+    const topic = (payload.tag ?? "calendar-reminder")
+      .replace(/[^A-Za-z0-9_-]/g, "-")
+      .slice(0, 32);
     try {
-      const topic = (payload.tag ?? "calendar-reminder")
-        .replace(/[^A-Za-z0-9_-]/g, "-")
-        .slice(0, 32);
       await webpush.sendNotification(
         { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
         JSON.stringify(toPushWirePayload(payload)),
@@ -96,6 +97,13 @@ export class WebPushSender implements PushSender {
       return "ok";
     } catch (err) {
       const status = (err as { statusCode?: number }).statusCode;
+      // #region agent log
+      agentLog("C", "pushService.ts:WebPushSender.send", "send error", {
+        status: status ?? null,
+        tag: payload.tag ?? null,
+        topicLen: topic.length,
+      });
+      // #endregion
       if (status === 404 || status === 410) return "gone";
       console.error("[push] send failed", status ?? err);
       return "ok";
@@ -145,6 +153,19 @@ export class PushService {
 
   async sendToUsers(userIds: number[], payload: PushPayload): Promise<number> {
     const subs = await this.repo.listForUsers(userIds);
+    // #region agent log
+    agentLog("C", "pushService.ts:sendToUsers", "subscriptions loaded", {
+      userIds,
+      subCount: subs.length,
+      tag: payload.tag ?? null,
+      titleLen: payload.title.length,
+    });
+    agentLog("G", "pushService.ts:sendToUsers", "ios tag/topic", {
+      tag: payload.tag ?? null,
+      tagLen: (payload.tag ?? "").length,
+      topic: (payload.tag ?? "calendar-reminder").replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 32),
+    });
+    // #endregion
     let sent = 0;
     for (const sub of subs) {
       const result = await this.sender.send(sub, payload);

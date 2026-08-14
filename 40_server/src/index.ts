@@ -41,6 +41,7 @@ import { MemoryFamilyActivityRepository } from "./domain/memoryFamilyActivityRep
 import { PrismaFamilyActivityRepository } from "./domain/prismaFamilyActivityRepository.js";
 import { loadOrCreateVapidKeys, PushService, WebPushSender } from "./services/pushService.js";
 import { ReminderDispatcher, startReminderScheduler } from "./services/reminderDispatcher.js";
+import { agentLog } from "./debugNdjson.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -124,4 +125,12 @@ app.listen(PORT, () => {
   const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
   startReminderScheduler(dispatcher);
   console.log("[server] calendar reminder dispatcher started");
+  // #region agent log
+  agentLog("D", "index.ts:listen", "startReminderScheduler called", {
+    port: PORT,
+    store: useMemoryAuth ? "memory" : "prisma",
+    processTz: process.env.TZ ?? null,
+    resolvedTz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
+  // #endregion
 });

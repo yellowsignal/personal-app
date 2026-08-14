@@ -6,6 +6,7 @@ import type {
 } from "./calendarRepository.js";
 import type { CalendarEventRecord } from "./calendarTypes.js";
 import { parseRecurrence } from "./recurrence.js";
+import { agentLog } from "../debugNdjson.js";
 
 function map(row: PrismaRow): CalendarEventRecord {
   return {
@@ -114,7 +115,21 @@ export class PrismaCalendarRepository implements CalendarRepository {
     const rows = await this.db.calendarEvent.findMany({
       where: { reminderMinutesBefore: { not: null } },
     });
-    return rows.map(map);
+    const mapped = rows.map(map);
+    // #region agent log
+    agentLog("A", "prismaCalendarRepository.ts:listWithReminders", "prisma startTime round-trip", {
+      count: mapped.length,
+      sample: mapped.slice(0, 8).map((e) => ({
+        id: e.id,
+        startIso: e.startTime.toISOString(),
+        utcHours: e.startTime.getUTCHours(),
+        utcDate: e.startTime.toISOString().slice(0, 10),
+        isAllDay: e.isAllDay,
+        minutes: e.reminderMinutesBefore,
+      })),
+    });
+    // #endregion
+    return mapped;
   }
 
   async remove(id: number): Promise<boolean> {

@@ -57,3 +57,26 @@ test("JST wall-clock 14:00 makes floating 15:00 event with 1h reminder due", () 
   // Without floating conversion, raw UTC 05:00 would incorrectly be before fireAt 14:00
   assert.equal(isReminderDue(realUtcMorning, fireAt, latestAt), false);
 });
+
+test("simulated Prisma TIMESTAMP WITHOUT TZ +9 shift misses timed 1h catch-up at local 14:00", () => {
+  const stored = new Date("2026-08-14T15:00:00.000Z");
+  // Session Asia/Tokyo: 15:00Z → 00:00 next local day, Prisma reads naive as UTC.
+  const afterRoundTrip = toFloatingNow(stored, "Asia/Tokyo");
+  assert.equal(afterRoundTrip.toISOString(), "2026-08-15T00:00:00.000Z");
+  const fireAt = reminderFireAt(afterRoundTrip, 60, false);
+  const latestAt = reminderLatestAt(afterRoundTrip, new Date(afterRoundTrip.getTime() + 3600_000), false);
+  const floating14 = toFloatingNow(new Date("2026-08-14T05:00:00.000Z"), "Asia/Seoul");
+  assert.equal(floating14.toISOString(), "2026-08-14T14:00:00.000Z");
+  assert.equal(isReminderDue(floating14, fireAt, latestAt), false);
+});
+
+test("UI-default all-day 1h reminder is due at 11:20 KST", () => {
+  const start = parseDateKey("2026-08-14");
+  const end = new Date(start);
+  end.setUTCHours(23, 59, 59, 999);
+  const fireAt = reminderFireAt(start, 60, true);
+  const latest = reminderLatestAt(start, end, true);
+  const floatingNow = toFloatingNow(new Date("2026-08-14T02:20:00.000Z"), "Asia/Seoul");
+  assert.equal(floatingNow.toISOString(), "2026-08-14T11:20:00.000Z");
+  assert.equal(isReminderDue(floatingNow, fireAt, latest), true);
+});
