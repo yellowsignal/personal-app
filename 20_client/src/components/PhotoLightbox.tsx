@@ -238,8 +238,7 @@ export default function PhotoLightbox({
       </div>
 
       <div
-        data-viewer-chrome
-        className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-8"
+        className="absolute inset-x-0 top-0 z-20 flex items-start justify-between px-2 pt-[max(0.5rem,env(safe-area-inset-top))] pb-8"
         style={{
           background: "linear-gradient(to bottom, rgba(0,0,0,0.55), transparent)",
           opacity: dragging && axis.current === "vertical" ? 0.35 : 1,
@@ -247,27 +246,39 @@ export default function PhotoLightbox({
       >
         <button
           type="button"
-          onClick={closeWithMotion}
-          className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white"
+          data-viewer-chrome
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            closeWithMotion();
+          }}
+          className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white"
           aria-label={t("photos.viewerClose")}
         >
           <X size={20} />
         </button>
-        <p className="pointer-events-none pt-2 text-sm font-semibold text-white/90">
+        <p className="pointer-events-none pt-2.5 text-sm font-semibold text-white/90">
           {t("photos.viewerCounter", { current: index + 1, total: photos.length })}
         </p>
         {onDownload ? (
           <button
             type="button"
+            data-viewer-chrome
             disabled={downloading}
-            onClick={onDownload}
-            className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white disabled:opacity-50"
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDownload();
+            }}
+            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white disabled:opacity-50"
             aria-label={downloading ? t("photos.icloudDownloading") : t("photos.icloudDownload")}
           >
             <Download size={18} />
           </button>
         ) : (
-          <span className="h-10 w-10" />
+          <span className="h-11 w-11" />
         )}
       </div>
 
