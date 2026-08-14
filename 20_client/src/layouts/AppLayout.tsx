@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import BottomNav from "../components/BottomNav";
+import PushOnboardingSheet from "../components/PushOnboardingSheet";
 
 export default function AppLayout() {
   const { pathname } = useLocation();
@@ -33,6 +34,7 @@ export default function AppLayout() {
           <Outlet />
         </div>
         {!hideBottomNav && <BottomNav />}
+        <PushOnboardingSheet />
       </div>
     </div>
   );
