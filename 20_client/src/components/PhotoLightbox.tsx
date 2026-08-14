@@ -283,14 +283,7 @@ export default function PhotoLightbox({
     applyZoom({ scale: zoomedAtStart.scale, tx: pan.tx, ty: pan.ty });
   }
 
-  function handlePossibleDoubleTap(clientX: number, clientY: number) {
-    const now = Date.now();
-    const prev = lastTap.current;
-    lastTap.current = { at: now, x: clientX, y: clientY };
-    if (!prev || now - prev.at > DOUBLE_TAP_MS || Math.hypot(clientX - prev.x, clientY - prev.y) > DOUBLE_TAP_PX) {
-      return;
-    }
-    lastTap.current = null;
+  function zoomToggleAtClient(clientX: number, clientY: number) {
     const focal = focalFromClient(clientX, clientY);
     applyZoom(
       photoZoomAtPoint(
@@ -302,6 +295,17 @@ export default function PhotoLightbox({
         focal.height,
       ),
     );
+  }
+
+  function handlePossibleDoubleTap(clientX: number, clientY: number) {
+    const now = Date.now();
+    const prev = lastTap.current;
+    lastTap.current = { at: now, x: clientX, y: clientY };
+    if (!prev || now - prev.at > DOUBLE_TAP_MS || Math.hypot(clientX - prev.x, clientY - prev.y) > DOUBLE_TAP_PX) {
+      return;
+    }
+    lastTap.current = null;
+    zoomToggleAtClient(clientX, clientY);
   }
 
   function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
@@ -417,7 +421,9 @@ export default function PhotoLightbox({
     activePointer.current = null;
 
     if (!moved.current) {
-      handlePossibleDoubleTap(e.clientX, e.clientY);
+      if (e.pointerType === "touch" || e.pointerType === "pen") {
+        handlePossibleDoubleTap(e.clientX, e.clientY);
+      }
       setDragging(false);
       axis.current = "undecided";
       setDx(0);
@@ -493,6 +499,13 @@ export default function PhotoLightbox({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onDoubleClick={(e) => {
+        if (busy.current || exiting) return;
+        if ((e.target as HTMLElement).closest("[data-viewer-chrome]")) return;
+        e.preventDefault();
+        lastTap.current = null;
+        zoomToggleAtClient(e.clientX, e.clientY);
+      }}
     >
       <div className="absolute inset-0 overflow-hidden">
         {photos.map((item, i) => {
@@ -548,6 +561,7 @@ export default function PhotoLightbox({
         </button>
         <p className="pointer-events-none pt-2.5 text-sm font-semibold text-white/90">
           {t("photos.viewerCounter", { current: index + 1, total: photos.length })}
+          {zoomed ? ` · ${zoom.scale.toFixed(1)}×` : ""}
         </p>
         {onDownload ? (
           <button
