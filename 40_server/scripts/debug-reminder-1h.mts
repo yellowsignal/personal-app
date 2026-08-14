@@ -1,30 +1,22 @@
 /**
- * Reproduce 1h-before reminder due-window / push path without Postgres.
+ * Verify 1h-before reminders align with KR/JP wall clock (floating UTC store).
  *
- * Usage (from repo root):
- *   npx tsx 40_server/scripts/debug-reminder-1h.mts
- *
- * Writes NDJSON to /opt/cursor/logs/debug.log (same as server instrumentation).
+ * Usage: npx tsx 40_server/scripts/debug-reminder-1h.mts
  */
-import { appendFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 import webpush from "web-push";
 import { MemoryAuthRepository } from "../src/domain/memoryAuthRepository.js";
 import { MemoryCalendarRepository } from "../src/domain/memoryCalendarRepository.js";
 import { MemoryPushRepository } from "../src/domain/memoryPushRepository.js";
 import { eventTimesFromRange } from "../src/domain/calendarTypes.js";
-import { ReminderDispatcher, reminderFireAt, reminderLatestAt, isReminderDue } from "../src/services/reminderDispatcher.js";
+import {
+  ReminderDispatcher,
+  reminderFireAt,
+  reminderLatestAt,
+  isReminderDue,
+  toFloatingNow,
+  timeZoneFromCountryPref,
+} from "../src/services/reminderDispatcher.js";
 import { PushService, type PushPayload } from "../src/services/pushService.js";
-
-const LOG = "/opt/cursor/logs/debug.log";
-
-function log(hypothesisId: string, message: string, data: Record<string, unknown>) {
-  mkdirSync(dirname(LOG), { recursive: true });
-  appendFileSync(
-    LOG,
-    `${JSON.stringify({ hypothesisId, location: "debug-reminder-1h.mts", message, data, timestamp: Date.now(), runId: "repro" })}\n`,
-  );
-}
 
 async function main() {
   const authRepo = new MemoryAuthRepository();
@@ -57,144 +49,68 @@ async function main() {
     userAgent: "debug",
   });
 
-  const now = new Date();
-  log("E", "repro_start", { nowIso: now.toISOString(), tzOffsetMin: now.getTimezoneOffset() });
+  const tz = timeZoneFromCountryPref(user.countryPref);
+  // Real UTC morning = 14:00 KST — classic failure case before the fix.
+  const realNow = new Date("2026-08-14T05:00:00.000Z");
+  const floatingNow = toFloatingNow(realNow, tz);
 
-  // Case 1: timed event starting in 50m, reminder 60m → fire was 10m ago → SHOULD be due (catch-up)
-  {
-    const start = new Date(now.getTime() + 50 * 60_000);
-    const date = start.toISOString().slice(0, 10);
-    const time = start.toISOString().slice(11, 16);
-    const times = eventTimesFromRange(date, date, time, null);
-    const fireAt = reminderFireAt(times.startTime, 60, false);
-    const latestAt = reminderLatestAt(times.startTime, times.endTime, false);
-    const due = isReminderDue(now, fireAt, latestAt);
-    log("A", "case1_timed_50m_ahead_60m_reminder", {
-      startIso: times.startTime.toISOString(),
-      fireAtIso: fireAt.toISOString(),
-      latestAtIso: latestAt.toISOString(),
-      due,
-      expectDue: true,
-    });
-    await calendarRepo.create({
-      userId: user.id,
-      familyId: user.familyId,
-      title: "테스트-timed-50m",
-      description: null,
-      startTime: times.startTime,
-      endTime: times.endTime,
-      isAllDay: false,
-      category: "personal",
-      isShared: false,
-      reminderMinutesBefore: 60,
-    });
-  }
+  const times = eventTimesFromRange("2026-08-14", "2026-08-14", "15:00", null);
+  const fireAt = reminderFireAt(times.startTime, 60, false);
+  const latestAt = reminderLatestAt(times.startTime, times.endTime, false);
 
-  // Case 2: timed event starting in 90m, reminder 60m → fire in 30m → NOT due yet
-  {
-    const start = new Date(now.getTime() + 90 * 60_000);
-    const date = start.toISOString().slice(0, 10);
-    const time = start.toISOString().slice(11, 16);
-    const times = eventTimesFromRange(date, date, time, null);
-    const fireAt = reminderFireAt(times.startTime, 60, false);
-    const latestAt = reminderLatestAt(times.startTime, times.endTime, false);
-    log("A", "case2_timed_90m_ahead_60m_reminder", {
-      startIso: times.startTime.toISOString(),
-      fireAtIso: fireAt.toISOString(),
-      latestAtIso: latestAt.toISOString(),
-      due: isReminderDue(now, fireAt, latestAt),
-      expectDue: false,
-    });
-    await calendarRepo.create({
-      userId: user.id,
-      familyId: user.familyId,
-      title: "테스트-timed-90m",
-      description: null,
-      startTime: times.startTime,
-      endTime: times.endTime,
-      isAllDay: false,
-      category: "personal",
-      isShared: false,
-      reminderMinutesBefore: 60,
-    });
-  }
+  console.log(
+    JSON.stringify(
+      {
+        tz,
+        realNow: realNow.toISOString(),
+        floatingNow: floatingNow.toISOString(),
+        start: times.startTime.toISOString(),
+        fireAt: fireAt.toISOString(),
+        dueWithFloating: isReminderDue(floatingNow, fireAt, latestAt),
+        dueWithRawUtc: isReminderDue(realNow, fireAt, latestAt),
+      },
+      null,
+      2,
+    ),
+  );
 
-  // Case 3: all-day today, reminder 60 → fire 08:00 UTC; due if now in [08:00, end]
-  {
-    const date = now.toISOString().slice(0, 10);
-    const times = eventTimesFromRange(date, date, null, null);
-    const fireAt = reminderFireAt(times.startTime, 60, true);
-    const latestAt = reminderLatestAt(times.startTime, times.endTime, true);
-    log("B", "case3_allday_today_60m", {
-      startIso: times.startTime.toISOString(),
-      endIso: times.endTime.toISOString(),
-      fireAtIso: fireAt.toISOString(),
-      latestAtIso: latestAt.toISOString(),
-      due: isReminderDue(now, fireAt, latestAt),
-      isAllDay: times.isAllDay,
-    });
-    await calendarRepo.create({
-      userId: user.id,
-      familyId: user.familyId,
-      title: "테스트-allday",
-      description: null,
-      startTime: times.startTime,
-      endTime: times.endTime,
-      isAllDay: true,
-      category: "personal",
-      isShared: false,
-      reminderMinutesBefore: 60,
-    });
-  }
-
-  // Case 4: floating "local-looking" afternoon time vs real now (KST-style mismatch probe)
-  {
-    const date = now.toISOString().slice(0, 10);
-    const times = eventTimesFromRange(date, date, "15:00", null);
-    const fireAt = reminderFireAt(times.startTime, 60, false);
-    const latestAt = reminderLatestAt(times.startTime, times.endTime, false);
-    log("A", "case4_floating_1500_utc_vs_now", {
-      nowIso: now.toISOString(),
-      startIso: times.startTime.toISOString(),
-      fireAtIso: fireAt.toISOString(),
-      latestAtIso: latestAt.toISOString(),
-      due: isReminderDue(now, fireAt, latestAt),
-      note: "UI stores HH:mm as UTC hours; wall-clock TZ may make this look late/early",
-    });
-  }
-
-  // Case 5: already marked reminderSentFor for today's key
-  {
-    const start = new Date(now.getTime() + 40 * 60_000);
-    const date = start.toISOString().slice(0, 10);
-    const time = start.toISOString().slice(11, 16);
-    const times = eventTimesFromRange(date, date, time, null);
-    const row = await calendarRepo.create({
-      userId: user.id,
-      familyId: user.familyId,
-      title: "테스트-already-sent",
-      description: null,
-      startTime: times.startTime,
-      endTime: times.endTime,
-      isAllDay: false,
-      category: "personal",
-      isShared: false,
-      reminderMinutesBefore: 60,
-    });
-    await calendarRepo.update(row.id, { reminderSentFor: date, isReminderSent: true });
-    log("C", "case5_premarked_sent", { eventId: row.id, reminderSentFor: date });
-  }
-
-  const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
-  const sent = await dispatcher.tick(now);
-  log("E", "repro_tick_result", {
-    sent,
-    deliveredTitles: delivered.map((d) => d.title),
-    deliveredCount: delivered.length,
+  await calendarRepo.create({
+    userId: user.id,
+    familyId: user.familyId,
+    title: "테스트",
+    description: null,
+    startTime: times.startTime,
+    endTime: times.endTime,
+    isAllDay: false,
+    category: "personal",
+    isShared: false,
+    reminderMinutesBefore: 60,
   });
 
+  // All-day: at 14:00 floating should be due (fire 08:00)
+  const allDay = eventTimesFromRange("2026-08-14", "2026-08-14", null, null);
+  await calendarRepo.create({
+    userId: user.id,
+    familyId: user.familyId,
+    title: "테스트-allday",
+    description: null,
+    startTime: allDay.startTime,
+    endTime: allDay.endTime,
+    isAllDay: true,
+    category: "personal",
+    isShared: false,
+    reminderMinutesBefore: 60,
+  });
+
+  const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
+  const sent = await dispatcher.tick(realNow);
   console.log(JSON.stringify({ sent, deliveredTitles: delivered.map((d) => d.title) }, null, 2));
-  console.log(`debug log: ${LOG}`);
+
+  if (sent < 2 || !delivered.some((d) => d.title === "테스트")) {
+    console.error("FAIL: expected timed + all-day reminders at 14:00 KST");
+    process.exit(1);
+  }
+  console.log("OK");
 }
 
 main().catch((err) => {
