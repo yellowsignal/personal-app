@@ -404,7 +404,7 @@ export default function CalendarPage() {
   const [eventTime, setEventTime] = useState("");
   const [eventEndTime, setEventEndTime] = useState("");
   const [eventCategory, setEventCategory] = useState<"personal" | "family" | "holiday">("personal");
-  const [isShared, setIsShared] = useState(false);
+  const [isShared, setIsShared] = useState(true);
   const [repeatDraft, setRepeatDraft] = useState<RecurrenceDraft>(() => emptyRecurrenceDraft(todayKey()));
   const [reminderMinutes, setReminderMinutes] = useState<number | null>(60);
   const [submitting, setSubmitting] = useState(false);
@@ -649,7 +649,7 @@ export default function CalendarPage() {
     setEventTime("");
     setEventEndTime("");
     setEventCategory("personal");
-    setIsShared(false);
+    setIsShared(Boolean(family));
     setRepeatDraft(emptyRecurrenceDraft(start));
     setReminderMinutes(60);
     setFormError(null);
