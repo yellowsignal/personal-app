@@ -75,6 +75,45 @@ export function isReminderDue(now: Date, fireAt: Date, latestAt: Date): boolean 
   return t >= fireAt.getTime() && t <= latestAt.getTime();
 }
 
+export const APP_DISPLAY_NAME = "すみっチョぐらし";
+
+/** 12-hour clock with 오전/오후 (ko) or 午前/午後 (ja). Hours are floating UTC on the event. */
+export function formatReminderClock(
+  start: Date,
+  isAllDay: boolean,
+  languagePref: string | null | undefined,
+): string {
+  const lang = (languagePref ?? "").trim().toLowerCase() === "ja" ? "ja" : "ko";
+  if (isAllDay) return lang === "ja" ? "終日" : "하루 종일";
+  const hours = start.getUTCHours();
+  const minutes = start.getUTCMinutes();
+  const period =
+    hours < 12 ? (lang === "ja" ? "午前" : "오전") : lang === "ja" ? "午後" : "오후";
+  let h12 = hours % 12;
+  if (h12 === 0) h12 = 12;
+  return `${period} ${h12}:${String(minutes).padStart(2, "0")}`;
+}
+
+/**
+ * Lock-screen layout:
+ * 1. title → app name
+ * 2–3. body → event title, then time (+ memo when present)
+ */
+export function formatCalendarReminderPayload(input: {
+  eventTitle: string;
+  description: string | null | undefined;
+  start: Date;
+  isAllDay: boolean;
+  languagePref: string | null | undefined;
+}): { title: string; body: string } {
+  const title = APP_DISPLAY_NAME;
+  const eventTitle = input.eventTitle.trim() || title;
+  const clock = formatReminderClock(input.start, input.isAllDay, input.languagePref);
+  const memo = typeof input.description === "string" ? input.description.trim() : "";
+  const third = memo ? `${clock} ${memo}` : clock;
+  return { title, body: `${eventTitle}\n${third}` };
+}
+
 export class ReminderDispatcher {
   constructor(
     private readonly authRepo: AuthRepository,
@@ -85,30 +124,37 @@ export class ReminderDispatcher {
   async tick(now = new Date()): Promise<number> {
     const events = await this.calendarRepo.listWithReminders();
     let sent = 0;
-    const tzByUser = new Map<number, string>();
+    const ownerPrefs = new Map<number, { tz: string; languagePref: string | null }>();
 
     for (const ev of events) {
       try {
         if (ev.reminderMinutesBefore == null) continue;
-        let tz = tzByUser.get(ev.userId);
-        if (!tz) {
+        let prefs = ownerPrefs.get(ev.userId);
+        if (!prefs) {
           const owner = await this.authRepo.findUserById(ev.userId);
-          tz = timeZoneFromCountryPref(owner?.countryPref);
-          tzByUser.set(ev.userId, tz);
+          prefs = {
+            tz: timeZoneFromCountryPref(owner?.countryPref),
+            languagePref: owner?.languagePref ?? null,
+          };
+          ownerPrefs.set(ev.userId, prefs);
         }
-        const floatingNow = toFloatingNow(now, tz);
+        const floatingNow = toFloatingNow(now, prefs.tz);
         const dueKeys = this.dueOccurrenceKeys(ev, floatingNow);
         for (const { key, start } of dueKeys) {
           if (ev.reminderSentFor === key) continue;
           const recipients = await this.recipientIds(ev);
-          const body = ev.isAllDay
-            ? ev.title
-            : `${String(start.getUTCHours()).padStart(2, "0")}:${String(start.getUTCMinutes()).padStart(2, "0")} · ${ev.title}`;
+          const { title, body } = formatCalendarReminderPayload({
+            eventTitle: ev.title,
+            description: ev.description,
+            start,
+            isAllDay: ev.isAllDay,
+            languagePref: prefs.languagePref,
+          });
           // Unique tag/topic per attempt (parity with settings test push) so iOS/APNs
           // does not collapse a calendar reminder into a prior undelivered topic.
           const tag = `cal-${ev.id}-${key.replace(/-/g, "").slice(4)}-${Date.now().toString(36)}`;
           const delivered = await this.pushService.sendToUsers(recipients, {
-            title: ev.title,
+            title,
             body,
             url: "/calendar",
             tag,
@@ -123,7 +169,7 @@ export class ReminderDispatcher {
           });
           ev.reminderSentFor = key;
           sent += 1;
-          console.log(`[reminders] sent event=${ev.id} occ=${key} title=${ev.title} tz=${tz}`);
+          console.log(`[reminders] sent event=${ev.id} occ=${key} title=${ev.title} tz=${prefs.tz}`);
         }
       } catch (err) {
         console.error(`[reminders] event ${ev.id} failed`, err);

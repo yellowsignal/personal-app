@@ -1063,6 +1063,13 @@ export default function CalendarPage() {
         >
           <form
             onSubmit={(e) => void handleSaveEvent(e)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              const tag = (e.target as HTMLElement).tagName;
+              // Allow newline in memo; block Enter from submitting the form elsewhere.
+              if (tag === "TEXTAREA") return;
+              e.preventDefault();
+            }}
             className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
@@ -1099,7 +1106,7 @@ export default function CalendarPage() {
                           : prev.weekdays,
                     }));
                   }}
-                  className="min-w-0 flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+                  className="min-w-0 flex-1 basis-0 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
                 />
                 <input
                   type="time"
@@ -1115,7 +1122,7 @@ export default function CalendarPage() {
                     setEventEndDate(plus.date);
                     setEventEndTime(plus.time);
                   }}
-                  className="w-[7.25rem] shrink-0 rounded-xl border border-neutral-200 bg-neutral-50 px-2 py-2.5 text-sm outline-none focus:border-indigo-400"
+                  className="min-w-0 flex-1 basis-0 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
                 />
               </div>
             </div>
@@ -1130,13 +1137,13 @@ export default function CalendarPage() {
                     setEventEndDate(next);
                     if (eventDate && next && next < eventDate) setEventDate(next);
                   }}
-                  className="min-w-0 flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+                  className="min-w-0 flex-1 basis-0 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
                 />
                 <input
                   type="time"
                   value={eventEndTime}
                   onChange={(e) => setEventEndTime(e.target.value)}
-                  className="w-[7.25rem] shrink-0 rounded-xl border border-neutral-200 bg-neutral-50 px-2 py-2.5 text-sm outline-none focus:border-indigo-400"
+                  className="min-w-0 flex-1 basis-0 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
                 />
               </div>
             </div>

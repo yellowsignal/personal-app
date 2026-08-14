@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseDateKey } from "../domain/calendarTypes.js";
 import {
+  APP_DISPLAY_NAME,
+  formatCalendarReminderPayload,
+  formatReminderClock,
   isReminderDue,
   reminderFireAt,
   reminderLatestAt,
@@ -13,6 +16,38 @@ test("timed reminder fires minutes before start", () => {
   const start = new Date("2026-08-14T15:00:00.000Z");
   const fire = reminderFireAt(start, 60, false);
   assert.equal(fire.toISOString(), "2026-08-14T14:00:00.000Z");
+});
+
+test("formatReminderClock uses 오전/오후 and 午前/午後", () => {
+  const afternoon = new Date("2026-08-14T15:00:00.000Z");
+  assert.equal(formatReminderClock(afternoon, false, "ko"), "오후 3:00");
+  assert.equal(formatReminderClock(afternoon, false, "ja"), "午後 3:00");
+  const midnight = new Date("2026-08-14T00:05:00.000Z");
+  assert.equal(formatReminderClock(midnight, false, "ko"), "오전 12:05");
+  assert.equal(formatReminderClock(midnight, true, "ko"), "하루 종일");
+  assert.equal(formatReminderClock(midnight, true, "ja"), "終日");
+});
+
+test("formatCalendarReminderPayload is app name / title / time(+memo)", () => {
+  const start = new Date("2026-08-14T07:13:00.000Z");
+  const withMemo = formatCalendarReminderPayload({
+    eventTitle: "테스트",
+    description: "메모 내용",
+    start,
+    isAllDay: false,
+    languagePref: "ko",
+  });
+  assert.equal(withMemo.title, APP_DISPLAY_NAME);
+  assert.equal(withMemo.body, "테스트\n오전 7:13 메모 내용");
+
+  const noMemo = formatCalendarReminderPayload({
+    eventTitle: "테스트",
+    description: "  ",
+    start,
+    isAllDay: false,
+    languagePref: "ko",
+  });
+  assert.equal(noMemo.body, "테스트\n오전 7:13");
 });
 
 test("all-day reminder anchors to morning instead of previous UTC night", () => {
