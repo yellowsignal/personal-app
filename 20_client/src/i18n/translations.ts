@@ -207,7 +207,7 @@ export const dict: Record<Lang, Record<string, string>> = {
     "depositBank.YUCHO": "ゆうちょ銀行",
 
     "documents.title": "카드 · 증명서",
-    "documents.subtitle": "만료일 자동 캘린더 등록",
+    "documents.subtitle": "만료 2개월 전 알림 · 캘린더 연동",
     "documents.ocrButton": "카메라로 촬영해 OCR 자동 입력",
     "documents.ocrWizardTitle": "촬영 후 자동 입력",
     "documents.ocrAnalyze": "OCR 분석 · PDF 저장",
@@ -550,7 +550,10 @@ export const dict: Record<Lang, Record<string, string>> = {
     "photos.icloudRename": "앨범 이름 바꾸기",
     "photos.icloudNeedName": "앨범 이름을 입력해 주세요",
     "photos.icloudPickCover": "커버 고르기",
-    "photos.icloudPickCoverHint": "커버로 쓸 사진을 탭하세요",
+    "photos.icloudPickCoverHint": "커버 선택 모드입니다. 원하는 사진을 탭하면 바로 적용됩니다.",
+    "photos.icloudTapToSetCover": "탭해서 커버",
+    "photos.icloudCoverBadge": "커버",
+    "photos.icloudCoverSet": "커버로 설정했어요",
 
 
     "checklists.title": "체크리스트",
@@ -789,7 +792,7 @@ export const dict: Record<Lang, Record<string, string>> = {
     "depositBank.YUCHO": "ゆうちょ銀行",
 
     "documents.title": "カード・証明書",
-    "documents.subtitle": "有効期限をカレンダーに自動登録",
+    "documents.subtitle": "有効期限の2か月前に通知 · カレンダー連携",
     "documents.ocrButton": "カメラで撮影してOCR自動入力",
     "documents.ocrWizardTitle": "撮影して自動入力",
     "documents.ocrAnalyze": "OCR解析 · PDF保存",
@@ -1132,7 +1135,10 @@ export const dict: Record<Lang, Record<string, string>> = {
     "photos.icloudRename": "アルバム名を変更",
     "photos.icloudNeedName": "アルバム名を入力してください",
     "photos.icloudPickCover": "カバーを選ぶ",
-    "photos.icloudPickCoverHint": "カバーにする写真をタップしてください",
+    "photos.icloudPickCoverHint": "カバー選択モードです。写真をタップするとすぐに適用されます。",
+    "photos.icloudTapToSetCover": "タップでカバー",
+    "photos.icloudCoverBadge": "カバー",
+    "photos.icloudCoverSet": "カバーに設定しました",
 
     "checklists.title": "チェックリスト",
     "checklists.subtitle": "ツリーで整理・完了は1か月保管",

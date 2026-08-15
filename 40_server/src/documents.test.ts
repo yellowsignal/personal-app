@@ -8,6 +8,7 @@ import { MemoryAuthRepository } from "./domain/memoryAuthRepository.js";
 import { MemoryDocumentRepository } from "./domain/memoryDocumentRepository.js";
 import { MemoryPasskeyRepository } from "./domain/memoryPasskeyRepository.js";
 import { MemoryInviteTokenRepository } from "./domain/memoryInviteTokenRepository.js";
+import { MemoryCalendarRepository } from "./domain/memoryCalendarRepository.js";
 import { ChallengeStore } from "./auth/challengeStore.js";
 import { TaskStore } from "./store.js";
 import { DocumentScanStore } from "./storage/documentScanStore.js";
@@ -51,6 +52,7 @@ test("documents personal shows only private; family shows only shared", async ()
   const app = createApp(tmpStore(), {
     authRepo: new MemoryAuthRepository(),
     documentRepo: new MemoryDocumentRepository(),
+    calendarRepo: new MemoryCalendarRepository(),
     documentScanStore: tmpScanStore(),
     passkeyRepo: new MemoryPasskeyRepository(),
     inviteTokenRepo: new MemoryInviteTokenRepository(),
@@ -153,6 +155,7 @@ test("document multi-field (保険証) stores secrets masked and reveals via pas
   const app = createApp(tmpStore(), {
     authRepo: new MemoryAuthRepository(),
     documentRepo: new MemoryDocumentRepository(),
+    calendarRepo: new MemoryCalendarRepository(),
     documentScanStore: tmpScanStore(),
     passkeyRepo: new MemoryPasskeyRepository(),
     inviteTokenRepo: new MemoryInviteTokenRepository(),
@@ -219,6 +222,7 @@ test("document update memo and delete owner-only", async () => {
   const app = createApp(tmpStore(), {
     authRepo: new MemoryAuthRepository(),
     documentRepo: new MemoryDocumentRepository(),
+    calendarRepo: new MemoryCalendarRepository(),
     documentScanStore: tmpScanStore(),
     passkeyRepo: new MemoryPasskeyRepository(),
     inviteTokenRepo: new MemoryInviteTokenRepository(),
@@ -308,6 +312,7 @@ test("document card scan stores front and back PDFs", async () => {
   const app = createApp(tmpStore(), {
     authRepo: new MemoryAuthRepository(),
     documentRepo: new MemoryDocumentRepository(),
+    calendarRepo: new MemoryCalendarRepository(),
     documentScanStore: scanStore,
     passkeyRepo: new MemoryPasskeyRepository(),
     inviteTokenRepo: new MemoryInviteTokenRepository(),

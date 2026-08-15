@@ -190,6 +190,8 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
         passkeyService,
         deps.documentScanStore ?? null,
         activityService,
+        deps.calendarRepo ?? null,
+        deps.reminderDispatcher ? () => deps.reminderDispatcher!.tick() : null,
       );
       app.use("/api/documents", createDocumentRouter(documentService, jwtSecret));
     }

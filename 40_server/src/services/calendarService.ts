@@ -151,10 +151,9 @@ export class CalendarService {
 
     const stored = await this.calendarRepo.listInRange(user.id, user.familyId, from, to);
     for (const row of stored) {
-      if (row.sourceDocumentId != null) continue;
       const owner = await this.ownerName(row.userId);
       if (!row.recurrence) {
-        out.push(toPublicCalendarEvent(row, owner, true));
+        out.push(toPublicCalendarEvent(row, owner, row.sourceDocumentId == null));
         continue;
       }
       const startDay = utcDateOnly(row.startTime);
@@ -197,8 +196,7 @@ export class CalendarService {
           seriesId: `doc-expiry-${doc.id}`,
           recurrence: null,
           reminderMinutesBefore: null,
-        });
-      }
+        });      }
     }
 
     if (this.subscriptionRepo) {

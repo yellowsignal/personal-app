@@ -69,6 +69,8 @@ export default function PhotosPage() {
   const [icloudDownloading, setIcloudDownloading] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
   const [pickingCover, setPickingCover] = useState(false);
+  const [pickingCoverId, setPickingCoverId] = useState<string | null>(null);
+  const [coverFlash, setCoverFlash] = useState<string | null>(null);
 
   const loadIcloud = useCallback(async () => {
     if (!token || !family) {
@@ -212,16 +214,20 @@ export default function PhotosPage() {
   async function handleSetCover(photoId: string) {
     if (!token || !openDetail || icloudSaving) return;
     setIcloudSaving(true);
+    setPickingCoverId(photoId);
     setPageError(null);
     try {
       const updated = await photosApi.updateIcloudAlbum(token, openDetail.id, { coverPhotoId: photoId });
       setOpenDetail(updated);
       setAlbumSummaries((prev) => prev.map((a) => (a.id === updated.id ? toSummary(updated) : a)));
+      setCoverFlash(t("photos.icloudCoverSet"));
       setPickingCover(false);
+      window.setTimeout(() => setCoverFlash(null), 2200);
     } catch (err) {
       setPageError(err instanceof ApiError ? err.message : t("photos.icloudError"));
     } finally {
       setIcloudSaving(false);
+      setPickingCoverId(null);
     }
   }
 
@@ -323,19 +329,14 @@ export default function PhotosPage() {
         ) : openDetail ? (
           <>
             <div className="mb-3 flex flex-wrap items-center gap-3">
-              <a
-                href={openDetail.url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-semibold text-sky-700 underline"
-              >
-                {t("photos.icloudOpen")}
-              </a>
               {pickingCover ? (
                 <button
                   type="button"
-                  onClick={() => setPickingCover(false)}
-                  className="text-xs font-semibold text-neutral-500"
+                  onClick={() => {
+                    setPickingCover(false);
+                    setPickingCoverId(null);
+                  }}
+                  className="rounded-full bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-600"
                 >
                   {t("photos.cancel")}
                 </button>
@@ -343,15 +344,20 @@ export default function PhotosPage() {
                 <button
                   type="button"
                   onClick={() => setPickingCover(true)}
-                  className="text-xs font-semibold text-indigo-600"
+                  className="rounded-full bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white"
                 >
                   {t("photos.icloudPickCover")}
                 </button>
               )}
             </div>
             {pickingCover && (
-              <p className="mb-3 rounded-xl bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
+              <p className="mb-3 rounded-xl bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-800">
                 {t("photos.icloudPickCoverHint")}
+              </p>
+            )}
+            {coverFlash && (
+              <p className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+                {coverFlash}
               </p>
             )}
             {openDetail.error && <p className="mb-3 text-xs text-rose-600">{t("photos.icloudError")}</p>}
@@ -363,8 +369,11 @@ export default function PhotosPage() {
               </p>
             )}
             {openPhotos.length > 0 && (
-              <div className="grid grid-cols-3 gap-1.5">
-                {openPhotos.map((p, photoIndex) => (
+              <div className={`grid grid-cols-3 gap-1.5 ${pickingCover ? "rounded-xl ring-2 ring-indigo-300 ring-offset-2" : ""}`}>
+                {openPhotos.map((p, photoIndex) => {
+                  const isCover = openDetail.coverPhotoId === p.id;
+                  const isSelecting = pickingCoverId === p.id;
+                  return (
                   <button
                     key={p.id}
                     type="button"
@@ -377,19 +386,34 @@ export default function PhotosPage() {
                       setViewer({ index: photoIndex });
                     }}
                     className={`relative aspect-square overflow-hidden rounded-lg bg-neutral-100 ${
-                      pickingCover && openDetail.coverPhotoId === p.id
-                        ? "ring-2 ring-indigo-500"
-                        : ""
+                      pickingCover
+                        ? isCover
+                          ? "ring-2 ring-indigo-500"
+                          : "opacity-90"
+                        : isCover
+                          ? "ring-2 ring-indigo-400"
+                          : ""
                     }`}
                   >
                     <img
                       src={p.thumbUrl}
                       alt={p.caption ?? t("photos.noCaption")}
                       referrerPolicy="no-referrer"
-                      className="h-full w-full object-cover"
+                      className={`h-full w-full object-cover ${pickingCover && !isCover ? "brightness-90" : ""}`}
                     />
+                    {isCover && (
+                      <span className="absolute left-1 top-1 rounded bg-indigo-600/90 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                        {t("photos.icloudCoverBadge")}
+                      </span>
+                    )}
+                    {pickingCover && (
+                      <span className="absolute inset-x-0 bottom-0 bg-black/45 px-1 py-0.5 text-center text-[10px] font-semibold text-white">
+                        {isSelecting ? t("photos.icloudSaving") : t("photos.icloudTapToSetCover")}
+                      </span>
+                    )}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </>
@@ -490,14 +514,18 @@ export default function PhotosPage() {
           >
             {t("photos.icloudRename")}
           </button>
-          <a
-            href={albumMenu.url}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-3 inline-block text-sm font-semibold text-sky-700 underline"
+          <button
+            type="button"
+            onClick={() => {
+              const album = albumMenu;
+              setAlbumMenu(null);
+              setOpenDetail({ ...album, photos: [] });
+              setPickingCover(true);
+            }}
+            className="mt-3 w-full rounded-xl bg-neutral-100 py-2.5 text-sm font-semibold text-neutral-800"
           >
-            {t("photos.icloudOpen")}
-          </a>
+            {t("photos.icloudPickCover")}
+          </button>
         </ItemDetailSheet>
       )}
 

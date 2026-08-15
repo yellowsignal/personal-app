@@ -1,5 +1,6 @@
 import { decryptSecret, encryptSecret } from "../auth/secretCrypto.js";
 import type { AuthRepository } from "../domain/authRepository.js";
+import type { CalendarRepository } from "../domain/calendarRepository.js";
 import type { DocumentRepository } from "../domain/documentRepository.js";
 import type { DocumentRecord, PublicDocument, StoredDocumentField } from "../domain/documentTypes.js";
 import {
@@ -11,6 +12,11 @@ import {
 import type { DocumentCategory } from "../documentCategories.js";
 import { inferCategoryFromTypeLabel, parseDocumentCategory } from "../documentCategories.js";
 import { HttpError } from "./authService.js";
+import {
+  documentExpiryReminderDescription,
+  documentExpiryReminderEventTimes,
+  documentExpiryReminderTitle,
+} from "./documentExpiryReminder.js";
 import type { FamilyActivityService } from "./familyActivityService.js";
 import type { PasskeyService } from "./passkeyService.js";
 import type { ViewScope } from "../domain/subscriptionTypes.js";
@@ -156,12 +162,57 @@ export class DocumentService {
     private readonly passkeyService: PasskeyService | null = null,
     private readonly scanStore: DocumentScanStore | null = null,
     private readonly activityService: FamilyActivityService | null = null,
+    private readonly calendarRepo: CalendarRepository | null = null,
+    private readonly kickReminders: (() => Promise<void>) | null = null,
   ) {}
 
   private async requireUser(userId: number) {
     const user = await this.authRepo.findUserById(userId);
     if (!user) throw new HttpError(401, "unauthorized", "UNAUTHORIZED");
     return user;
+  }
+
+  /** Upsert all-day calendar event at expiry−2 months with morning Web Push. */
+  private async syncExpiryReminder(record: DocumentRecord): Promise<void> {
+    if (!this.calendarRepo) return;
+    if (!record.expiryDate) {
+      await this.calendarRepo.removeBySourceDocumentId(record.id);
+      return;
+    }
+    const times = documentExpiryReminderEventTimes(record.expiryDate);
+    const title = documentExpiryReminderTitle(record.typeLabel);
+    const description = documentExpiryReminderDescription(record.expiryDate);
+    const existing = await this.calendarRepo.findBySourceDocumentId(record.id);
+    if (existing) {
+      const dateChanged = existing.startTime.getTime() !== times.startTime.getTime();
+      await this.calendarRepo.update(existing.id, {
+        title,
+        description,
+        startTime: times.startTime,
+        endTime: times.endTime,
+        isAllDay: times.isAllDay,
+        category: "document_expiry",
+        reminderMinutesBefore: times.reminderMinutesBefore,
+        isShared: record.isShared,
+        familyId: record.isShared ? record.familyId : null,
+        ...(dateChanged ? { isReminderSent: false, reminderSentFor: null } : {}),
+      });
+    } else {
+      await this.calendarRepo.create({
+        userId: record.userId,
+        familyId: record.isShared ? record.familyId : null,
+        title,
+        description,
+        startTime: times.startTime,
+        endTime: times.endTime,
+        isAllDay: times.isAllDay,
+        category: "document_expiry",
+        sourceDocumentId: record.id,
+        reminderMinutesBefore: times.reminderMinutesBefore,
+        isShared: record.isShared,
+      });
+    }
+    await this.kickReminders?.();
   }
 
   private canView(record: { userId: number; familyId: number | null; isShared: boolean }, familyId: number | null, userId: number) {
@@ -198,6 +249,16 @@ export class DocumentService {
     const user = await this.requireUser(userId);
     const scope = parseScope(scopeRaw);
     const records = await this.documentRepo.listForUser(userId, user.familyId);
+
+    // Lazy backfill: older docs created before expiry reminders existed.
+    if (this.calendarRepo) {
+      for (const record of records) {
+        if (!record.expiryDate) continue;
+        if (record.userId !== user.id) continue;
+        const linked = await this.calendarRepo.findBySourceDocumentId(record.id);
+        if (!linked) await this.syncExpiryReminder(record);
+      }
+    }
 
     records.sort(
       (a, b) =>
@@ -262,6 +323,7 @@ export class DocumentService {
         title: record.typeLabel,
       });
     }
+    await this.syncExpiryReminder(record);
     return toPublicDocument(record, user.name);
   }
 
@@ -307,6 +369,7 @@ export class DocumentService {
     };
 
     const record = await this.documentRepo.update(id, updated);
+    await this.syncExpiryReminder(record);
     const owner = await this.authRepo.findUserById(record.userId);
     return toPublicDocument(record, owner?.name ?? "Unknown");
   }
@@ -317,6 +380,9 @@ export class DocumentService {
     if (!existing) throw new HttpError(404, "document not found", "NOT_FOUND");
     if (!this.canModify(existing, user.id)) {
       throw new HttpError(403, "only the owner can delete this document", "FORBIDDEN");
+    }
+    if (this.calendarRepo) {
+      await this.calendarRepo.removeBySourceDocumentId(id);
     }
     const removed = await this.documentRepo.remove(id);
     if (!removed) throw new HttpError(404, "document not found", "NOT_FOUND");

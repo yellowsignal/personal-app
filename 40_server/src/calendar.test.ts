@@ -183,6 +183,26 @@ test("calendar CRUD and derived document expiry / subscription billing", async (
     assert.ok(events.some((e) => e.category === "document_expiry" && e.date === "2026-08-25"));
     assert.ok(events.some((e) => e.category === "subscription_billing" && e.date === "2026-08-15"));
 
+    const juneRes = await fetch(
+      `${base}/api/calendar/events?from=2026-06-01&to=2026-06-30&scope=all`,
+      { headers: { authorization: `Bearer ${owner.token}` } },
+    );
+    assert.equal(juneRes.status, 200);
+    const juneEvents = (await juneRes.json()) as Array<{
+      category: string;
+      date: string;
+      title: string;
+      reminderMinutesBefore: number | null;
+      editable: boolean;
+    }>;
+    const preExpiry = juneEvents.find(
+      (e) => e.category === "document_expiry" && e.date === "2026-06-25",
+    );
+    assert.ok(preExpiry, "expected expiry−2 months reminder event");
+    assert.equal(preExpiry!.reminderMinutesBefore, 60);
+    assert.equal(preExpiry!.editable, false);
+    assert.match(preExpiry!.title, /만료 2개월 전/);
+
     const del = await fetch(`${base}/api/calendar/events/${created.id}`, {
       method: "DELETE",
       headers: { authorization: `Bearer ${owner.token}` },
