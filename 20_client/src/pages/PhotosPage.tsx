@@ -71,6 +71,7 @@ export default function PhotosPage() {
   const [pickingCover, setPickingCover] = useState(false);
   const [pickingCoverId, setPickingCoverId] = useState<string | null>(null);
   const [coverFlash, setCoverFlash] = useState<string | null>(null);
+  const [showHowTo, setShowHowTo] = useState(false);
 
   const loadIcloud = useCallback(async () => {
     if (!token || !family) {
@@ -419,9 +420,19 @@ export default function PhotosPage() {
           </>
         ) : (
           <>
-            <p className="whitespace-pre-line text-xs leading-relaxed text-neutral-500">
-              {albumSummaries.length === 0 ? t("photos.icloudHowTo") : t("photos.hint")}
-            </p>
+            <div className="rounded-2xl bg-sky-50 px-4 py-3">
+              <p className="text-xs leading-relaxed text-sky-950">{t("photos.icloudHowTo")}</p>
+              <button
+                type="button"
+                onClick={() => setShowHowTo(true)}
+                className="mt-2 text-xs font-bold text-sky-800 underline"
+              >
+                {t("photos.icloudHowToShow")}
+              </button>
+            </div>
+            {albumSummaries.length === 0 ? null : (
+              <p className="mt-3 text-xs leading-relaxed text-neutral-500">{t("photos.hint")}</p>
+            )}
             {albumSummaries.length === 0 && (
               <button
                 type="button"
@@ -529,6 +540,31 @@ export default function PhotosPage() {
         </ItemDetailSheet>
       )}
 
+      {showHowTo && (
+        <OverlayScrim
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          onDismiss={() => setShowHowTo(false)}
+          label={t("photos.cancel")}
+        >
+          <div className="relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+            <h2 className="text-base font-bold text-neutral-900">{t("photos.icloudHowToTitle")}</h2>
+            <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-neutral-700">
+              {t("photos.icloudHowToSteps")}
+            </p>
+            <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+              {t("photos.icloudHowToTip")}
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowHowTo(false)}
+              className="mt-4 w-full rounded-xl bg-sky-700 py-2.5 text-sm font-semibold text-white"
+            >
+              {t("photos.cancel")}
+            </button>
+          </div>
+        </OverlayScrim>
+      )}
+
       {icloudFormOpen && (
         <OverlayScrim
           className="fixed inset-0 z-[55] flex items-end justify-center bg-black/40 p-4 sm:items-center"
@@ -542,6 +578,15 @@ export default function PhotosPage() {
             <h2 className="text-base font-bold text-neutral-900">
               {editingUrlAlbum ? t("photos.icloudChange") : t("photos.icloudAdd")}
             </h2>
+            {!editingUrlAlbum && (
+              <button
+                type="button"
+                onClick={() => setShowHowTo(true)}
+                className="mt-2 text-xs font-semibold text-sky-700 underline"
+              >
+                {t("photos.icloudHowToShow")}
+              </button>
+            )}
             <input
               value={icloudDraft}
               onChange={(e) => setIcloudDraft(e.target.value)}
