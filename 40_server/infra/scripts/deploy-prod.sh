@@ -45,13 +45,21 @@ fi
 cd "$REPO_ROOT"
 
 if [[ "$SKIP_PULL" -eq 0 ]]; then
-  echo "==> git fetch / checkout / pull ($BRANCH)"
+  echo "==> git fetch / checkout / reset --hard origin/$BRANCH"
   git fetch origin
   git checkout "$BRANCH"
-  git pull origin "$BRANCH"
+  # Same as deploy-dig.sh: avoid deploying a stuck local main.
+  git reset --hard "origin/$BRANCH"
 fi
 
+HEAD_SHA="$(git rev-parse --short HEAD)"
+ORIGIN_SHA="$(git rev-parse --short "origin/$BRANCH" 2>/dev/null || true)"
 echo "==> HEAD: $(git log -1 --oneline)"
+if [[ "$SKIP_PULL" -eq 0 && -n "$ORIGIN_SHA" && "$HEAD_SHA" != "$ORIGIN_SHA" ]]; then
+  echo "ERROR: HEAD ($HEAD_SHA) != origin/$BRANCH ($ORIGIN_SHA). Refusing to deploy stale tree." >&2
+  echo "Fix: git fetch origin && git reset --hard origin/$BRANCH" >&2
+  exit 1
+fi
 
 echo "==> npm install"
 if [[ -f "$REPO_ROOT/package-lock.json" ]]; then
@@ -78,6 +86,8 @@ npm run build --workspace @personal-app/client
 echo "==> rsync static → $DEST"
 sudo mkdir -p "$DEST"
 sudo rsync -a --delete "$REPO_ROOT/20_client/dist/" "$DEST/"
+JS_ASSET="$(basename "$(ls -1 "$DEST"/assets/index-*.js 2>/dev/null | head -1)")"
+echo "==> static entry JS: ${JS_ASSET:-unknown}"
 
 if [[ "$FRONTEND_ONLY" -eq 0 ]]; then
   echo "==> build server"
@@ -94,8 +104,13 @@ EOF
   echo "==> restart myfamilyhub-api"
   sudo systemctl restart myfamilyhub-api
   sleep 1
-  curl -sS http://127.0.0.1:3001/api/health || true
-  echo
+  HEALTH="$(curl -sS http://127.0.0.1:3001/api/health || true)"
+  echo "$HEALTH"
+  LIVE_COMMIT="$(printf '%s' "$HEALTH" | sed -n 's/.*"gitCommit":"\([^"]*\)".*/\1/p')"
+  if [[ -n "$LIVE_COMMIT" && "$LIVE_COMMIT" != "$GIT_COMMIT" ]]; then
+    echo "ERROR: API gitCommit=$LIVE_COMMIT but HEAD=$GIT_COMMIT — restart may have failed." >&2
+    exit 1
+  fi
 fi
 
-echo "Done. https://sumicchogurashi.duckdns.org"
+echo "Done. https://sumicchogurashi.duckdns.org (HEAD $HEAD_SHA)"
