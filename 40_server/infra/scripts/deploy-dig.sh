@@ -11,7 +11,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 DEST="/var/www/myfamilyhub-dev"
-BRANCH="cursor/continue-latest-mockup-69de"
+BRANCH="main"
 FRONTEND_ONLY=0
 SKIP_PULL=0
 

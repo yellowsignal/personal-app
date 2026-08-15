@@ -18,7 +18,7 @@ SERVER_DIR="$REPO_ROOT/40_server"
 ENV_FILE="$SERVER_DIR/.env.prod"
 # Live OCI nginx (sites-enabled/myfamilyhub) serves this root — not /var/www/myfamily.
 DEST="/var/www/myfamilyhub"
-BRANCH="cursor/continue-latest-mockup-69de"
+BRANCH="main"
 FRONTEND_ONLY=0
 SKIP_PULL=0
 
