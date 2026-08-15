@@ -40,6 +40,26 @@ test("parseDocumentOcrText extracts 記号・番号 on following line (paper 保
     false,
     "must not treat Tel as 番号",
   );
+  assert.equal(result.expiryDate, null, "交付日 must not become expiry");
+  assert.equal(
+    result.fields.some((f) => f.label === "카드번호"),
+    false,
+    "must not treat 保険証 digits as credit-card PAN",
+  );
+});
+
+test("parseDocumentOcrText detects 保険証 from 記号・番号 layout without title", () => {
+  const result = parseDocumentOcrText(`
+    記号・番号
+    2222 000200040222
+    保険者番号 06135396
+    交付年月日 2024年04月01日
+  `);
+  assert.equal(result.typeLabel, "保険証");
+  assert.equal(result.category, "insurance");
+  assert.equal(result.fields.some((f) => f.label === "카드번호"), false);
+  assert.equal(result.expiryDate, null);
+  assert.equal(result.fields.find((f) => f.label === "保険者番号")?.value, "06135396");
 });
 
 test("parseDocumentOcrText does not use phone as fallback number", () => {

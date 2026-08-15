@@ -199,9 +199,17 @@ function extractCardNumber(text: string): string | null {
   return null;
 }
 
+/** Paper/plastic 保険証 layout cue even when the title OCR is garbled. */
+function looksLikeHokenText(text: string): boolean {
+  return (
+    /保険証|健康保険|被保険|保険者番号|保険者\s*番号/i.test(text) ||
+    /記\s*号\s*[・･·．.／/\s]*\s*番\s*号/i.test(text)
+  );
+}
+
 function detectType(text: string, cardNumber: string | null): string | null {
   if (/在留|재류|residence card|zairyu/i.test(text)) return "在留カード";
-  if (/保険証|健康保険|被保険|保険者番号/i.test(text)) return "保険証";
+  if (looksLikeHokenText(text)) return "保険証";
   if (/マイナンバー|my number|個人番号/i.test(text)) return "マイナンバーカード";
   if (/運転免許|운전면허|driver'?s license/i.test(text)) return "運転免許証";
   if (/旅券|passport|여권/i.test(text)) return "여권";
@@ -223,6 +231,19 @@ function detectType(text: string, cardNumber: string | null): string | null {
   if (shinsatsuken) return shinsatsuken;
   if (cardNumber) return "신용카드";
   return null;
+}
+
+/** 保険証: only trust an explicit 有効期限 — never 交付日 / random MM/YY / “latest date”. */
+function findHokenExpiry(text: string): string | null {
+  const yukoKigenRe =
+    /有効期限\s*[：:\s]*(\d{4}\s*[./年\-]\s*\d{1,2}\s*[./月\-]\s*\d{1,2}\s*日?)/g;
+  const dates: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = yukoKigenRe.exec(text)) !== null) {
+    const iso = parseDateFragment(m[1] ?? "");
+    if (iso) dates.push(iso);
+  }
+  return pickLatestIso(dates);
 }
 
 function detectShinsatsukenType(text: string): string | null {
@@ -323,7 +344,11 @@ function extractLabeledFields(text: string): OcrParsedField[] {
   return fields;
 }
 
-function extractSpecialNumbers(text: string, typeLabel: string | null): OcrParsedField[] {
+function extractSpecialNumbers(
+  text: string,
+  typeLabel: string | null,
+  options?: { skipCardNumber?: boolean },
+): OcrParsedField[] {
   const fields: OcrParsedField[] = [];
   const compact = text.replace(/\s/g, "");
 
@@ -351,13 +376,16 @@ function extractSpecialNumbers(text: string, typeLabel: string | null): OcrParse
     });
   }
 
-  const cardNumber = extractCardNumber(text);
-  if (cardNumber) {
-    pushUnique(fields, {
-      label: "카드번호",
-      value: cardNumber,
-      isSecret: true,
-    });
+  // 保険証 digit clusters (保険者番号+記号+番号) often look like a 16-digit PAN — never treat as 카드번호.
+  if (!options?.skipCardNumber) {
+    const cardNumber = extractCardNumber(text);
+    if (cardNumber) {
+      pushUnique(fields, {
+        label: "카드번호",
+        value: cardNumber,
+        isSecret: true,
+      });
+    }
   }
 
   return fields;
@@ -383,22 +411,28 @@ export function scoreOcrTextForDocuments(text: string): number {
 
 export function parseDocumentOcrText(text: string): OcrParseResult {
   const normalized = normalizeText(text);
-  const cardNumber = extractCardNumber(normalized);
-  const typeLabel = detectType(normalized, cardNumber);
+  const isHoken = looksLikeHokenText(normalized);
+  // Do not let 保険証 digit clusters drive credit-card type detection.
+  const cardNumber = isHoken ? null : extractCardNumber(normalized);
+  const typeLabel = detectType(normalized, cardNumber) ?? (isHoken ? "保険証" : null);
   const isMedical = /診察券|患者番号|患者Ｎｏ|受付番号|診療/i.test(normalized);
-  const isHoken = typeLabel === "保険証" || /保険証|健康保険|被保険|保険者番号/i.test(normalized);
   const category = isMedical
     ? "medical"
     : typeLabel
       ? inferCategoryFromTypeLabel(typeLabel)
-      : null;
+      : isHoken
+        ? "insurance"
+        : null;
 
   const fields: OcrParsedField[] = [];
   if (isHoken) {
     for (const f of extractHokenFields(normalized)) pushUnique(fields, f);
   }
-  for (const f of extractLabeledFields(normalized)) pushUnique(fields, f);
-  for (const s of extractSpecialNumbers(normalized, typeLabel)) {
+  for (const f of extractLabeledFields(normalized)) {
+    if (isHoken && (f.label === "카드번호" || f.label === "CVC")) continue;
+    pushUnique(fields, f);
+  }
+  for (const s of extractSpecialNumbers(normalized, typeLabel, { skipCardNumber: isHoken })) {
     pushUnique(fields, s);
   }
 
@@ -413,6 +447,6 @@ export function parseDocumentOcrText(text: string): OcrParseResult {
     typeLabel: typeLabel ?? (isHoken ? "保険証" : null),
     category: category ?? (isHoken ? "insurance" : null),
     fields,
-    expiryDate: findExpiry(normalized),
+    expiryDate: isHoken ? findHokenExpiry(normalized) : findExpiry(normalized),
   };
 }
