@@ -16,6 +16,10 @@ import {
   type PublicChecklistItem,
 } from "../api/checklists";
 import { ApiError } from "../api/http";
+import {
+  completedRootIds,
+  filterVisibleChecklistRoots,
+} from "../utils/checklistVisibility";
 
 type TreeNode = PublicChecklistItem & { children: TreeNode[] };
 
@@ -63,6 +67,10 @@ export default function ChecklistsPage() {
   const [editDraft, setEditDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [showCompletedRoots, setShowCompletedRoots] = useState(false);
+  /** Fully-completed root ids present when this detail session opened — hide these until re-open. */
+  const [sessionHiddenCompletedIds, setSessionHiddenCompletedIds] = useState<Set<number>>(
+    () => new Set(),
+  );
   const [swipeListId, setSwipeListId] = useState<number | null>(null);
   const [swipeItemId, setSwipeItemId] = useState<number | null>(null);
   const [listMeta, setListMeta] = useState<PublicChecklist | null>(null);
@@ -94,16 +102,20 @@ export default function ChecklistsPage() {
   }, [token, scope, t]);
 
   const loadDetail = useCallback(
-    async (id: number) => {
+    async (id: number, opts?: { resetCompletedSession?: boolean }) => {
       if (!token) return;
       setError(null);
       try {
         const data = await checklistsApi.get(token, id);
         setDetail(data);
         setActiveId(id);
-        setShowCompletedRoots(false);
         setListMeta(null);
         setSwipeListId(null);
+        if (opts?.resetCompletedSession) {
+          const roots = buildTree(data.items);
+          setSessionHiddenCompletedIds(new Set(completedRootIds(roots)));
+          setShowCompletedRoots(false);
+        }
       } catch (err) {
         setError(err instanceof ApiError ? err.message : t("checklists.errorLoad"));
       }
@@ -117,20 +129,10 @@ export default function ChecklistsPage() {
 
   const tree = useMemo(() => (detail ? buildTree(detail.items) : []), [detail]);
 
-  const allCompleted = useCallback((node: TreeNode): boolean => {
-    if (!node.completedAt) return false;
-    return node.children.every(allCompleted);
-  }, []);
-
-  const { visibleRoots, completedRootCount } = useMemo(() => {
-    const completedRoots = tree.filter((n) => allCompleted(n));
-    if (showCompletedRoots) {
-      return { visibleRoots: tree, completedRootCount: completedRoots.length };
-    }
-    const completedRootIds = new Set(completedRoots.map((n) => n.id));
-    const incompleteRoots = tree.filter((n) => !completedRootIds.has(n.id));
-    return { visibleRoots: incompleteRoots, completedRootCount: completedRoots.length };
-  }, [tree, allCompleted, showCompletedRoots]);
+  const { visibleRoots, completedRootCount } = useMemo(
+    () => filterVisibleChecklistRoots(tree, sessionHiddenCompletedIds, showCompletedRoots),
+    [tree, sessionHiddenCompletedIds, showCompletedRoots],
+  );
 
   async function handleCreateList(e: FormEvent) {
     e.preventDefault();
@@ -146,7 +148,7 @@ export default function ChecklistsPage() {
       setNewTitle("");
       setNewShared(false);
       await loadLists();
-      await loadDetail(created.id);
+      await loadDetail(created.id, { resetCompletedSession: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("checklists.errorSave"));
     } finally {
@@ -281,6 +283,8 @@ export default function ChecklistsPage() {
       if (activeId === confirmDeleteList.id) {
         setActiveId(null);
         setDetail(null);
+        setSessionHiddenCompletedIds(new Set());
+        setShowCompletedRoots(false);
       }
       setConfirmDeleteList(null);
       setListMeta(null);
@@ -362,6 +366,8 @@ export default function ChecklistsPage() {
               onClick={() => {
                 setActiveId(null);
                 setDetail(null);
+                setSessionHiddenCompletedIds(new Set());
+                setShowCompletedRoots(false);
                 setParentForAdd(null);
                 setItemDraft("");
                 setEditingItem(null);
@@ -617,7 +623,7 @@ export default function ChecklistsPage() {
                     deleteLabel={t("checklists.deleteList")}
                     actionOpen={swipeListId === list.id}
                     onActionOpenChange={(open) => setSwipeListId(open ? list.id : null)}
-                    onPress={() => void loadDetail(list.id)}
+                    onPress={() => void loadDetail(list.id, { resetCompletedSession: true })}
                     onLongPress={() => {
                       setSwipeListId(null);
                       setListMeta(list);
@@ -672,7 +678,7 @@ export default function ChecklistsPage() {
           </DetailRow>
           <button
             type="button"
-            onClick={() => void loadDetail(listMeta.id)}
+            onClick={() => void loadDetail(listMeta.id, { resetCompletedSession: true })}
             className="mt-4 w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white"
           >
             {t("checklists.openList")}
