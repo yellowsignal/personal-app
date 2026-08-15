@@ -2,7 +2,6 @@ import type { DocumentCategory } from "./documentCategories.js";
 import { inferCategoryFromTypeLabel } from "./documentCategories.js";
 import {
   isOcrDocKind,
-  isPhotoOnlyOcrKind,
   OCR_DOC_KIND_ORDER,
   OCR_DOC_KINDS_BY_REGION,
   OCR_DOC_SCHEMAS,
@@ -15,7 +14,6 @@ export {
   OCR_DOC_KINDS_BY_REGION,
   OCR_DOC_SCHEMAS,
   isOcrDocKind,
-  isPhotoOnlyOcrKind,
 };
 
 export interface OcrParsedField {
@@ -522,9 +520,6 @@ function parseWithKindHint(normalized: string, kind: OcrDocKind): OcrParseResult
     case "jp_hoken":
       for (const f of extractHokenFields(normalized)) pushUnique(extracted, f);
       expiryDate = schema.trackExpiry ? findHokenExpiry(normalized) : null;
-      break;
-    case "jp_shinsatsu":
-      // Photo-only — never OCR-parse hospital cards.
       break;
     case "jp_zairyu": {
       for (const s of extractSpecialNumbers(normalized, schema.typeLabel, {

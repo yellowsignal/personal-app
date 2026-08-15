@@ -4,8 +4,6 @@ import {
   looksLikePhoneNumber,
   parseDocumentOcrText,
   scoreOcrTextForDocuments,
-  isPhotoOnlyOcrKind,
-  OCR_DOC_SCHEMAS,
 } from "./documentOcrParse.js";
 
 test("parseDocumentOcrText extracts 保険証 fields", () => {
@@ -154,17 +152,6 @@ test("parseDocumentOcrText with jp_cash hint extracts bank account fields", () =
   assert.equal(result.fields.find((f) => f.label === "金融機関")?.value, "三菱UFJ銀行");
   assert.equal(result.fields.find((f) => f.label === "店番号")?.value, "123");
   assert.equal(result.fields.find((f) => f.label === "口座番号")?.value, "1234567");
-  assert.equal(result.expiryDate, null);
-});
-
-test("jp_shinsatsu is photo-only schema with hospital name slot", () => {
-  assert.equal(isPhotoOnlyOcrKind("jp_shinsatsu"), true);
-  assert.equal(OCR_DOC_SCHEMAS.jp_shinsatsu.category, "medical");
-  const result = parseDocumentOcrText("さくらクリニック 診察券 患者番号 123", { kind: "jp_shinsatsu" });
-  assert.equal(result.typeLabel, "診察券");
-  assert.equal(result.category, "medical");
-  assert.equal(result.fields.find((f) => f.label === "病院名")?.value, "");
-  assert.equal(result.fields.some((f) => f.label === "患者番号"), false);
   assert.equal(result.expiryDate, null);
 });
 

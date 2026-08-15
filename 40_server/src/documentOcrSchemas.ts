@@ -11,7 +11,6 @@ export type OcrDocKind =
   | "jp_mynumber"
   | "jp_license"
   | "jp_hoken"
-  | "jp_shinsatsu"
   | "kr_passport"
   | "kr_license"
   | "kr_credit";
@@ -33,11 +32,6 @@ export interface OcrDocSchema {
   fields: OcrFieldSpec[];
   /** Look for an expiry date after OCR. */
   trackExpiry: boolean;
-  /**
-   * Hospital cards vary too much for OCR — capture photos only and present
-   * via show-mode when the clinic accepts a screen.
-   */
-  photoOnly?: boolean;
 }
 
 export const OCR_DOC_KIND_ORDER: OcrDocKind[] = [
@@ -47,22 +41,13 @@ export const OCR_DOC_KIND_ORDER: OcrDocKind[] = [
   "jp_mynumber",
   "jp_license",
   "jp_hoken",
-  "jp_shinsatsu",
   "kr_passport",
   "kr_license",
   "kr_credit",
 ];
 
 export const OCR_DOC_KINDS_BY_REGION: Record<OcrDocRegion, OcrDocKind[]> = {
-  jp: [
-    "jp_zairyu",
-    "jp_credit",
-    "jp_cash",
-    "jp_mynumber",
-    "jp_license",
-    "jp_hoken",
-    "jp_shinsatsu",
-  ],
+  jp: ["jp_zairyu", "jp_credit", "jp_cash", "jp_mynumber", "jp_license", "jp_hoken"],
   kr: ["kr_passport", "kr_license", "kr_credit"],
 };
 
@@ -144,20 +129,6 @@ export const OCR_DOC_SCHEMAS: Record<OcrDocKind, OcrDocSchema> = {
       { label: "枝番", isSecret: true, note: "個人識別 2桁" },
     ],
   },
-  jp_shinsatsu: {
-    region: "jp",
-    typeLabel: "診察券",
-    category: "medical",
-    trackExpiry: false,
-    photoOnly: true,
-    fields: [
-      {
-        label: "病院名",
-        isSecret: false,
-        note: "病院ごとにデザインが違うため OCR しない。写真提示用。",
-      },
-    ],
-  },
   kr_passport: {
     region: "kr",
     typeLabel: "여권",
@@ -192,8 +163,4 @@ export const OCR_DOC_SCHEMAS: Record<OcrDocKind, OcrDocSchema> = {
 
 export function isOcrDocKind(value: unknown): value is OcrDocKind {
   return typeof value === "string" && value in OCR_DOC_SCHEMAS;
-}
-
-export function isPhotoOnlyOcrKind(kind: OcrDocKind | null | undefined): boolean {
-  return Boolean(kind && OCR_DOC_SCHEMAS[kind]?.photoOnly);
 }

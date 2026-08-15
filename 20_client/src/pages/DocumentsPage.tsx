@@ -29,9 +29,7 @@ import { imageFileToPdfBlob } from "../utils/imageToPdf";
 import { mergePdfBlobs } from "../utils/pdfMerge";
 import { runOcrOnFiles } from "../utils/documentOcr";
 import {
-  isPhotoOnlyOcrKind,
   OCR_DOC_KINDS_BY_REGION,
-  OCR_DOC_SCHEMAS,
   parseDocumentOcrText,
   type OcrDocKind,
 } from "@personal-app/document-ocr-parse";
@@ -106,8 +104,6 @@ export default function DocumentsPage() {
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [fromOcrReview, setFromOcrReview] = useState(false);
-  /** 診察券 etc. — photos only, no OCR field fill. */
-  const [fromPhotoOnly, setFromPhotoOnly] = useState(false);
   const [showModeDoc, setShowModeDoc] = useState<PublicDocument | null>(null);
   const [pinnedIds, setPinnedIds] = useState<number[]>(() => readPinnedDocumentIds());
   const scanInputRef = useRef<HTMLInputElement>(null);
@@ -262,7 +258,6 @@ export default function DocumentsPage() {
     setCreateScanFront(null);
     setCreateScanBack(null);
     setFromOcrReview(false);
-    setFromPhotoOnly(false);
     setEditing(null);
   }
 
@@ -303,7 +298,6 @@ export default function DocumentsPage() {
     setShowCreate(false);
     setSubmitting(false);
     setFromOcrReview(false);
-    setFromPhotoOnly(false);
     setEditing(null);
   }
 
@@ -434,31 +428,6 @@ export default function DocumentsPage() {
     setCreateScanFront(front);
     setCreateScanBack(back);
     setFromOcrReview(true);
-    setFromPhotoOnly(false);
-    closeScanWizard();
-    setShowCreate(true);
-  }
-
-  /** 診察券: skip OCR — keep photos for hospital show-mode. */
-  function openPhotoOnlyReviewForm(front: File, back: File | null, kind: OcrDocKind) {
-    const schema = OCR_DOC_SCHEMAS[kind];
-    resetForm();
-    setTypeLabel(schema.typeLabel);
-    setCategory(schema.category);
-    setFieldDrafts(
-      schema.fields.map((f) => ({
-        key: crypto.randomUUID(),
-        label: f.label,
-        value: "",
-        isSecret: f.isSecret,
-      })),
-    );
-    setHasExpiry(false);
-    setExpiryDate(todayIsoDate());
-    setCreateScanFront(front);
-    setCreateScanBack(back);
-    setFromOcrReview(true);
-    setFromPhotoOnly(true);
     closeScanWizard();
     setShowCreate(true);
   }
@@ -512,10 +481,6 @@ export default function DocumentsPage() {
       return;
     }
     if (scanWizard.target.withOcr) {
-      if (isPhotoOnlyOcrKind(scanWizard.ocrKind)) {
-        openPhotoOnlyReviewForm(scanWizard.frontFile, scanWizard.backFile, scanWizard.ocrKind!);
-        return;
-      }
       // Always review/edit before create — never auto-save after OCR.
       await runOcrAndOpenCreate(scanWizard.frontFile, scanWizard.backFile, scanWizard.ocrKind);
       return;
@@ -610,8 +575,6 @@ export default function DocumentsPage() {
         if (f.value.trim()) return true;
         // Edit: empty secret means “keep existing”; empty non-secret slots from OCR templates are dropped.
         if (editing && f.isSecret) return true;
-        // Photo-only 診察券: keep empty 病院名 so API still gets a fields array.
-        if (!editing && fromPhotoOnly && createScanFront) return true;
         return false;
       })
       .map((f) => {
@@ -637,7 +600,7 @@ export default function DocumentsPage() {
       }
       return false;
     });
-    if (!hasFieldValue && !(fromPhotoOnly && createScanFront)) {
+    if (!hasFieldValue) {
       setError(t("documents.fieldValueRequired"));
       return;
     }
@@ -689,15 +652,14 @@ export default function DocumentsPage() {
 
   const canSubmit =
     typeLabel.trim().length > 0 &&
-    (Boolean(fromPhotoOnly && createScanFront) ||
-      fieldDrafts.some((f) => {
-        if (!f.label.trim()) return false;
-        if (f.value.trim()) return true;
-        if (editing && f.isSecret) {
-          return editing.fields.some((ef) => ef.id === f.id && ef.hasValue);
-        }
-        return false;
-      }));
+    fieldDrafts.some((f) => {
+      if (!f.label.trim()) return false;
+      if (f.value.trim()) return true;
+      if (editing && f.isSecret) {
+        return editing.fields.some((ef) => ef.id === f.id && ef.hasValue);
+      }
+      return false;
+    });
 
   return (
     <div>
@@ -1083,9 +1045,7 @@ export default function DocumentsPage() {
               </button>
             </div>
             {!editing && fromOcrReview && (
-              <p className="mb-4 text-xs text-neutral-500">
-                {fromPhotoOnly ? t("documents.reviewPhotoOnlyHint") : t("documents.reviewOcrHint")}
-              </p>
+              <p className="mb-4 text-xs text-neutral-500">{t("documents.reviewOcrHint")}</p>
             )}
 
             <label className="mb-2 block text-sm font-semibold text-neutral-700">{t("documents.fieldCategory")}</label>
@@ -1375,16 +1335,7 @@ export default function DocumentsPage() {
                   </button>
                 )}
                 <p className="text-sm text-neutral-600">{t("documents.scanStepFront")}</p>
-                {scanWizard.target.kind === "create" &&
-                  scanWizard.target.withOcr &&
-                  isPhotoOnlyOcrKind(scanWizard.ocrKind) && (
-                  <p className="mt-2 rounded-xl bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-900">
-                    {t("documents.ocrPhotoOnlyHint")}
-                  </p>
-                )}
-                {scanWizard.target.kind === "create" &&
-                  scanWizard.target.withOcr &&
-                  !isPhotoOnlyOcrKind(scanWizard.ocrKind) && (
+                {scanWizard.target.kind === "create" && scanWizard.target.withOcr && (
                   <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
                     {t("documents.ocrOrientationHint")}
                   </p>
@@ -1430,9 +1381,7 @@ export default function DocumentsPage() {
               <>
                 <p className="text-sm text-neutral-600">
                   {scanWizard.target.kind === "create" && scanWizard.target.withOcr
-                    ? isPhotoOnlyOcrKind(scanWizard.ocrKind)
-                      ? t("documents.ocrPhotoOnlyReviewHint")
-                      : t("documents.ocrReviewStepHint")
+                    ? t("documents.ocrReviewStepHint")
                     : t("documents.scanStepReview")}
                 </p>
                 <div className="mt-3 grid grid-cols-2 gap-2">
@@ -1466,9 +1415,7 @@ export default function DocumentsPage() {
                     onClick={() => void confirmScanWizard()}
                     className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white disabled:opacity-40"
                   >
-                    {isPhotoOnlyOcrKind(scanWizard.ocrKind)
-                      ? t("documents.ocrPhotoOnlyContinue")
-                      : t("documents.ocrAnalyze")}
+                    {t("documents.ocrAnalyze")}
                   </button>
                 ) : (
                   <button
