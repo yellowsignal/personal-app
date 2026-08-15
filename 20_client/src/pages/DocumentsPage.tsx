@@ -395,6 +395,10 @@ export default function DocumentsPage() {
     if (parsed.expiryDate) {
       setHasExpiry(true);
       setExpiryDate(parsed.expiryDate);
+    } else {
+      // Do not keep the form default (today) as a fake OCR expiry.
+      setHasExpiry(false);
+      setExpiryDate(todayIsoDate());
     }
   }
 
@@ -405,6 +409,8 @@ export default function DocumentsPage() {
   }
 
   function openOcrReviewForm(front: File, back: File | null, parsed: ReturnType<typeof parseDocumentOcrText>) {
+    // Clear prior create/edit drafts so leftover 이름/만료일 never look like OCR output.
+    resetForm();
     applyOcrResult(parsed);
     setCreateScanFront(front);
     setCreateScanBack(back);
