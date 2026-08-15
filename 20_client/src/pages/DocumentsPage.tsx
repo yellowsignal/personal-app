@@ -28,7 +28,11 @@ import { isPasskeySupported } from "../api/passkey";
 import { imageFileToPdfBlob } from "../utils/imageToPdf";
 import { mergePdfBlobs } from "../utils/pdfMerge";
 import { runOcrOnFiles } from "../utils/documentOcr";
-import { OCR_DOC_KIND_ORDER, parseDocumentOcrText, type OcrDocKind } from "@personal-app/document-ocr-parse";
+import {
+  OCR_DOC_KINDS_BY_REGION,
+  parseDocumentOcrText,
+  type OcrDocKind,
+} from "@personal-app/document-ocr-parse";
 import { readPinnedDocumentIds, togglePinnedDocumentId } from "../utils/documentPins";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useKeepFocusedInScrollParent } from "../hooks/useKeepFocusedInScrollParent";
@@ -1285,18 +1289,27 @@ export default function DocumentsPage() {
             {scanWizard.step === "type" && (
               <>
                 <p className="text-sm text-neutral-600">{t("documents.ocrPickTypeHint")}</p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {OCR_DOC_KIND_ORDER.map((kind) => (
-                    <button
-                      key={kind}
-                      type="button"
-                      onClick={() =>
-                        setScanWizard((w) => (w ? { ...w, ocrKind: kind, step: "front" } : w))
-                      }
-                      className="rounded-full bg-neutral-100 px-3.5 py-2 text-sm font-semibold text-neutral-800 ring-1 ring-neutral-200 active:bg-indigo-50 active:text-indigo-700 active:ring-indigo-200"
-                    >
-                      {t(`documents.ocrType.${kind}`)}
-                    </button>
+                <div className="mt-4 space-y-4">
+                  {(["jp", "kr"] as const).map((region) => (
+                    <div key={region}>
+                      <p className="mb-2 text-[11px] font-semibold tracking-wide text-neutral-400">
+                        {t(`documents.ocrRegion.${region}`)}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {OCR_DOC_KINDS_BY_REGION[region].map((kind) => (
+                          <button
+                            key={kind}
+                            type="button"
+                            onClick={() =>
+                              setScanWizard((w) => (w ? { ...w, ocrKind: kind, step: "front" } : w))
+                            }
+                            className="rounded-full bg-neutral-100 px-3.5 py-2 text-sm font-semibold text-neutral-800 ring-1 ring-neutral-200 active:bg-indigo-50 active:text-indigo-700 active:ring-indigo-200"
+                          >
+                            {t(`documents.ocrType.${kind}`)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </>

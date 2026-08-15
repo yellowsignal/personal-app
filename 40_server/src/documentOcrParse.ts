@@ -1,5 +1,15 @@
 import type { DocumentCategory } from "./documentCategories.js";
 import { inferCategoryFromTypeLabel } from "./documentCategories.js";
+import {
+  isOcrDocKind,
+  OCR_DOC_KIND_ORDER,
+  OCR_DOC_KINDS_BY_REGION,
+  OCR_DOC_SCHEMAS,
+  type OcrDocKind,
+} from "./documentOcrSchemas.js";
+
+export type { OcrDocKind, OcrDocRegion, OcrDocSchema, OcrFieldSpec } from "./documentOcrSchemas.js";
+export { OCR_DOC_KIND_ORDER, OCR_DOC_KINDS_BY_REGION, OCR_DOC_SCHEMAS, isOcrDocKind };
 
 export interface OcrParsedField {
   label: string;
@@ -13,42 +23,6 @@ export interface OcrParseResult {
   fields: OcrParsedField[];
   expiryDate: string | null;
 }
-
-/** User-selected document kind before OCR — constrains field/expiry extraction. */
-export type OcrDocKind =
-  | "hoken"
-  | "zairyu"
-  | "card"
-  | "license"
-  | "passport"
-  | "mynumber"
-  | "shinsatsu"
-  | "other";
-
-export const OCR_DOC_KIND_ORDER: OcrDocKind[] = [
-  "hoken",
-  "zairyu",
-  "card",
-  "license",
-  "passport",
-  "mynumber",
-  "shinsatsu",
-  "other",
-];
-
-export const OCR_DOC_KIND_META: Record<
-  OcrDocKind,
-  { typeLabel: string; category: DocumentCategory }
-> = {
-  hoken: { typeLabel: "保険証", category: "insurance" },
-  zairyu: { typeLabel: "在留カード", category: "id" },
-  card: { typeLabel: "신용카드", category: "card" },
-  license: { typeLabel: "運転免許証", category: "id" },
-  passport: { typeLabel: "여권", category: "id" },
-  mynumber: { typeLabel: "マイナンバーカード", category: "id" },
-  shinsatsu: { typeLabel: "診察券", category: "medical" },
-  other: { typeLabel: "", category: "other" },
-};
 
 export interface ParseDocumentOcrOptions {
   kind?: OcrDocKind | null;
@@ -412,9 +386,19 @@ function extractSpecialNumbers(
   }
 
   if (allow("license")) {
-    const license = text.match(/\b(\d{2}-\d{2}-\d{6}-\d{2})\b/);
-    if (license) {
-      pushUnique(fields, { label: "면허번호", value: license[1]!, isSecret: true });
+    const kr = text.match(/\b(\d{2}-\d{2}-\d{6}-\d{2})\b/);
+    if (kr) {
+      pushUnique(fields, { label: "면허번호", value: kr[1]!, isSecret: true });
+    }
+    const jp =
+      text.match(/(?:免許証番号|免許番号)[：:\s第]*([0-9]{10,12})/) ??
+      text.match(/\b(\d{4}\s?\d{4}\s?\d{4})\b/);
+    if (jp?.[1] && !kr) {
+      pushUnique(fields, {
+        label: "免許番号",
+        value: digitsOnly(jp[1]),
+        isSecret: true,
+      });
     }
   }
 
@@ -462,88 +446,146 @@ export function scoreOcrTextForDocuments(text: string): number {
   return score;
 }
 
+function extractCashCardFields(text: string): OcrParsedField[] {
+  const fields: OcrParsedField[] = [];
+  const bank =
+    text.match(
+      /([\u4e00-\u9fffA-Za-z・ー]{2,20}(?:銀行|信用金庫|信用組合|農協|労働金庫|JF|ゆうちょ銀行))/,
+    ) ?? text.match(/(ゆうちょ銀行|三菱UFJ銀行|三井住友銀行|みずほ銀行|りそな銀行)/);
+  if (bank?.[1]) {
+    pushUnique(fields, { label: "金融機関", value: bank[1].trim(), isSecret: false });
+  }
+  const ten =
+    text.match(/(?:店番\s*号|支店(?:コード|番号)?|店番)[：:\s]*([0-9]{3,4})/i) ??
+    text.match(/\b店\s*([0-9]{3})\b/);
+  if (ten?.[1]) {
+    pushUnique(fields, { label: "店番号", value: ten[1], isSecret: false });
+  }
+  const koza = text.match(/(?:口座\s*番号|口座番)[：:\s]*([0-9]{6,8})/i);
+  if (koza?.[1]) {
+    pushUnique(fields, { label: "口座番号", value: koza[1], isSecret: true });
+  }
+  return fields;
+}
+
+function extractZairyuStatus(text: string): string | null {
+  const m = text.match(
+    /在留資格[：:\s]*([^\n]{2,40}?)(?:\n|就労|在留期間|許可|交付|$)/,
+  );
+  if (!m?.[1]) return null;
+  return m[1].replace(/\s+/g, " ").trim();
+}
+
+function mergeSchemaFields(
+  kind: OcrDocKind,
+  extracted: OcrParsedField[],
+): OcrParsedField[] {
+  const schema = OCR_DOC_SCHEMAS[kind];
+  const byLabel = new Map(extracted.map((f) => [f.label, f]));
+  return schema.fields.map((spec) => {
+    const hit = byLabel.get(spec.label);
+    return {
+      label: spec.label,
+      value: hit?.value ?? "",
+      isSecret: spec.isSecret,
+    };
+  });
+}
+
 export function parseDocumentOcrText(
   text: string,
   options?: ParseDocumentOcrOptions,
 ): OcrParseResult {
   const normalized = normalizeText(text);
-  const kind = options?.kind ?? null;
+  const kind = options?.kind && isOcrDocKind(options.kind) ? options.kind : null;
 
-  if (kind && kind !== "other") {
+  if (kind) {
     return parseWithKindHint(normalized, kind);
   }
 
   return parseAutoDetect(normalized);
 }
 
-function parseWithKindHint(normalized: string, kind: Exclude<OcrDocKind, "other">): OcrParseResult {
-  const meta = OCR_DOC_KIND_META[kind];
-  const fields: OcrParsedField[] = [];
-  let typeLabel = meta.typeLabel;
-  let category: DocumentCategory = meta.category;
+function parseWithKindHint(normalized: string, kind: OcrDocKind): OcrParseResult {
+  const schema = OCR_DOC_SCHEMAS[kind];
+  const extracted: OcrParsedField[] = [];
   let expiryDate: string | null = null;
 
-  if (kind === "hoken") {
-    for (const f of extractHokenFields(normalized)) pushUnique(fields, f);
-    expiryDate = findHokenExpiry(normalized);
-  } else if (kind === "zairyu") {
-    for (const s of extractSpecialNumbers(normalized, "在留カード", {
-      skipCardNumber: true,
-      only: ["zairyu"],
-    })) {
-      pushUnique(fields, s);
+  switch (kind) {
+    case "jp_hoken":
+      for (const f of extractHokenFields(normalized)) pushUnique(extracted, f);
+      expiryDate = schema.trackExpiry ? findHokenExpiry(normalized) : null;
+      break;
+    case "jp_zairyu": {
+      for (const s of extractSpecialNumbers(normalized, schema.typeLabel, {
+        skipCardNumber: true,
+        only: ["zairyu"],
+      })) {
+        pushUnique(extracted, s);
+      }
+      const status = extractZairyuStatus(normalized);
+      if (status) pushUnique(extracted, { label: "在留資格", value: status, isSecret: false });
+      expiryDate = findExpiry(normalized);
+      break;
     }
-    expiryDate = findExpiry(normalized);
-  } else if (kind === "card") {
-    for (const f of extractLabeledFields(normalized)) {
-      if (f.label === "카드번호" || f.label === "CVC") pushUnique(fields, f);
-    }
-    for (const s of extractSpecialNumbers(normalized, "신용카드", { only: ["card"] })) {
-      pushUnique(fields, s);
-    }
-    expiryDate = findCardExpiry(normalized) ?? findExpiry(normalized);
-  } else if (kind === "license") {
-    for (const s of extractSpecialNumbers(normalized, "運転免許証", {
-      skipCardNumber: true,
-      only: ["license"],
-    })) {
-      pushUnique(fields, s);
-    }
-    expiryDate = findExpiry(normalized);
-  } else if (kind === "passport") {
-    for (const s of extractSpecialNumbers(normalized, "여권", {
-      skipCardNumber: true,
-      only: ["passport"],
-    })) {
-      pushUnique(fields, s);
-    }
-    expiryDate = findExpiry(normalized);
-  } else if (kind === "mynumber") {
-    for (const s of extractSpecialNumbers(normalized, "マイナンバーカード", {
-      skipCardNumber: true,
-      only: ["mynumber"],
-    })) {
-      pushUnique(fields, s);
-    }
-    expiryDate = findExpiry(normalized);
-  } else if (kind === "shinsatsu") {
-    const detected = detectShinsatsukenType(normalized);
-    if (detected) typeLabel = detected;
-    category = "medical";
-    for (const f of extractLabeledFields(normalized)) {
-      if (f.label === "患者番号" || f.label === "受付番号") pushUnique(fields, f);
-    }
-    expiryDate = null;
+    case "jp_credit":
+    case "kr_credit":
+      for (const f of extractLabeledFields(normalized)) {
+        if (f.label === "카드번호" || f.label === "CVC") pushUnique(extracted, f);
+      }
+      for (const s of extractSpecialNumbers(normalized, schema.typeLabel, { only: ["card"] })) {
+        pushUnique(extracted, s);
+      }
+      expiryDate = findCardExpiry(normalized) ?? findExpiry(normalized);
+      break;
+    case "jp_cash":
+      for (const f of extractCashCardFields(normalized)) pushUnique(extracted, f);
+      expiryDate = null;
+      break;
+    case "jp_mynumber":
+      for (const s of extractSpecialNumbers(normalized, schema.typeLabel, {
+        skipCardNumber: true,
+        only: ["mynumber"],
+      })) {
+        pushUnique(extracted, s);
+      }
+      expiryDate = findExpiry(normalized);
+      break;
+    case "jp_license":
+      for (const s of extractSpecialNumbers(normalized, schema.typeLabel, {
+        skipCardNumber: true,
+        only: ["license"],
+      })) {
+        pushUnique(extracted, s);
+      }
+      expiryDate = findExpiry(normalized);
+      break;
+    case "kr_passport":
+      for (const s of extractSpecialNumbers(normalized, schema.typeLabel, {
+        skipCardNumber: true,
+        only: ["passport"],
+      })) {
+        pushUnique(extracted, s);
+      }
+      expiryDate = findExpiry(normalized);
+      break;
+    case "kr_license":
+      for (const s of extractSpecialNumbers(normalized, schema.typeLabel, {
+        skipCardNumber: true,
+        only: ["license"],
+      })) {
+        pushUnique(extracted, s);
+      }
+      expiryDate = findExpiry(normalized);
+      break;
   }
 
-  if (fields.length === 0 && kind !== "shinsatsu") {
-    const fallback = normalized.match(/\b[\dA-Z\-]{10,}\b/);
-    if (fallback?.[0] && !looksLikePhoneNumber(fallback[0])) {
-      pushUnique(fields, { label: "번호", value: fallback[0], isSecret: true });
-    }
-  }
-
-  return { typeLabel, category, fields, expiryDate };
+  return {
+    typeLabel: schema.typeLabel,
+    category: schema.category,
+    fields: mergeSchemaFields(kind, extracted),
+    expiryDate: schema.trackExpiry ? expiryDate : null,
+  };
 }
 
 function parseAutoDetect(normalized: string): OcrParseResult {

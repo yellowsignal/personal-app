@@ -99,7 +99,7 @@ test("parseDocumentOcrText with hoken hint ignores credit-card digits and 交付
     交付年月日 2024年04月01日
     VISA
   `,
-    { kind: "hoken" },
+    { kind: "jp_hoken" },
   );
   assert.equal(result.typeLabel, "保険証");
   assert.equal(result.category, "insurance");
@@ -107,6 +107,7 @@ test("parseDocumentOcrText with hoken hint ignores credit-card digits and 交付
   assert.equal(result.fields.find((f) => f.label === "番号")?.value, "54156");
   assert.equal(result.fields.some((f) => f.label === "카드번호"), false);
   assert.equal(result.expiryDate, null);
+  assert.equal(result.fields.map((f) => f.label).join(","), "保険者番号,記号,番号,枝番");
 });
 
 test("parseDocumentOcrText with zairyu hint keeps residence expiry not 交付", () => {
@@ -116,7 +117,7 @@ test("parseDocumentOcrText with zairyu hint keeps residence expiry not 交付", 
     交付年月日 2025年10月21日まで有効
     このカードは 2028年11月12日まで有効
   `,
-    { kind: "zairyu" },
+    { kind: "jp_zairyu" },
   );
   assert.equal(result.typeLabel, "在留カード");
   assert.equal(result.expiryDate, "2028-11-12");
@@ -130,12 +131,28 @@ test("parseDocumentOcrText with card hint extracts PAN", () => {
     1234 5678 9012 3456
     VALID THRU 12/28
   `,
-    { kind: "card" },
+    { kind: "jp_credit" },
   );
   assert.equal(result.typeLabel, "신용카드");
   assert.equal(result.category, "card");
   assert.equal(result.fields.find((f) => f.label === "카드번호")?.value, "1234567890123456");
   assert.equal(result.expiryDate, "2028-12-31");
+});
+
+test("parseDocumentOcrText with jp_cash hint extracts bank account fields", () => {
+  const result = parseDocumentOcrText(
+    `
+    三菱UFJ銀行
+    店番号 123
+    口座番号 1234567
+  `,
+    { kind: "jp_cash" },
+  );
+  assert.equal(result.typeLabel, "キャッシュカード");
+  assert.equal(result.fields.find((f) => f.label === "金融機関")?.value, "三菱UFJ銀行");
+  assert.equal(result.fields.find((f) => f.label === "店番号")?.value, "123");
+  assert.equal(result.fields.find((f) => f.label === "口座番号")?.value, "1234567");
+  assert.equal(result.expiryDate, null);
 });
 
 test("parseDocumentOcrText uses まで有効 not 交付年月日 on residence cards", () => {
