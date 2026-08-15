@@ -47,16 +47,18 @@ export default function OverlayScrim({
       {onDismiss ? (
         <button
           type="button"
-          className="absolute inset-0 cursor-default"
+          className="absolute inset-0 z-0 cursor-default"
           style={{ touchAction: "none" }}
           aria-label={label}
           onClick={onDismiss}
         />
       ) : null}
       {enableSwipe ? (
-        <SwipeToDismiss onDismiss={onDismiss!} onOffsetChange={setDragY}>
-          {children}
-        </SwipeToDismiss>
+        <div className="relative z-10 w-full max-w-md">
+          <SwipeToDismiss onDismiss={onDismiss!} onOffsetChange={setDragY}>
+            {children}
+          </SwipeToDismiss>
+        </div>
       ) : (
         <div className="relative z-10 w-full max-w-md" style={{ touchAction: "pan-y" }}>
           {children}
