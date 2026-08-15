@@ -1,13 +1,17 @@
 # Production Postgres on the OCI host (separate from dig on :5432).
 # Usage on server:
 #   cd ~/personal-app/40_server
-#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#   docker compose -p myfamilyhub-prod -f docker-compose.prod.yml --env-file .env.prod up -d
 #
 # Dig keeps 127.0.0.1:5432. Prod listens on 127.0.0.1:5433 only.
+# Project name must stay distinct from dig (`myfamilyhub-dig`).
+
+name: myfamilyhub-prod
 
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: myfamilyhub-pg-prod
     restart: unless-stopped
     ports:
       - "127.0.0.1:5433:5432"
@@ -25,3 +29,4 @@ services:
 
 volumes:
   myfamilyhub_pg_prod:
+    name: 40_server_myfamilyhub_pg_prod

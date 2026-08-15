@@ -35,23 +35,23 @@ echo "==> Stopping prod API (if running)"
 sudo systemctl stop myfamilyhub-api 2>/dev/null || true
 
 echo "==> Dump dig DB → $DUMP_PATH"
-sudo docker compose -f "$DIG_COMPOSE" exec -T postgres \
+sudo docker compose -p myfamilyhub-dig -f "$DIG_COMPOSE" exec -T postgres \
   pg_dump -U myfamilyhub -d myfamilyhub -Fc -f /tmp/dig.dump
 # Copy dump out of container
-DIG_CID="$(sudo docker compose -f "$DIG_COMPOSE" ps -q postgres)"
+DIG_CID="$(sudo docker compose -p myfamilyhub-dig -f "$DIG_COMPOSE" ps -q postgres)"
 sudo docker cp "$DIG_CID:/tmp/dig.dump" "$DUMP_PATH"
-sudo docker compose -f "$DIG_COMPOSE" exec -T postgres rm -f /tmp/dig.dump
+sudo docker compose -p myfamilyhub-dig -f "$DIG_COMPOSE" exec -T postgres rm -f /tmp/dig.dump
 
 echo "==> Restore into prod DB (drop+create public objects via --clean)"
-PROD_CID="$(sudo docker compose -f "$PROD_COMPOSE" --env-file "$PROD_ENV" ps -q postgres)"
+PROD_CID="$(sudo docker compose -p myfamilyhub-prod -f "$PROD_COMPOSE" --env-file "$PROD_ENV" ps -q postgres)"
 sudo docker cp "$DUMP_PATH" "$PROD_CID:/tmp/prod.dump"
 # Terminate connections then restore
-sudo docker compose -f "$PROD_COMPOSE" --env-file "$PROD_ENV" exec -T postgres \
+sudo docker compose -p myfamilyhub-prod -f "$PROD_COMPOSE" --env-file "$PROD_ENV" exec -T postgres \
   psql -U myfamilyhub -d myfamilyhub -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='myfamilyhub' AND pid <> pg_backend_pid();" \
   >/dev/null || true
-sudo docker compose -f "$PROD_COMPOSE" --env-file "$PROD_ENV" exec -T postgres \
+sudo docker compose -p myfamilyhub-prod -f "$PROD_COMPOSE" --env-file "$PROD_ENV" exec -T postgres \
   pg_restore -U myfamilyhub -d myfamilyhub --clean --if-exists --no-owner --no-acl /tmp/prod.dump
-sudo docker compose -f "$PROD_COMPOSE" --env-file "$PROD_ENV" exec -T postgres rm -f /tmp/prod.dump
+sudo docker compose -p myfamilyhub-prod -f "$PROD_COMPOSE" --env-file "$PROD_ENV" exec -T postgres rm -f /tmp/prod.dump
 sudo rm -f "$DUMP_PATH"
 
 echo "==> Copy file stores dig → prod"

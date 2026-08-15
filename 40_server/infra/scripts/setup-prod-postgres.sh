@@ -45,12 +45,13 @@ fi
 
 mkdir -p "$PROD_DATA/photos" "$PROD_DATA/document-scans" "$PROD_DATA/icloud-covers"
 
-echo "==> Starting prod Postgres (127.0.0.1:5433)"
-sudo docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
+echo "==> Starting prod Postgres (127.0.0.1:5433) [project myfamilyhub-prod]"
+# Never omit -p: same folder as dig would replace dig's postgres container.
+sudo docker compose -p myfamilyhub-prod -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
 
 echo "==> Waiting for Postgres"
 for i in $(seq 1 40); do
-  if sudo docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T postgres \
+  if sudo docker compose -p myfamilyhub-prod -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T postgres \
     pg_isready -U myfamilyhub -d myfamilyhub >/dev/null 2>&1; then
     break
   fi

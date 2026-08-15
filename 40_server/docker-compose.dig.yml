@@ -1,13 +1,17 @@
 # Dig / staging Postgres on the OCI host (persists Passkeys & users across API restarts).
 # Usage on server:
 #   cd ~/personal-app/40_server
-#   docker compose -f docker-compose.dig.yml up -d
-#   cp .env.example .env   # edit JWT_SECRET, passwords
-#   export $(grep -v '^#' .env | xargs) && npx prisma migrate deploy
+#   docker compose -p myfamilyhub-dig -f docker-compose.dig.yml up -d
+#
+# IMPORTANT: project name must stay distinct from prod (`myfamilyhub-prod`).
+# Same directory + same service name otherwise replaces the other stack.
+
+name: myfamilyhub-dig
 
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: myfamilyhub-pg-dig
     restart: unless-stopped
     ports:
       - "127.0.0.1:5432:5432"
@@ -25,3 +29,5 @@ services:
 
 volumes:
   myfamilyhub_pg_dig:
+    # Keep legacy volume from earlier deploys (project was directory name `40_server`)
+    name: 40_server_myfamilyhub_pg_dig

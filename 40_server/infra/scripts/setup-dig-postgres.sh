@@ -30,12 +30,13 @@ if ! grep -q '^DATABASE_URL=' .env; then
   echo 'DATABASE_URL=postgresql://myfamilyhub:change_me_dig@127.0.0.1:5432/myfamilyhub?schema=public' >> .env
 fi
 
-echo "==> Starting Postgres"
-sudo docker compose -f "$COMPOSE_FILE" --env-file .env up -d
+echo "==> Starting dig Postgres (127.0.0.1:5432) [project myfamilyhub-dig]"
+# Never omit -p: same folder as prod would replace prod's postgres container.
+sudo docker compose -p myfamilyhub-dig -f "$COMPOSE_FILE" --env-file .env up -d
 
 echo "==> Waiting for Postgres"
 for i in $(seq 1 30); do
-  if sudo docker compose -f "$COMPOSE_FILE" exec -T postgres pg_isready -U myfamilyhub -d myfamilyhub >/dev/null 2>&1; then
+  if sudo docker compose -p myfamilyhub-dig -f "$COMPOSE_FILE" exec -T postgres pg_isready -U myfamilyhub -d myfamilyhub >/dev/null 2>&1; then
     break
   fi
   sleep 1
