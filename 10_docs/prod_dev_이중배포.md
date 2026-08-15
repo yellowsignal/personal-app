@@ -1,123 +1,144 @@
-# prod / dev 이중 배포 (같은 OCI 서버)
+# prod / dig 이중 배포 (같은 OCI 서버)
 
-가족용 실서비스와 개발·테스트 미리보기를 **서버 1대**에서 도메인으로 나눕니다.
+가족용 **실서비스(prod)** 와 **개발·테스트(dig)** 를 서버 1대에서 도메인·DB·파일로 나눕니다.
 
-## 도메인 규칙 (DuckDNS)
+## 결론 (민호 질문에 대한 답)
 
-DuckDNS는 `dev.sumicchogurashi.duckdns.org`처럼 **한 단계 더 깊은 이름**을 지원하지 않습니다.  
-그래서 **DuckDNS 서브도메인을 2개** 씁니다.
-
-| 역할 | DuckDNS 이름 (권장) | 문서상 별칭 |
-| --- | --- | --- |
-| 실 (prod) | `sumicchogurashi.duckdns.org` | 이미 사용 중 |
-| 개발 (dev) | `sumicchogurashi-dev.duckdns.org` | “dev 서브도메인” |
-
-둘 다 같은 Public IP `129.225.196.226`을 가리킵니다.
-
-## 서버 디렉터리
-
-| 경로 | 용도 |
+| 질문 | 답 |
 | --- | --- |
-| `/var/www/myfamily/` | prod 정적 빌드 |
-| `/var/www/myfamily-dev/` | dev 정적 빌드 |
-| `127.0.0.1:3001` | (나중) prod API |
-| `127.0.0.1:3002` | (나중) dev API — nginx `/api/` 프록시 |
+| dig DB 데이터를 실서버로? | **1회** `clone-dig-to-prod.sh` 로 dig → prod 복제 |
+| 스키마를 분리하면 되나? | **테이블 구조(Prisma 마이그레이션)는 동일**. 분리할 것은 **데이터베이스 인스턴스(또는 DB)** 와 **파일 디렉터리·systemd·도메인** |
+| 이후 개발 흐름? | 기능 → dig 배포·검증 → OK면 prod 배포 |
 
-## 민호가 할 일 (아이폰·OCI 콘솔)
+같은 Postgres 안에 `public` / `dig` 스키마만 나누는 방식은 **추천하지 않습니다**.  
+마이그레이션·백업·실수 방지·비밀번호 격리를 위해 **포트/볼륨이 다른 DB 2개**가 안전합니다.
 
-### 1) DuckDNS에 개발용 이름 추가
+## 도메인
 
-1. https://www.duckdns.org 로그인  
-2. 새 서브도메인 생성: 예) `sumicchogurashi-dev`  
-3. IP를 `129.225.196.226`으로 설정  
-4. token은 채팅/레포에 올리지 말 것
+| 역할 | DuckDNS | 정적 루트 | API |
+| --- | --- | --- | --- |
+| prod | `sumicchogurashi.duckdns.org` | `/var/www/myfamily` | `127.0.0.1:3001` (`myfamilyhub-api`) |
+| dig | `sumicchogurashi-dev.duckdns.org` | `/var/www/myfamilyhub-dev` (또는 `myfamily-dev`) | `127.0.0.1:3002` (`myfamilyhub-dev-api`) |
 
-또는 서버 `.env`에 넣고:
+둘 다 Public IP `129.225.196.226`을 가리킵니다.
+
+## DB·파일 분리
+
+| | dig | prod |
+| --- | --- | --- |
+| Compose | `docker-compose.dig.yml` | `docker-compose.prod.yml` |
+| Listen | `127.0.0.1:5432` | `127.0.0.1:5433` |
+| Env file | `40_server/.env` | `40_server/.env.prod` |
+| Photos 등 | `30_data/photos` 등 | `30_data/prod/...` |
+| Prisma | **같은** `prisma/migrations` | **같은** `prisma/migrations` |
+
+스키마 **내용**은 항상 동일하게 `prisma migrate deploy` 로 맞춥니다.  
+다른 것은 **데이터**와 **접속 URL**입니다.
+
+### Passkey / 암호화 주의
+
+- WebAuthn은 **도메인(RP ID)에 묶입니다**. dig에서 등록한 Face ID는 prod 도메인에서 **동작하지 않습니다**.
+- dig → prod 복제 후에도 prod에서 **Passkey 재등록**(초대/부트스트랩)이 필요합니다.
+- 구독 비밀번호 AES는 dig의 `JWT_SECRET`(또는 `CREDENTIALS_ENCRYPTION_KEY`)로 암호화되어 있으면, 복호화가 필요하면 **같은 키를 prod `.env.prod`에** 넣습니다.
+- 푸시: `clone-dig-to-prod.sh`가 dig `vapid.json`을 prod로 복사합니다(기존 구독 유지용).
+
+---
+
+## 최초 1회: dig → prod 올리기
+
+서버(Termius)에서 순서대로:
+
+### 1) 레포 최신 + dig에 마이그레이션 반영
 
 ```bash
-cd /path/to/personal-app/40_server/infra
-cp .env.example .env   # 최초 1회
-# DOMAIN / DEV_DOMAIN / DUCKDNS_* 편집
-bash scripts/update-duckdns.sh 129.225.196.226
+cd ~/personal-app
+git fetch && git checkout cursor/continue-latest-mockup-69de && git pull
+bash 40_server/infra/scripts/deploy-dig.sh
 ```
 
-### 2) 호스트 nginx에 prod + dev 설정
-
-레포를 서버에 클론/동기화한 뒤:
+### 2) prod Postgres + systemd
 
 ```bash
-cd 40_server/infra
-bash scripts/render-host-nginx.sh http
-sudo mkdir -p /var/www/myfamily /var/www/myfamily-dev /var/www/certbot
+bash ~/personal-app/40_server/infra/scripts/setup-prod-postgres.sh
+# 생성된 40_server/.env.prod 비밀번호·JWT 확인
+```
+
+### 3) dig 데이터·파일 복제
+
+```bash
+bash ~/personal-app/40_server/infra/scripts/clone-dig-to-prod.sh
+```
+
+### 4) nginx prod `/api/` → 3001
+
+HTTPS 템플릿에 프록시가 켜져 있습니다. 서버에 반영:
+
+```bash
+cd ~/personal-app/40_server/infra
+bash scripts/render-host-nginx.sh https
 sudo cp nginx/host/rendered/prod.conf /etc/nginx/sites-available/myfamily.conf
-sudo cp nginx/host/rendered/dev.conf  /etc/nginx/sites-available/myfamily-dev.conf
-sudo ln -sf /etc/nginx/sites-available/myfamily.conf /etc/nginx/sites-enabled/
-sudo ln -sf /etc/nginx/sites-available/myfamily-dev.conf /etc/nginx/sites-enabled/
-# 예전 기본 사이트와 충돌하면 sites-enabled에서 비활성화
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-### 3) 최신 프론트를 **dev**에 배포
+이미 수동으로 만든 conf만 쓰는 경우, prod server 블록에 아래를 넣고 reload:
 
-```bash
-# 서버에서 레포 루트
-git fetch && git checkout cursor/continue-latest-mockup-69de && git pull
-bash 40_server/infra/scripts/deploy-static.sh dev
+```nginx
+location /api/ {
+    proxy_pass http://127.0.0.1:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
 ```
 
-아이폰 Safari: `http://sumicchogurashi-dev.duckdns.org`  
-(이 시점에는 **UI만**. API는 아직 3002를 안 띄웠으면 `/api` 실패)
-
-### 4) HTTPS (certbot) — Face ID / Passkey에 필요
+### 5) prod 프론트·API 배포
 
 ```bash
-sudo apt-get install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d sumicchogurashi.duckdns.org -d sumicchogurashi-dev.duckdns.org
-# 또는 도메인별 발급 후
-cd 40_server/infra && bash scripts/render-host-nginx.sh https
-# rendered conf를 다시 sites-available에 복사하고 reload
+bash ~/personal-app/40_server/infra/scripts/deploy-prod.sh
 ```
 
-Passkey 환경 변수 (dev API 프로세스):
+### 6) 아이폰에서 확인
+
+1. `https://sumicchogurashi.duckdns.org` 열기  
+2. Passkey **다시** 등록/로그인  
+3. 캘린더·자산·사진 등 dig와 같은 데이터가 보이는지 확인  
+
+---
+
+## 이후 일상 배포 (개발 → dig → prod)
+
+1. 기능 개발·PR·머지 (또는 dig 추적 브랜치에 push)  
+2. **dig만** 배포·검증:
 
 ```bash
-WEBAUTHN_RP_ID=sumicchogurashi-dev.duckdns.org
-WEBAUTHN_ORIGIN=https://sumicchogurashi-dev.duckdns.org
+bash ~/personal-app/40_server/infra/scripts/deploy-dig.sh
 ```
 
-prod:
+3. 아이폰으로 `https://sumicchogurashi-dev.duckdns.org` 확인  
+4. OK면 **prod**에 동일 커밋 적용:
 
 ```bash
-WEBAUTHN_RP_ID=sumicchogurashi.duckdns.org
-WEBAUTHN_ORIGIN=https://sumicchogurashi.duckdns.org
+bash ~/personal-app/40_server/infra/scripts/deploy-prod.sh
 ```
 
-### 5) (다음) API를 dev에만 먼저
+각 스크립트가 해당 env의 `prisma migrate deploy`를 돌리므로, **마이그레이션은 dig 먼저 → 검증 → prod** 순이 됩니다.  
+데이터를 다시 통째로 덮어쓸 필요는 없습니다(최초 복제 이후는 각자 쌓임).
 
-```bash
-# 예: MEMORY_AUTH=1 로 가볍게
-PORT=3002 MEMORY_AUTH=1 WEBAUTHN_RP_ID=... WEBAUTHN_ORIGIN=... npm run start --workspace @personal-app/server
-```
+---
 
-systemd 유닛은 이후 단계에서 정리.
-
-## 배포 흐름 (정착 후)
-
-1. 기능 개발 → PR  
-2. 서버에서 `deploy-static.sh dev` (+ 필요 시 API 재시작)  
-3. 아이폰으로 `dev` 확인  
-4. OK면 `deploy-static.sh prod`
-
-## 레포 파일
+## 스크립트 목록
 
 | 경로 | 역할 |
 | --- | --- |
-| `nginx/host/*.template` | 호스트 nginx prod/dev |
-| `scripts/render-host-nginx.sh` | 템플릿 → rendered |
-| `scripts/update-duckdns.sh` | prod+dev DuckDNS IP 갱신 |
-| `scripts/deploy-static.sh` | Vite 빌드 → `/var/www/...` |
+| `scripts/setup-dig-postgres.sh` | dig DB + `myfamilyhub-dev-api` |
+| `scripts/deploy-dig.sh` | dig 전체 배포 |
+| `scripts/setup-prod-postgres.sh` | prod DB(:5433) + `myfamilyhub-api` |
+| `scripts/clone-dig-to-prod.sh` | dig → prod DB·파일 **1회** 복제 |
+| `scripts/deploy-prod.sh` | prod 전체 배포 |
+| `scripts/deploy-static.sh prod\|dev` | 프론트만 |
 
-## 현재 막힌 점
+## Cloud Agent 제약
 
-- Cloud Agent에는 SSH/`90_secret` 없음 → **민호가 서버에서 위 명령 실행** 필요  
-- HTTPS·API 전까지 아이폰에서는 **정적 UI만** 확인 가능
+SSH/`90_secret` 없음 → **민호가 OCI에서 위 명령 실행**. Agent는 스크립트·문서만 레포에 둡니다.

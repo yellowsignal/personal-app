@@ -11,9 +11,12 @@ dist/
 .DS_Store
 # Editor / OS
 .env
+.env.prod
 # Env
 .env.*.local
 .env.local
+# Prod file stores (dig keeps 30_data/photos etc.)
+30_data/prod/
 .idea/
 # key
 *.key
