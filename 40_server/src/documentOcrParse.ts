@@ -39,6 +39,10 @@ function normalizeText(text: string): string {
     .replace(/[ \t]+/g, " ")
     .replace(/[〇○]/g, "0")
     .replace(/[－—–]/g, "-")
+    // Full-width digits/letters from JP OCR
+    .replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/[Ａ-Ｚ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/[ａ-ｚ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
     .replace(/[Il|]/g, (ch, idx, src) => {
       const prev = src[idx - 1];
       const next = src[idx + 1];
@@ -297,34 +301,70 @@ function pushUnique(fields: OcrParsedField[], field: OcrParsedField): void {
 function extractHokenFields(text: string): OcrParsedField[] {
   const fields: OcrParsedField[] = [];
 
-  const insurer = text.match(/保険者\s*番号[：:\s]*([0-9]{6,8})/i);
-  if (insurer?.[1]) {
-    pushUnique(fields, { label: "保険者番号", value: insurer[1], isSecret: false });
+  // 保険者番号 — never confuse with 被保険者「番号」(allow OCR space: 保険者 番号).
+  let insurer: string | null = null;
+  const insurerInline = text.match(/保険者\s*番号[：:\s]*([0-9]{6,8})/i);
+  const insurerNext = text.match(/保険者\s*番号[：:\s]*\n\s*([0-9]{6,8})/i);
+  insurer = insurerInline?.[1] ?? insurerNext?.[1] ?? null;
+  if (insurer) {
+    pushUnique(fields, { label: "保険者番号", value: insurer, isSecret: false });
   }
 
-  // 「記号・番号」 then two numbers on the same or following line (common paper layout)
-  const combo =
-    text.match(
-      /記\s*号\s*[・･·．.／/\s]*\s*番\s*号[^\d\n]{0,40}(\d{2,6})\s*[・･·．.\s／/]*\s*(\d{3,12})/i,
-    ) ??
-    text.match(/記\s*号\s*[・･·．.／/\s]*\s*番\s*号\s*\n\s*(\d{2,6})\s+(\d{3,12})/i);
+  let kigo: string | null = null;
+  let bango: string | null = null;
 
-  if (combo?.[1] && combo[2]) {
-    pushUnique(fields, { label: "記号", value: combo[1], isSecret: false });
-    pushUnique(fields, { label: "番号", value: combo[2], isSecret: true });
-  } else {
-    // Separate lines: 記号 … \n 123 \n 番号 … \n 456
-    const kigoLine = text.match(/記\s*号(?!\s*者)[^\d\n]{0,24}(\d{2,6})/i);
-    const bangoLine = text.match(/(?<![保険者発通])番\s*号[^\d\n]{0,24}(\d{3,12})/i);
-    if (kigoLine?.[1] && !looksLikePhoneNumber(kigoLine[1])) {
-      pushUnique(fields, { label: "記号", value: kigoLine[1], isSecret: false });
+  // 「記号・番号」 / 「被保険者記号・番号」 then two numbers (same or following lines).
+  const comboPatterns = [
+    /(?:被保険者(?:等)?\s*)?記\s*号\s*[・･·．.／/\s]*\s*番\s*号[^\d\n]{0,48}(\d{1,8})\s*[・･·．.\s／/]*\s*(\d{2,12})/i,
+    /(?:被保険者(?:等)?\s*)?記\s*号\s*[・･·．.／/\s]*\s*番\s*号\s*\n\s*(\d{1,8})\s*[・･·．.\s／/]*\s*(\d{2,12})/i,
+    /(?:被保険者(?:等)?\s*)?記\s*号\s*[・･·．.／/\s]*\s*番\s*号\s*\n\s*(\d{1,8})\s*\n\s*(\d{2,12})/i,
+  ];
+  for (const re of comboPatterns) {
+    const combo = text.match(re);
+    if (combo?.[1] && combo[2]) {
+      // Do not treat 保険者番号 digits as 記号・番号 pair.
+      if (insurer && (combo[1] === insurer || combo[2] === insurer)) continue;
+      kigo = combo[1];
+      bango = combo[2];
+      break;
     }
-    if (bangoLine?.[1] && !looksLikePhoneNumber(bangoLine[1])) {
-      // Avoid treating 保険者番号 digits as 番号 when already captured
-      if (!insurer || bangoLine[1] !== insurer[1]) {
-        pushUnique(fields, { label: "番号", value: bangoLine[1], isSecret: true });
-      }
+  }
+
+  if (!kigo) {
+    const kigoLine =
+      text.match(/(?:^|\n)\s*記\s*号(?!\s*者)[：:\s]*([0-9]{1,8})\b/i) ??
+      text.match(/記\s*号(?!\s*者)[：:\s]*([0-9]{1,8})\b/i);
+    if (kigoLine?.[1] && kigoLine[1] !== insurer && !looksLikePhoneNumber(kigoLine[1])) {
+      kigo = kigoLine[1];
     }
+  }
+
+  if (!bango) {
+    // All 「番号」 hits — skip 保険者番号 (OCR may insert a space: 保険者 番号).
+    // Do not treat 「被保険者」 as 「保険者」.
+    const bangoRe = /番\s*号[：:\s]*([0-9]{2,12})/gi;
+    let m: RegExpExecArray | null;
+    while ((m = bangoRe.exec(text)) !== null) {
+      const before = text.slice(Math.max(0, m.index - 16), m.index);
+      if (/(?<!被)保険者/.test(before)) continue;
+      const value = m[1]!;
+      if (insurer && value === insurer) continue;
+      if (looksLikePhoneNumber(value)) continue;
+      bango = value;
+      break;
+    }
+  }
+
+  // OCR lost 「保険者」 and only printed 「番号 06135396」 — 6/8桁 alone with no 記号 is usually 保険者番号.
+  if (!insurer && bango && !kigo && /保険/.test(text) && /^(?:\d{6}|\d{8})$/.test(bango)) {
+    insurer = bango;
+    bango = null;
+    pushUnique(fields, { label: "保険者番号", value: insurer, isSecret: false });
+  }
+
+  if (kigo) pushUnique(fields, { label: "記号", value: kigo, isSecret: false });
+  if (bango && bango !== insurer) {
+    pushUnique(fields, { label: "番号", value: bango, isSecret: true });
   }
 
   const edaban =

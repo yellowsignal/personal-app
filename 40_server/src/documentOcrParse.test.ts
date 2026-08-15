@@ -62,6 +62,53 @@ test("parseDocumentOcrText detects 保険証 from 記号・番号 layout without
   assert.equal(result.fields.find((f) => f.label === "保険者番号")?.value, "06135396");
 });
 
+test("jp_hoken does not put 保険者番号 into 番号 when OCR spaces the label", () => {
+  const spaced = parseDocumentOcrText(
+    `
+    健康保険 被保険者証
+    保険者 番号 06135396
+    記号・番号
+    606 54156
+    枝番 01
+  `,
+    { kind: "jp_hoken" },
+  );
+  assert.equal(spaced.fields.find((f) => f.label === "保険者番号")?.value, "06135396");
+  assert.equal(spaced.fields.find((f) => f.label === "記号")?.value, "606");
+  assert.equal(spaced.fields.find((f) => f.label === "番号")?.value, "54156");
+  assert.equal(spaced.fields.find((f) => f.label === "枝番")?.value, "01");
+});
+
+test("jp_hoken maps lone 番号 8桁 to 保険者番号 when 記号 missing", () => {
+  const result = parseDocumentOcrText(
+    `
+    健康保険被保険者証
+    番号 06135396
+  `,
+    { kind: "jp_hoken" },
+  );
+  assert.equal(result.fields.find((f) => f.label === "保険者番号")?.value, "06135396");
+  assert.equal(result.fields.find((f) => f.label === "番号")?.value, "");
+});
+
+test("jp_hoken reads 被保険者記号・番号 with fullwidth digits", () => {
+  const result = parseDocumentOcrText(
+    `
+    資格確認書
+    保険者番号
+    06135396
+    被保険者記号・番号
+    １２３４　５６７８９０
+    枝番 ００
+  `,
+    { kind: "jp_hoken" },
+  );
+  assert.equal(result.fields.find((f) => f.label === "保険者番号")?.value, "06135396");
+  assert.equal(result.fields.find((f) => f.label === "記号")?.value, "1234");
+  assert.equal(result.fields.find((f) => f.label === "番号")?.value, "567890");
+  assert.equal(result.fields.find((f) => f.label === "枝番")?.value, "00");
+});
+
 test("parseDocumentOcrText does not use phone as fallback number", () => {
   const result = parseDocumentOcrText(`
     Tel 03-3833-6141
