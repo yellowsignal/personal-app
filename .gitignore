@@ -1,32 +1,29 @@
-node_modules/
-dist/
+
+30_data/document-scans/
+!30_data/.gitkeep
+30_data/icloud-covers/
+30_data/*.json
+30_data/photos/
+90_secret/
 build/
 coverage/
-*.tsbuildinfo
-
-# Local data
-30_data/*.json
-30_data/document-scans/
-30_data/photos/
-!30_data/.gitkeep
-
-# Logs
-*.log
-npm-debug.log*
-
-# Env
-.env
-.env.local
-.env.*.local
-
-# Editor / OS
+dist/
 .DS_Store
+# Editor / OS
+.env
+# Env
+.env.*.local
+.env.local
 .idea/
-.vscode/
-*.swp
-
 # key
 *.key
+# Local data
+*.log
+# Logs
+node_modules/
+npm-debug.log*
 *.pub
 # secrets (SSH keys, OCI API keys, retry logs)
-90_secret/
+*.swp
+*.tsbuildinfo
+.vscode/
