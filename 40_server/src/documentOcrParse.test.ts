@@ -69,6 +69,38 @@ test("parseDocumentOcrText extracts residence card number and expiry", () => {
   assert.equal(result.expiryDate, "2028-03-15");
 });
 
+test("parseDocumentOcrText uses まで有効 not 交付年月日 on residence cards", () => {
+  const glued = parseDocumentOcrText(`
+    在留カード RESIDENCE CARD
+    UH30600371NA
+    CHOI MINHO
+    生年月日 1991年07月02日
+    在留期間（満了日） 3年 2028年11月12日
+    許可年月日 2025年10月21日
+    交付年月日 2025年10月21日まで有効
+  `);
+  assert.equal(glued.typeLabel, "在留カード");
+  assert.equal(glued.expiryDate, "2028-11-12");
+  assert.equal(glued.fields.find((f) => f.label === "在留カード番号")?.value, "UH30600371NA");
+
+  const footer = parseDocumentOcrText(`
+    在留カード
+    UH30600371NA
+    交付年月日 2025年10月21日
+    このカードは 2028年11月12日まで有効
+  `);
+  assert.equal(footer.expiryDate, "2028-11-12");
+
+  // OCR often lists the glued 交付 line before the real footer expiry.
+  const gluedFirst = parseDocumentOcrText(`
+    在留カード
+    UH30600371NA
+    交付年月日 2025年10月21日まで有効
+    このカードは 2028年11月12日まで有効
+  `);
+  assert.equal(gluedFirst.expiryDate, "2028-11-12");
+});
+
 test("parseDocumentOcrText extracts Korean driver license number", () => {
   const result = parseDocumentOcrText(`
     운전면허증

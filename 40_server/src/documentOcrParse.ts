@@ -99,31 +99,77 @@ function findCardExpiry(text: string): string | null {
   return candidates.at(-1) ?? null;
 }
 
+/** Labels that mark issue / permission / birth — never treat their date as expiry. */
+const ISSUE_OR_BIRTH_LABEL = /交付年月日|許可年月日|生年月日|発行日|資格取得/;
+
+function datePrecededByIssueOrBirth(text: string, dateIndex: number): boolean {
+  const before = text.slice(Math.max(0, dateIndex - 28), dateIndex);
+  return ISSUE_OR_BIRTH_LABEL.test(before);
+}
+
+function pickLatestIso(dates: string[]): string | null {
+  if (dates.length === 0) return null;
+  dates.sort();
+  return dates.at(-1) ?? null;
+}
+
 function findExpiry(text: string): string | null {
-  const lines = text.split("\n");
-  const keyword = /(有効期限|期限|満了|expir|valid until|까지|만료|valid)/i;
-  for (let i = 0; i < lines.length; i++) {
-    if (keyword.test(lines[i] ?? "")) {
-      // 交付 / 資格取得 are not expiry — skip those lines
-      if (/交付|資格取得/.test(lines[i] ?? "")) continue;
-      const inline = parseDateFragment(lines[i] ?? "");
-      if (inline) return inline;
-      const next = parseDateFragment(lines[i + 1] ?? "");
-      if (next) return next;
-    }
+  // Strong signals for 在留カード / ID cards. Prefer these over any nearby 交付年月日.
+  const strong: string[] = [];
+
+  // 「2028年11月12日まで有効」— skip when OCR glues 交付年月日 onto the same date.
+  const untilRe =
+    /(\d{4})\s*[./年\-]\s*(\d{1,2})\s*[./月\-]\s*(\d{1,2})\s*日?\s*まで\s*有効/g;
+  let m: RegExpExecArray | null;
+  while ((m = untilRe.exec(text)) !== null) {
+    if (datePrecededByIssueOrBirth(text, m.index)) continue;
+    const iso = parseDateFragment(m[0] ?? "");
+    if (iso) strong.push(iso);
   }
 
+  // 「在留期間（満了日） 3年 2028年11月12日」— allow period text between label and date.
+  const manryoRe =
+    /満了日?[）)\]]?[^\d\n]{0,24}(\d{4}\s*[./年\-]\s*\d{1,2}\s*[./月\-]\s*\d{1,2}\s*日?)/g;
+  while ((m = manryoRe.exec(text)) !== null) {
+    const iso = parseDateFragment(m[1] ?? "");
+    if (iso) strong.push(iso);
+  }
+
+  const yukoKigenRe =
+    /有効期限\s*[：:\s]*(\d{4}\s*[./年\-]\s*\d{1,2}\s*[./月\-]\s*\d{1,2}\s*日?)/g;
+  while ((m = yukoKigenRe.exec(text)) !== null) {
+    const iso = parseDateFragment(m[1] ?? "");
+    if (iso) strong.push(iso);
+  }
+
+  const fromStrong = pickLatestIso(strong);
+  if (fromStrong) return fromStrong;
+
+  const lines = text.split("\n");
+  const keyword = /(有効期限|満了|まで\s*有効|expir|valid until|까지|만료)/i;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (!keyword.test(line)) continue;
+    if (ISSUE_OR_BIRTH_LABEL.test(line)) continue;
+
+    const inline = parseDateFragment(line);
+    if (inline) return inline;
+    const next = parseDateFragment(lines[i + 1] ?? "");
+    if (next) return next;
+  }
+
+  // Fallback: latest date that is not clearly an issue/birth/permission date.
   const dates: string[] = [];
   const re = /(\d{4})\s*[./年\-]\s*(\d{1,2})\s*[./月\-]\s*(\d{1,2})/g;
-  let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
+    if (datePrecededByIssueOrBirth(text, m.index)) continue;
+    const before = text.slice(Math.max(0, m.index - 16), m.index);
+    if (/(交付|許可|生年月|発行|取得)/.test(before)) continue;
     const d = parseDateFragment(m[0]);
     if (d) dates.push(d);
   }
-  if (dates.length > 0) {
-    dates.sort();
-    return dates.at(-1) ?? null;
-  }
+  const fromFallback = pickLatestIso(dates);
+  if (fromFallback) return fromFallback;
 
   return findCardExpiry(text);
 }
