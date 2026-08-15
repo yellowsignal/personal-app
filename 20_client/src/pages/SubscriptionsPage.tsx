@@ -365,15 +365,37 @@ export default function SubscriptionsPage() {
       </div>
 
       {detail && (
-        <ItemDetailSheet
+          <ItemDetailSheet
           title={detail.serviceName}
-          onClose={() => setDetail(null)}
+          onClose={() => {
+            setRevealed((prev) => {
+              if (!(detail.id in prev)) return prev;
+              const next = { ...prev };
+              delete next[detail.id];
+              return next;
+            });
+            setDetail(null);
+          }}
           closeLabel={t("subscriptions.cancelAction")}
           editLabel={t("subscriptions.edit")}
           deleteLabel={t("subscriptions.delete")}
           canManage={user?.id === detail.userId}
-          onEdit={() => openEdit(detail)}
+          onEdit={() => {
+            setRevealed((prev) => {
+              if (!(detail.id in prev)) return prev;
+              const next = { ...prev };
+              delete next[detail.id];
+              return next;
+            });
+            openEdit(detail);
+          }}
           onDelete={() => {
+            setRevealed((prev) => {
+              if (!(detail.id in prev)) return prev;
+              const next = { ...prev };
+              delete next[detail.id];
+              return next;
+            });
             setConfirmDelete(detail);
             setDetail(null);
           }}

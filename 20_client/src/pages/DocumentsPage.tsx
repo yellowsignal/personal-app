@@ -30,6 +30,7 @@ import { mergePdfBlobs } from "../utils/pdfMerge";
 import { runOcrOnFiles } from "../utils/documentOcr";
 import { parseDocumentOcrText } from "@personal-app/document-ocr-parse";
 import { readPinnedDocumentIds, togglePinnedDocumentId } from "../utils/documentPins";
+import { useKeyboardInset } from "../hooks/useKeyboardInset";
 
 interface FieldDraft {
   key: string;
@@ -100,6 +101,23 @@ export default function DocumentsPage() {
   const [pinnedIds, setPinnedIds] = useState<number[]>(() => readPinnedDocumentIds());
   const scanInputRef = useRef<HTMLInputElement>(null);
   const scanCaptureSideRef = useRef<ScanSide>("front");
+  const formScrollRef = useRef<HTMLFormElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const keyboardInset = useKeyboardInset();
+
+  function clearDocReveal(docId: number) {
+    setRevealedByDoc((prev) => {
+      if (!(docId in prev)) return prev;
+      const next = { ...prev };
+      delete next[docId];
+      return next;
+    });
+  }
+
+  function closeDetail() {
+    if (detailDoc) clearDocReveal(detailDoc.id);
+    setDetailDoc(null);
+  }
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -193,6 +211,7 @@ export default function DocumentsPage() {
   }
 
   function closeShowMode() {
+    if (showModeDoc) clearDocReveal(showModeDoc.id);
     setShowModeDoc(null);
   }
 
@@ -213,6 +232,7 @@ export default function DocumentsPage() {
   function openCreate() {
     resetForm();
     setSwipeId(null);
+    if (detailDoc) clearDocReveal(detailDoc.id);
     setDetailDoc(null);
     setShowCreate(true);
   }
@@ -237,6 +257,7 @@ export default function DocumentsPage() {
     setCreateScanFront(null);
     setCreateScanBack(null);
     setSwipeId(null);
+    if (detailDoc?.id === doc.id) clearDocReveal(doc.id);
     setDetailDoc(null);
     setShowCreate(true);
   }
@@ -614,6 +635,7 @@ export default function DocumentsPage() {
     setError(null);
     try {
       await documentsApi.remove(token, confirmDelete.id);
+      clearDocReveal(confirmDelete.id);
       setConfirmDelete(null);
       setDetailDoc(null);
       await load();
@@ -840,13 +862,14 @@ export default function DocumentsPage() {
         return (
           <ItemDetailSheet
             title={localizeDocumentTypeLabel(d.typeLabel, t)}
-            onClose={() => setDetailDoc(null)}
+            onClose={closeDetail}
             closeLabel={t("documents.cancel")}
             editLabel={t("documents.editDocument")}
             deleteLabel={t("documents.deleteDocument")}
             canManage={canManage}
             onEdit={() => openEdit(d)}
             onDelete={() => {
+              clearDocReveal(d.id);
               setConfirmDelete(d);
               setDetailDoc(null);
             }}
@@ -974,6 +997,7 @@ export default function DocumentsPage() {
               <button
                 type="button"
                 onClick={() => {
+                  clearDocReveal(d.id);
                   setDetailDoc(null);
                   openScanWizard({ kind: "document", docId: d.id });
                 }}
@@ -999,8 +1023,13 @@ export default function DocumentsPage() {
           label={t("documents.cancel")}
         >
           <form
+            ref={formScrollRef}
             onSubmit={handleSubmit}
             className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            style={{
+              paddingBottom: `calc(1.25rem + ${keyboardInset}px)`,
+              overflowAnchor: "none",
+            }}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">
@@ -1034,17 +1063,35 @@ export default function DocumentsPage() {
 
             <label className="mb-2 block text-sm font-semibold text-neutral-700">{t("documents.fieldName")}</label>
             <input
-              list="document-type-suggestions"
+              ref={nameInputRef}
               value={typeLabel}
               onChange={(e) => setTypeLabel(e.target.value)}
+              onFocus={() => {
+                // iOS + long forms jump toward lower fields (card numbers). Keep the name in view.
+                const form = formScrollRef.current;
+                const input = nameInputRef.current;
+                if (!form || !input) return;
+                window.requestAnimationFrame(() => {
+                  form.scrollTop = Math.max(0, input.offsetTop - 12);
+                });
+              }}
               placeholder={t("documents.placeholderName")}
-              className="mb-4 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+              autoComplete="off"
+              enterKeyHint="done"
+              className="mb-2 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
             />
-            <datalist id="document-type-suggestions">
-              {documentTypeSuggestions[lang].map((s) => (
-                <option key={s} value={s} />
+            <div className="mb-4 flex flex-wrap gap-1.5">
+              {documentTypeSuggestions[lang].slice(0, 6).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setTypeLabel(s)}
+                  className="rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-semibold text-neutral-600"
+                >
+                  {s}
+                </button>
               ))}
-            </datalist>
+            </div>
 
             <div className="mb-2 flex items-center justify-between">
               <label className="text-sm font-semibold text-neutral-700">{t("documents.fieldItems")}</label>
