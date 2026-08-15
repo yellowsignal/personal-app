@@ -7,6 +7,7 @@ import PhotoLightbox from "../components/PhotoLightbox";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
 import { useAuthedImage } from "../hooks/useAuthedImage";
+import { useResetWindowScroll } from "../hooks/useBodyScrollLock";
 import {
   photosApi,
   type IcloudAlbumSummary,
@@ -94,6 +95,8 @@ export default function PhotosPage() {
   }, [loadIcloud]);
 
   const openAlbumId = openDetail?.id ?? null;
+  // Album open/close is in-page (no route change) — still start at the top.
+  useResetWindowScroll(openAlbumId);
 
   useEffect(() => {
     if (!token || openAlbumId == null) return;

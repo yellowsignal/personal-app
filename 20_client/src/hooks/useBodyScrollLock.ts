@@ -20,6 +20,33 @@ export function resetWindowScroll(): void {
   document.body.scrollTop = 0;
 }
 
+/**
+ * SPA views often keep window scroll across route or in-page drill-downs.
+ * Reset now and again on the next frames/timeouts so iOS layout settles at the top.
+ */
+export function scheduleResetWindowScroll(): () => void {
+  if (typeof window === "undefined") return () => {};
+  resetWindowScroll();
+  let raf2 = 0;
+  const raf1 = window.requestAnimationFrame(() => {
+    resetWindowScroll();
+    raf2 = window.requestAnimationFrame(resetWindowScroll);
+  });
+  const t0 = window.setTimeout(resetWindowScroll, 0);
+  const t1 = window.setTimeout(resetWindowScroll, 50);
+  return () => {
+    window.cancelAnimationFrame(raf1);
+    window.cancelAnimationFrame(raf2);
+    window.clearTimeout(t0);
+    window.clearTimeout(t1);
+  };
+}
+
+/** Reset window scroll whenever `key` changes (route pathname, album id, checklist id, …). */
+export function useResetWindowScroll(key: unknown): void {
+  useEffect(() => scheduleResetWindowScroll(), [key]);
+}
+
 function lockBody(options?: { restoreScroll?: boolean }) {
   if (typeof document === "undefined") return;
   lockCount += 1;
