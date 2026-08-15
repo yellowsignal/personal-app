@@ -31,6 +31,7 @@ import { runOcrOnFiles } from "../utils/documentOcr";
 import { parseDocumentOcrText } from "@personal-app/document-ocr-parse";
 import { readPinnedDocumentIds, togglePinnedDocumentId } from "../utils/documentPins";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
+import { useKeepFocusedInScrollParent } from "../hooks/useKeepFocusedInScrollParent";
 
 interface FieldDraft {
   key: string;
@@ -104,6 +105,31 @@ export default function DocumentsPage() {
   const formScrollRef = useRef<HTMLFormElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const keyboardInset = useKeyboardInset();
+  const [sheetMaxPx, setSheetMaxPx] = useState<number | null>(null);
+  useKeepFocusedInScrollParent(showCreate, formScrollRef);
+
+  useEffect(() => {
+    if (!showCreate) {
+      setSheetMaxPx(null);
+      return;
+    }
+    const sync = () => {
+      const vv = window.visualViewport;
+      // Cap the sheet to the visible viewport so the title isn't scrolled under the keyboard.
+      const h = vv ? vv.height : window.innerHeight;
+      setSheetMaxPx(Math.max(240, Math.floor(h - 12)));
+    };
+    sync();
+    const vv = window.visualViewport;
+    window.addEventListener("resize", sync);
+    vv?.addEventListener("resize", sync);
+    vv?.addEventListener("scroll", sync);
+    return () => {
+      window.removeEventListener("resize", sync);
+      vv?.removeEventListener("resize", sync);
+      vv?.removeEventListener("scroll", sync);
+    };
+  }, [showCreate]);
 
   function clearDocReveal(docId: number) {
     setRevealedByDoc((prev) => {
@@ -978,8 +1004,9 @@ export default function DocumentsPage() {
           <form
             ref={formScrollRef}
             onSubmit={handleSubmit}
-            className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="relative w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
             style={{
+              maxHeight: sheetMaxPx != null ? `${sheetMaxPx}px` : "90vh",
               paddingBottom: `calc(1.25rem + ${keyboardInset}px)`,
               overflowAnchor: "none",
             }}
@@ -1014,23 +1041,23 @@ export default function DocumentsPage() {
               ))}
             </div>
 
-            <label className="mb-2 block text-sm font-semibold text-neutral-700">{t("documents.fieldName")}</label>
+            <label className="mb-2 block text-sm font-semibold text-neutral-700" htmlFor="document-type-label">
+              {t("documents.fieldName")}
+            </label>
             <input
+              id="document-type-label"
               ref={nameInputRef}
+              name="document-type-label"
               value={typeLabel}
               onChange={(e) => setTypeLabel(e.target.value)}
-              onFocus={() => {
-                // iOS + long forms jump toward lower fields (card numbers). Keep the name in view.
-                const form = formScrollRef.current;
-                const input = nameInputRef.current;
-                if (!form || !input) return;
-                window.requestAnimationFrame(() => {
-                  form.scrollTop = Math.max(0, input.offsetTop - 12);
-                });
-              }}
               placeholder={t("documents.placeholderName")}
               autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              inputMode="text"
               enterKeyHint="done"
+              data-form-type="other"
               className="mb-2 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
             />
             <div className="mb-4 flex flex-wrap gap-1.5">
