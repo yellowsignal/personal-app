@@ -89,6 +89,55 @@ test("parseDocumentOcrText extracts residence card number and expiry", () => {
   assert.equal(result.expiryDate, "2028-03-15");
 });
 
+test("parseDocumentOcrText with hoken hint ignores credit-card digits and 交付日", () => {
+  const result = parseDocumentOcrText(
+    `
+    2222 0002 0004 0222
+    記号・番号
+    606 54156
+    保険者番号 06135396
+    交付年月日 2024年04月01日
+    VISA
+  `,
+    { kind: "hoken" },
+  );
+  assert.equal(result.typeLabel, "保険証");
+  assert.equal(result.category, "insurance");
+  assert.equal(result.fields.find((f) => f.label === "記号")?.value, "606");
+  assert.equal(result.fields.find((f) => f.label === "番号")?.value, "54156");
+  assert.equal(result.fields.some((f) => f.label === "카드번호"), false);
+  assert.equal(result.expiryDate, null);
+});
+
+test("parseDocumentOcrText with zairyu hint keeps residence expiry not 交付", () => {
+  const result = parseDocumentOcrText(
+    `
+    UH30600371NA
+    交付年月日 2025年10月21日まで有効
+    このカードは 2028年11月12日まで有効
+  `,
+    { kind: "zairyu" },
+  );
+  assert.equal(result.typeLabel, "在留カード");
+  assert.equal(result.expiryDate, "2028-11-12");
+  assert.equal(result.fields.find((f) => f.label === "在留カード番号")?.value, "UH30600371NA");
+  assert.equal(result.fields.some((f) => f.label === "카드번호"), false);
+});
+
+test("parseDocumentOcrText with card hint extracts PAN", () => {
+  const result = parseDocumentOcrText(
+    `
+    1234 5678 9012 3456
+    VALID THRU 12/28
+  `,
+    { kind: "card" },
+  );
+  assert.equal(result.typeLabel, "신용카드");
+  assert.equal(result.category, "card");
+  assert.equal(result.fields.find((f) => f.label === "카드번호")?.value, "1234567890123456");
+  assert.equal(result.expiryDate, "2028-12-31");
+});
+
 test("parseDocumentOcrText uses まで有効 not 交付年月日 on residence cards", () => {
   const glued = parseDocumentOcrText(`
     在留カード RESIDENCE CARD

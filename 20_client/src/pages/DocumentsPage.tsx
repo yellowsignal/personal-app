@@ -28,7 +28,7 @@ import { isPasskeySupported } from "../api/passkey";
 import { imageFileToPdfBlob } from "../utils/imageToPdf";
 import { mergePdfBlobs } from "../utils/pdfMerge";
 import { runOcrOnFiles } from "../utils/documentOcr";
-import { parseDocumentOcrText } from "@personal-app/document-ocr-parse";
+import { OCR_DOC_KIND_ORDER, parseDocumentOcrText, type OcrDocKind } from "@personal-app/document-ocr-parse";
 import { readPinnedDocumentIds, togglePinnedDocumentId } from "../utils/documentPins";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useKeepFocusedInScrollParent } from "../hooks/useKeepFocusedInScrollParent";
@@ -45,9 +45,11 @@ type ScanWizardTarget = { kind: "document"; docId: number } | { kind: "create"; 
 
 interface ScanWizardState {
   target: ScanWizardTarget;
-  step: "front" | "back" | "review";
+  step: "type" | "front" | "back" | "review";
   frontFile: File | null;
   backFile: File | null;
+  /** Selected before OCR capture — constrains parsing. */
+  ocrKind: OcrDocKind | null;
 }
 
 function emptyField(): FieldDraft {
@@ -372,7 +374,14 @@ export default function DocumentsPage() {
   }
 
   function openScanWizard(target: ScanWizardTarget) {
-    setScanWizard({ target, step: "front", frontFile: null, backFile: null });
+    const withOcrTypeStep = target.kind === "create" && target.withOcr;
+    setScanWizard({
+      target,
+      step: withOcrTypeStep ? "type" : "front",
+      frontFile: null,
+      backFile: null,
+      ocrKind: null,
+    });
   }
 
   function openOcrRegister() {
@@ -402,10 +411,10 @@ export default function DocumentsPage() {
     }
   }
 
-  async function runOcrOnScanFiles(front: File, back: File | null) {
+  async function runOcrOnScanFiles(front: File, back: File | null, ocrKind: OcrDocKind | null) {
     const files = back ? [front, back] : [front];
     const text = await runOcrOnFiles(files, setOcrProgress);
-    return parseDocumentOcrText(text);
+    return parseDocumentOcrText(text, { kind: ocrKind });
   }
 
   function openOcrReviewForm(front: File, back: File | null, parsed: ReturnType<typeof parseDocumentOcrText>) {
@@ -419,12 +428,12 @@ export default function DocumentsPage() {
     setShowCreate(true);
   }
 
-  async function runOcrAndOpenCreate(front: File, back: File | null) {
+  async function runOcrAndOpenCreate(front: File, back: File | null, ocrKind: OcrDocKind | null) {
     setOcrBusy(true);
     setOcrProgress(0);
     setError(null);
     try {
-      const parsed = await runOcrOnScanFiles(front, back);
+      const parsed = await runOcrOnScanFiles(front, back, ocrKind);
       openOcrReviewForm(front, back, parsed);
       if (parsed.fields.length === 0 && !parsed.typeLabel) {
         setError(t("documents.ocrLowConfidence"));
@@ -469,7 +478,7 @@ export default function DocumentsPage() {
     }
     if (scanWizard.target.withOcr) {
       // Always review/edit before create — never auto-save after OCR.
-      await runOcrAndOpenCreate(scanWizard.frontFile, scanWizard.backFile);
+      await runOcrAndOpenCreate(scanWizard.frontFile, scanWizard.backFile, scanWizard.ocrKind);
       return;
     }
     setCreateScanFront(scanWizard.frontFile);
@@ -1273,8 +1282,39 @@ export default function DocumentsPage() {
               </button>
             </div>
 
+            {scanWizard.step === "type" && (
+              <>
+                <p className="text-sm text-neutral-600">{t("documents.ocrPickTypeHint")}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {OCR_DOC_KIND_ORDER.map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      onClick={() =>
+                        setScanWizard((w) => (w ? { ...w, ocrKind: kind, step: "front" } : w))
+                      }
+                      className="rounded-full bg-neutral-100 px-3.5 py-2 text-sm font-semibold text-neutral-800 ring-1 ring-neutral-200 active:bg-indigo-50 active:text-indigo-700 active:ring-indigo-200"
+                    >
+                      {t(`documents.ocrType.${kind}`)}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
             {scanWizard.step === "front" && (
               <>
+                {scanWizard.target.kind === "create" && scanWizard.target.withOcr && scanWizard.ocrKind && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setScanWizard((w) => (w ? { ...w, step: "type", frontFile: null, backFile: null } : w))
+                    }
+                    className="mb-3 text-xs font-semibold text-indigo-600"
+                  >
+                    {t("documents.ocrChangeType", { type: t(`documents.ocrType.${scanWizard.ocrKind}`) })}
+                  </button>
+                )}
                 <p className="text-sm text-neutral-600">{t("documents.scanStepFront")}</p>
                 {scanWizard.target.kind === "create" && scanWizard.target.withOcr && (
                   <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
