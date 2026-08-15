@@ -6,39 +6,81 @@ import ItemDetailSheet, { DetailRow } from "../components/ItemDetailSheet";
 import PhotoLightbox from "../components/PhotoLightbox";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
-import { photosApi, type LinkedIcloudAlbum } from "../api/photos";
+import { useAuthedImage } from "../hooks/useAuthedImage";
+import {
+  photosApi,
+  type IcloudAlbumSummary,
+  type LinkedIcloudAlbum,
+} from "../api/photos";
 import { ApiError } from "../api/http";
 import { MAX_ICLOUD_ALBUMS, saveBlobLocally } from "../utils/photoUpload";
-import { albumCoverPhoto, sortAlbumPhotosOldestFirst } from "../utils/albumCover";
+import { sortAlbumPhotosOldestFirst } from "../utils/albumCover";
+
+function AlbumCardCover({
+  token,
+  coverUrl,
+  alt,
+}: {
+  token: string;
+  coverUrl: string | null;
+  alt: string;
+}) {
+  const src = useAuthedImage(token, coverUrl);
+  if (!src) {
+    return (
+      <div className="flex h-full items-center justify-center text-neutral-300">
+        <Cloud size={28} />
+      </div>
+    );
+  }
+  return <img src={src} alt={alt} className="h-full w-full object-cover" />;
+}
+
+function toSummary(album: LinkedIcloudAlbum | IcloudAlbumSummary): IcloudAlbumSummary {
+  return {
+    id: album.id,
+    url: album.url,
+    name: album.name,
+    nameLocked: album.nameLocked,
+    photoCount: album.photoCount,
+    coverPhotoId: album.coverPhotoId,
+    coverUrl: album.coverUrl,
+    syncedAt: album.syncedAt,
+  };
+}
 
 export default function PhotosPage() {
   const { t } = useLanguage();
   const { token, family } = useAuth();
-  const [icloudAlbums, setIcloudAlbums] = useState<LinkedIcloudAlbum[]>([]);
+  const [albumSummaries, setAlbumSummaries] = useState<IcloudAlbumSummary[]>([]);
+  const [openDetail, setOpenDetail] = useState<LinkedIcloudAlbum | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [icloudLoading, setIcloudLoading] = useState(false);
   const [icloudDraft, setIcloudDraft] = useState("");
   const [icloudFormOpen, setIcloudFormOpen] = useState(false);
-  const [editingAlbum, setEditingAlbum] = useState<LinkedIcloudAlbum | null>(null);
+  const [editingUrlAlbum, setEditingUrlAlbum] = useState<IcloudAlbumSummary | null>(null);
+  const [renameAlbum, setRenameAlbum] = useState<IcloudAlbumSummary | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const [icloudSaving, setIcloudSaving] = useState(false);
   const [icloudError, setIcloudError] = useState<string | null>(null);
-  const [openAlbumId, setOpenAlbumId] = useState<number | null>(null);
-  const [albumMenu, setAlbumMenu] = useState<LinkedIcloudAlbum | null>(null);
-  const [viewer, setViewer] = useState<{ albumId: number; index: number } | null>(null);
-  const [confirmUnlink, setConfirmUnlink] = useState<LinkedIcloudAlbum | null>(null);
+  const [albumMenu, setAlbumMenu] = useState<IcloudAlbumSummary | null>(null);
+  const [viewer, setViewer] = useState<{ index: number } | null>(null);
+  const [confirmUnlink, setConfirmUnlink] = useState<IcloudAlbumSummary | null>(null);
   const [icloudDownloading, setIcloudDownloading] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [pickingCover, setPickingCover] = useState(false);
 
   const loadIcloud = useCallback(async () => {
     if (!token || !family) {
-      setIcloudAlbums([]);
+      setAlbumSummaries([]);
       return;
     }
     setIcloudLoading(true);
     try {
       const data = await photosApi.icloudAlbums(token);
-      setIcloudAlbums(data.albums);
+      setAlbumSummaries(data.albums);
     } catch {
-      setIcloudAlbums([]);
+      setAlbumSummaries([]);
     } finally {
       setIcloudLoading(false);
     }
@@ -48,39 +90,70 @@ export default function PhotosPage() {
     void loadIcloud();
   }, [loadIcloud]);
 
-  const canAddAlbum = icloudAlbums.length < MAX_ICLOUD_ALBUMS;
-  const openAlbum = openAlbumId != null ? (icloudAlbums.find((a) => a.id === openAlbumId) ?? null) : null;
+  const openAlbumId = openDetail?.id ?? null;
+
+  useEffect(() => {
+    if (!token || openAlbumId == null) return;
+    let cancelled = false;
+    setDetailLoading(true);
+    setPageError(null);
+    setPickingCover(false);
+    void (async () => {
+      try {
+        const detail = await photosApi.getIcloudAlbum(token, openAlbumId);
+        if (cancelled) return;
+        setOpenDetail(detail);
+        setAlbumSummaries((prev) =>
+          prev.map((a) => (a.id === detail.id ? toSummary(detail) : a)),
+        );
+      } catch (err) {
+        if (!cancelled) {
+          setPageError(err instanceof ApiError ? err.message : t("photos.icloudError"));
+        }
+      } finally {
+        if (!cancelled) setDetailLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, openAlbumId, t]);
+
+  const canAddAlbum = albumSummaries.length < MAX_ICLOUD_ALBUMS;
   const openPhotos = useMemo(
-    () => (openAlbum ? sortAlbumPhotosOldestFirst(openAlbum.photos) : []),
-    [openAlbum],
+    () => (openDetail ? sortAlbumPhotosOldestFirst(openDetail.photos) : []),
+    [openDetail],
   );
-  const viewerAlbum = viewer ? (icloudAlbums.find((a) => a.id === viewer.albumId) ?? null) : null;
-  const viewerPhotos = useMemo(
-    () => (viewerAlbum ? sortAlbumPhotosOldestFirst(viewerAlbum.photos) : []),
-    [viewerAlbum],
-  );
+  const viewerPhotos = openPhotos;
   const viewerIndex = viewer ? Math.min(viewer.index, Math.max(0, viewerPhotos.length - 1)) : 0;
 
   function closeForm() {
     setIcloudFormOpen(false);
-    setEditingAlbum(null);
+    setEditingUrlAlbum(null);
     setIcloudError(null);
   }
 
   function openAddForm() {
     if (!family || !canAddAlbum) return;
-    setEditingAlbum(null);
+    setEditingUrlAlbum(null);
     setIcloudDraft("");
     setIcloudError(null);
     setIcloudFormOpen(true);
   }
 
-  function openEditForm(album: LinkedIcloudAlbum) {
+  function openEditUrlForm(album: IcloudAlbumSummary) {
     setAlbumMenu(null);
-    setEditingAlbum(album);
+    setEditingUrlAlbum(album);
     setIcloudDraft(album.url);
     setIcloudError(null);
     setIcloudFormOpen(true);
+  }
+
+  function openRenameForm(album: IcloudAlbumSummary) {
+    setAlbumMenu(null);
+    setRenameAlbum(album);
+    setRenameDraft(album.name || "");
+    setIcloudError(null);
   }
 
   async function handleSaveIcloud(e: FormEvent) {
@@ -94,12 +167,13 @@ export default function PhotosPage() {
     setIcloudSaving(true);
     setIcloudError(null);
     try {
-      if (editingAlbum) {
-        const updated = await photosApi.updateIcloudAlbum(token, editingAlbum.id, url);
-        setIcloudAlbums((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      if (editingUrlAlbum) {
+        const updated = await photosApi.updateIcloudAlbum(token, editingUrlAlbum.id, { url });
+        setAlbumSummaries((prev) => prev.map((a) => (a.id === updated.id ? toSummary(updated) : a)));
+        if (openDetail?.id === updated.id) setOpenDetail(updated);
       } else {
         const created = await photosApi.addIcloudAlbum(token, url);
-        setIcloudAlbums((prev) => [...prev.filter((a) => a.id !== created.id), created]);
+        setAlbumSummaries((prev) => [...prev.filter((a) => a.id !== created.id), toSummary(created)]);
       }
       closeForm();
     } catch (err) {
@@ -113,14 +187,54 @@ export default function PhotosPage() {
     }
   }
 
+  async function handleRename(e: FormEvent) {
+    e.preventDefault();
+    if (!token || !renameAlbum || icloudSaving) return;
+    const name = renameDraft.trim();
+    if (!name) {
+      setIcloudError(t("photos.icloudNeedName"));
+      return;
+    }
+    setIcloudSaving(true);
+    setIcloudError(null);
+    try {
+      const updated = await photosApi.updateIcloudAlbum(token, renameAlbum.id, { name });
+      setAlbumSummaries((prev) => prev.map((a) => (a.id === updated.id ? toSummary(updated) : a)));
+      if (openDetail?.id === updated.id) setOpenDetail(updated);
+      setRenameAlbum(null);
+    } catch (err) {
+      setIcloudError(err instanceof ApiError ? err.message : t("photos.icloudError"));
+    } finally {
+      setIcloudSaving(false);
+    }
+  }
+
+  async function handleSetCover(photoId: string) {
+    if (!token || !openDetail || icloudSaving) return;
+    setIcloudSaving(true);
+    setPageError(null);
+    try {
+      const updated = await photosApi.updateIcloudAlbum(token, openDetail.id, { coverPhotoId: photoId });
+      setOpenDetail(updated);
+      setAlbumSummaries((prev) => prev.map((a) => (a.id === updated.id ? toSummary(updated) : a)));
+      setPickingCover(false);
+    } catch (err) {
+      setPageError(err instanceof ApiError ? err.message : t("photos.icloudError"));
+    } finally {
+      setIcloudSaving(false);
+    }
+  }
+
   async function handleUnlinkIcloud() {
     if (!token || icloudSaving || !confirmUnlink) return;
     setIcloudSaving(true);
     try {
       const data = await photosApi.removeIcloudAlbum(token, confirmUnlink.id);
-      setIcloudAlbums(data.albums);
-      if (viewer?.albumId === confirmUnlink.id) setViewer(null);
-      if (openAlbumId === confirmUnlink.id) setOpenAlbumId(null);
+      setAlbumSummaries(data.albums);
+      if (openDetail?.id === confirmUnlink.id) {
+        setOpenDetail(null);
+        setViewer(null);
+      }
       setConfirmUnlink(null);
     } catch (err) {
       setIcloudError(err instanceof ApiError ? err.message : t("photos.icloudError"));
@@ -131,13 +245,13 @@ export default function PhotosPage() {
   }
 
   async function handleDownloadIcloud() {
-    if (!token || !viewerAlbum || icloudDownloading) return;
+    if (!token || !openDetail || icloudDownloading) return;
     const photo = viewerPhotos[viewerIndex];
     if (!photo) return;
     setIcloudDownloading(true);
     try {
-      const blob = await photosApi.downloadIcloudPhoto(token, viewerAlbum.id, photo.id);
-      const name = `${photo.caption || viewerAlbum.name || "icloud"}.jpg`;
+      const blob = await photosApi.downloadIcloudPhoto(token, openDetail.id, photo.id);
+      const name = `${photo.caption || openDetail.name || "icloud"}.jpg`;
       await saveBlobLocally(blob, name);
     } catch (err) {
       setPageError(err instanceof ApiError ? err.message : t("photos.icloudDownloadError"));
@@ -146,20 +260,30 @@ export default function PhotosPage() {
     }
   }
 
+  function photoCountLabel(count: number | null | undefined) {
+    if (count == null) return t("photos.photoCountPending");
+    return t("photos.photoCount", { n: count });
+  }
+
   return (
     <div>
       <TopBar
-        title={openAlbum ? openAlbum.name || t("photos.icloudTitle") : t("photos.title")}
+        title={openDetail ? openDetail.name || t("photos.icloudTitle") : t("photos.title")}
         subtitle={
-          openAlbum ? t("photos.photoCount", { n: openPhotos.length }) : t("photos.subtitle")
+          openDetail
+            ? detailLoading
+              ? t("photos.loading")
+              : t("photos.photoCount", { n: openPhotos.length })
+            : t("photos.subtitle")
         }
         left={
-          openAlbum ? (
+          openDetail ? (
             <button
               type="button"
               onClick={() => {
-                setOpenAlbumId(null);
+                setOpenDetail(null);
                 setViewer(null);
+                setPickingCover(false);
               }}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-600"
               aria-label={t("photos.back")}
@@ -169,10 +293,10 @@ export default function PhotosPage() {
           ) : undefined
         }
         right={
-          openAlbum ? (
+          openDetail ? (
             <button
               type="button"
-              onClick={() => setAlbumMenu(openAlbum)}
+              onClick={() => setAlbumMenu(toSummary(openDetail))}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-600"
               aria-label={t("photos.edit")}
             >
@@ -196,21 +320,44 @@ export default function PhotosPage() {
           <p className="rounded-2xl bg-neutral-50 px-4 py-3 text-xs text-neutral-500">
             {t("photos.needFamily")}
           </p>
-        ) : openAlbum ? (
+        ) : openDetail ? (
           <>
-            <div className="mb-3">
+            <div className="mb-3 flex flex-wrap items-center gap-3">
               <a
-                href={openAlbum.url}
+                href={openDetail.url}
                 target="_blank"
                 rel="noreferrer"
                 className="text-xs font-semibold text-sky-700 underline"
               >
                 {t("photos.icloudOpen")}
               </a>
+              {pickingCover ? (
+                <button
+                  type="button"
+                  onClick={() => setPickingCover(false)}
+                  className="text-xs font-semibold text-neutral-500"
+                >
+                  {t("photos.cancel")}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setPickingCover(true)}
+                  className="text-xs font-semibold text-indigo-600"
+                >
+                  {t("photos.icloudPickCover")}
+                </button>
+              )}
             </div>
-            {openAlbum.error && <p className="mb-3 text-xs text-rose-600">{t("photos.icloudError")}</p>}
+            {pickingCover && (
+              <p className="mb-3 rounded-xl bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
+                {t("photos.icloudPickCoverHint")}
+              </p>
+            )}
+            {openDetail.error && <p className="mb-3 text-xs text-rose-600">{t("photos.icloudError")}</p>}
             {pageError && <p className="mb-3 text-xs text-rose-600">{pageError}</p>}
-            {!openAlbum.error && openPhotos.length === 0 && (
+            {detailLoading && <p className="mb-3 text-xs text-sky-700">{t("photos.loading")}</p>}
+            {!detailLoading && !openDetail.error && openPhotos.length === 0 && (
               <p className="rounded-2xl bg-white px-4 py-10 text-center text-sm text-neutral-500 shadow-sm ring-1 ring-black/5">
                 {t("photos.icloudEmpty")}
               </p>
@@ -221,8 +368,19 @@ export default function PhotosPage() {
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => setViewer({ albumId: openAlbum.id, index: photoIndex })}
-                    className="relative aspect-square overflow-hidden rounded-lg bg-neutral-100"
+                    disabled={icloudSaving}
+                    onClick={() => {
+                      if (pickingCover) {
+                        void handleSetCover(p.id);
+                        return;
+                      }
+                      setViewer({ index: photoIndex });
+                    }}
+                    className={`relative aspect-square overflow-hidden rounded-lg bg-neutral-100 ${
+                      pickingCover && openDetail.coverPhotoId === p.id
+                        ? "ring-2 ring-indigo-500"
+                        : ""
+                    }`}
                   >
                     <img
                       src={p.thumbUrl}
@@ -238,9 +396,9 @@ export default function PhotosPage() {
         ) : (
           <>
             <p className="whitespace-pre-line text-xs leading-relaxed text-neutral-500">
-              {icloudAlbums.length === 0 ? t("photos.icloudHowTo") : t("photos.hint")}
+              {albumSummaries.length === 0 ? t("photos.icloudHowTo") : t("photos.hint")}
             </p>
-            {icloudAlbums.length === 0 && (
+            {albumSummaries.length === 0 && (
               <button
                 type="button"
                 onClick={openAddForm}
@@ -250,70 +408,60 @@ export default function PhotosPage() {
               </button>
             )}
             {icloudLoading && <p className="mt-3 text-xs text-sky-700">{t("photos.loading")}</p>}
-            {icloudError && !icloudFormOpen && <p className="mt-2 text-xs text-rose-600">{icloudError}</p>}
+            {icloudError && !icloudFormOpen && !renameAlbum && (
+              <p className="mt-2 text-xs text-rose-600">{icloudError}</p>
+            )}
             {pageError && <p className="mt-2 text-xs text-rose-600">{pageError}</p>}
-            {icloudAlbums.length > 0 && (
+            {albumSummaries.length > 0 && token && (
               <div className="mt-4 grid grid-cols-2 gap-3">
-                {icloudAlbums.map((album) => {
-                  const cover = albumCoverPhoto(album.photos);
-                  return (
-                    <div
-                      key={album.id}
-                      className="relative overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
+                {albumSummaries.map((album) => (
+                  <div
+                    key={album.id}
+                    className="relative overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setOpenDetail({ ...album, photos: [] })}
+                      className="block w-full text-left"
                     >
-                      <button
-                        type="button"
-                        onClick={() => setOpenAlbumId(album.id)}
-                        className="block w-full text-left"
-                      >
-                        <div className="aspect-[4/3] bg-neutral-100">
-                          {cover ? (
-                            <img
-                              src={cover.thumbUrl}
-                              alt={album.name || t("photos.icloudTitle")}
-                              referrerPolicy="no-referrer"
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-full items-center justify-center text-neutral-300">
-                              <Cloud size={28} />
-                            </div>
-                          )}
-                        </div>
-                        <div className="px-2.5 py-2">
-                          <p className="truncate text-sm font-semibold text-neutral-900">
-                            {album.name || t("photos.icloudTitle")}
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-neutral-400">
-                            {album.error
-                              ? t("photos.icloudError")
-                              : t("photos.photoCount", { n: album.photos.length })}
-                          </p>
-                        </div>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAlbumMenu(album)}
-                        className="absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-black/35 text-white"
-                        aria-label={t("photos.edit")}
-                      >
-                        <MoreHorizontal size={16} />
-                      </button>
-                    </div>
-                  );
-                })}
+                      <div className="aspect-[4/3] bg-neutral-100">
+                        <AlbumCardCover
+                          token={token}
+                          coverUrl={album.coverUrl}
+                          alt={album.name || t("photos.icloudTitle")}
+                        />
+                      </div>
+                      <div className="px-2.5 py-2">
+                        <p className="truncate text-sm font-semibold text-neutral-900">
+                          {album.name || t("photos.icloudTitle")}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-neutral-400">
+                          {photoCountLabel(album.photoCount)}
+                        </p>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAlbumMenu(album)}
+                      className="absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-black/35 text-white"
+                      aria-label={t("photos.edit")}
+                    >
+                      <MoreHorizontal size={16} />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </>
         )}
       </div>
 
-      {viewer && viewerPhotos.length > 0 && (
+      {viewer && viewerPhotos.length > 0 && openDetail && (
         <PhotoLightbox
           photos={viewerPhotos}
           index={viewerIndex}
-          albumTitle={viewerAlbum?.name ?? undefined}
-          onIndexChange={(next) => setViewer({ albumId: viewer.albumId, index: next })}
+          albumTitle={openDetail.name ?? undefined}
+          onIndexChange={(next) => setViewer({ index: next })}
           onClose={() => setViewer(null)}
           onDownload={() => void handleDownloadIcloud()}
           downloading={icloudDownloading}
@@ -328,17 +476,20 @@ export default function PhotosPage() {
           editLabel={t("photos.icloudChange")}
           deleteLabel={t("photos.icloudUnlink")}
           canManage
-          onEdit={() => openEditForm(albumMenu)}
+          onEdit={() => openEditUrlForm(albumMenu)}
           onDelete={() => {
             setConfirmUnlink(albumMenu);
             setAlbumMenu(null);
           }}
         >
-          <DetailRow label={t("photos.icloudTitle")}>
-            {albumMenu.error
-              ? t("photos.icloudError")
-              : t("photos.photoCount", { n: albumMenu.photos.length })}
-          </DetailRow>
+          <DetailRow label={t("photos.icloudTitle")}>{photoCountLabel(albumMenu.photoCount)}</DetailRow>
+          <button
+            type="button"
+            onClick={() => openRenameForm(albumMenu)}
+            className="mt-3 w-full rounded-xl bg-indigo-50 py-2.5 text-sm font-semibold text-indigo-700"
+          >
+            {t("photos.icloudRename")}
+          </button>
           <a
             href={albumMenu.url}
             target="_blank"
@@ -361,7 +512,7 @@ export default function PhotosPage() {
             className="relative w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
           >
             <h2 className="text-base font-bold text-neutral-900">
-              {editingAlbum ? t("photos.icloudChange") : t("photos.icloudAdd")}
+              {editingUrlAlbum ? t("photos.icloudChange") : t("photos.icloudAdd")}
             </h2>
             <input
               value={icloudDraft}
@@ -388,9 +539,47 @@ export default function PhotosPage() {
               >
                 {icloudSaving
                   ? t("photos.icloudSaving")
-                  : editingAlbum
+                  : editingUrlAlbum
                     ? t("photos.save")
                     : t("photos.icloudSave")}
+              </button>
+            </div>
+          </form>
+        </OverlayScrim>
+      )}
+
+      {renameAlbum && (
+        <OverlayScrim
+          className="fixed inset-0 z-[55] flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          onDismiss={() => setRenameAlbum(null)}
+          label={t("photos.cancel")}
+        >
+          <form
+            onSubmit={(e) => void handleRename(e)}
+            className="relative w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
+          >
+            <h2 className="text-base font-bold text-neutral-900">{t("photos.icloudRename")}</h2>
+            <input
+              value={renameDraft}
+              onChange={(e) => setRenameDraft(e.target.value)}
+              className="mt-3 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-sky-400"
+              autoFocus
+            />
+            {icloudError && <p className="mt-2 text-xs text-rose-600">{icloudError}</p>}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setRenameAlbum(null)}
+                className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-semibold text-neutral-600"
+              >
+                {t("photos.cancel")}
+              </button>
+              <button
+                type="submit"
+                disabled={icloudSaving}
+                className="flex-1 rounded-xl bg-sky-700 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {t("photos.save")}
               </button>
             </div>
           </form>

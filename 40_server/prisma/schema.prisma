@@ -43,12 +43,19 @@ model Family {
 }
 
 model FamilyIcloudAlbum {
-  id        Int      @id @default(autoincrement())
-  familyId  Int      @map("family_id")
-  url       String   @db.VarChar(500)
-  name      String?  @db.VarChar(200)
-  createdAt DateTime @default(now()) @map("created_at")
-  family    Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  id           Int       @id @default(autoincrement())
+  familyId     Int       @map("family_id")
+  url          String    @db.VarChar(500)
+  name         String?   @db.VarChar(200)
+  /// When true, opening the album does not overwrite `name` from iCloud.
+  nameLocked   Boolean   @default(false) @map("name_locked")
+  coverPhotoId String?   @map("cover_photo_id") @db.VarChar(120)
+  coverMime    String?   @map("cover_mime") @db.VarChar(80)
+  /// Last known photo count; null until the album has been opened once.
+  photoCount   Int?      @map("photo_count")
+  syncedAt     DateTime? @map("synced_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  family       Family    @relation(fields: [familyId], references: [id], onDelete: Cascade)
 
   @@unique([familyId, url])
   @@index([familyId])

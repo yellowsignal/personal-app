@@ -44,6 +44,7 @@ import { IcloudSharedAlbumService } from "./services/icloudSharedAlbumService.js
 import type { FetchLike } from "./services/icloudSharedAlbum.js";
 import type { FamilyIcloudAlbumRepository } from "./domain/familyIcloudAlbumRepository.js";
 import { MemoryFamilyIcloudAlbumRepository } from "./domain/memoryFamilyIcloudAlbumRepository.js";
+import { AlbumCoverStore, defaultAlbumCoverDir } from "./storage/albumCoverStore.js";
 
 export interface AppDeps {
   authRepo?: AuthRepository;
@@ -56,6 +57,7 @@ export interface AppDeps {
   calendarRepo?: CalendarRepository;
   photoRepo?: PhotoRepository;
   photoStore?: PhotoStore;
+  albumCoverStore?: AlbumCoverStore;
   icloudFetch?: FetchLike;
   icloudAlbumRepo?: FamilyIcloudAlbumRepository;
   pushService?: PushService;
@@ -209,9 +211,11 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
     if (deps.photoRepo && deps.photoStore) {
       const photoService = new PhotoService(deps.authRepo, deps.photoRepo, deps.photoStore, activityService);
       const icloudAlbumRepo = deps.icloudAlbumRepo ?? new MemoryFamilyIcloudAlbumRepository();
+      const albumCoverStore = deps.albumCoverStore ?? new AlbumCoverStore(defaultAlbumCoverDir());
       const icloudService = new IcloudSharedAlbumService(
         deps.authRepo,
         icloudAlbumRepo,
+        albumCoverStore,
         deps.icloudFetch ?? fetch,
       );
       app.use("/api/photos", createPhotoRouter(photoService, jwtSecret, icloudService));

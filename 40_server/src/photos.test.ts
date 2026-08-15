@@ -306,12 +306,22 @@ test("icloud albums can link several URLs, download without storing, and unlink 
     const firstBody = (await first.json()) as {
       id: number;
       name: string;
+      coverUrl: string | null;
+      coverPhotoId: string | null;
       photos: Array<{ id: string; fullUrl: string }>;
     };
     assert.equal(firstBody.name, "가족 여행");
     assert.equal(firstBody.photos.length, 2);
     assert.equal(firstBody.photos[0].id, "guid-old");
     assert.equal(firstBody.photos[1].id, "guid-1");
+    assert.equal(firstBody.coverPhotoId, "guid-old");
+    assert.ok(firstBody.coverUrl);
+
+    const coverRes = await fetch(`${base}${firstBody.coverUrl}`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(coverRes.status, 200);
+    assert.equal(coverRes.headers.get("content-type"), "image/jpeg");
 
     const dup = await fetch(`${base}/api/photos/icloud-albums`, {
       method: "POST",
@@ -334,11 +344,46 @@ test("icloud albums can link several URLs, download without storing, and unlink 
       headers: { authorization: `Bearer ${owner.token}` },
     });
     const listedBody = (await listed.json()) as {
-      albums: Array<{ id: number; name: string | null; photos: Array<{ id: string }> }>;
+      albums: Array<{
+        id: number;
+        name: string | null;
+        photoCount: number | null;
+        coverUrl: string | null;
+        photos?: unknown;
+      }>;
     };
     assert.equal(listedBody.albums.length, 2);
     const travel = listedBody.albums.find((a) => a.id === firstBody.id);
-    assert.equal(travel?.photos[0]?.id, "guid-old");
+    assert.equal(travel?.photoCount, 2);
+    assert.ok(travel?.coverUrl);
+    assert.equal(travel?.photos, undefined);
+
+    const detail = await fetch(`${base}/api/photos/icloud-albums/${firstBody.id}`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(detail.status, 200);
+    const detailBody = (await detail.json()) as { photos: Array<{ id: string }>; photoCount: number };
+    assert.equal(detailBody.photos[0]?.id, "guid-old");
+    assert.equal(detailBody.photoCount, 2);
+
+    const renamed = await fetch(`${base}/api/photos/icloud-albums/${firstBody.id}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ name: "우리 여행" }),
+    });
+    assert.equal(renamed.status, 200);
+    const renamedBody = (await renamed.json()) as { name: string; nameLocked: boolean };
+    assert.equal(renamedBody.name, "우리 여행");
+    assert.equal(renamedBody.nameLocked, true);
+
+    const coverChanged = await fetch(`${base}/api/photos/icloud-albums/${firstBody.id}`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ coverPhotoId: "guid-1" }),
+    });
+    assert.equal(coverChanged.status, 200);
+    const coverChangedBody = (await coverChanged.json()) as { coverPhotoId: string };
+    assert.equal(coverChangedBody.coverPhotoId, "guid-1");
 
     const clash = await fetch(`${base}/api/photos/icloud-albums/${firstBody.id}`, {
       method: "PATCH",

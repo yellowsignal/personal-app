@@ -545,7 +545,13 @@ export const dict: Record<Lang, Record<string, string>> = {
     "photos.viewerHint": "핀치·더블탭으로 확대, 좌우로 넘기고 아래로 내리면 닫혀요",
     "photos.viewerCounter": "{current} / {total}",
     "photos.photoCount": "사진 {n}장",
+    "photos.photoCountPending": "열면 사진 수를 불러와요",
     "photos.back": "뒤로",
+    "photos.icloudRename": "앨범 이름 바꾸기",
+    "photos.icloudNeedName": "앨범 이름을 입력해 주세요",
+    "photos.icloudPickCover": "커버 고르기",
+    "photos.icloudPickCoverHint": "커버로 쓸 사진을 탭하세요",
+
 
     "checklists.title": "체크리스트",
     "checklists.subtitle": "트리로 정리 · 완료는 한 달 보관",
@@ -1121,7 +1127,12 @@ export const dict: Record<Lang, Record<string, string>> = {
     "photos.viewerHint": "ピンチ・ダブルタップで拡大、左右スワイプ、下スワイプで閉じます",
     "photos.viewerCounter": "{current} / {total}",
     "photos.photoCount": "写真{n}枚",
+    "photos.photoCountPending": "開くと枚数を読み込みます",
     "photos.back": "戻る",
+    "photos.icloudRename": "アルバム名を変更",
+    "photos.icloudNeedName": "アルバム名を入力してください",
+    "photos.icloudPickCover": "カバーを選ぶ",
+    "photos.icloudPickCoverHint": "カバーにする写真をタップしてください",
 
     "checklists.title": "チェックリスト",
     "checklists.subtitle": "ツリーで整理・完了は1か月保管",

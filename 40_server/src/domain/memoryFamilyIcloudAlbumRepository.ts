@@ -1,4 +1,6 @@
 import type {
+  FamilyIcloudAlbumCreate,
+  FamilyIcloudAlbumPatch,
   FamilyIcloudAlbumRecord,
   FamilyIcloudAlbumRepository,
 } from "./familyIcloudAlbumRepository.js";
@@ -19,22 +21,24 @@ export class MemoryFamilyIcloudAlbumRepository implements FamilyIcloudAlbumRepos
     return row ? { ...row } : null;
   }
 
-  async create(input: { familyId: number; url: string; name: string | null }): Promise<FamilyIcloudAlbumRecord> {
+  async create(input: FamilyIcloudAlbumCreate): Promise<FamilyIcloudAlbumRecord> {
     const record: FamilyIcloudAlbumRecord = {
       id: this.nextId++,
       familyId: input.familyId,
       url: input.url,
       name: input.name,
+      nameLocked: input.nameLocked ?? false,
+      coverPhotoId: input.coverPhotoId ?? null,
+      coverMime: input.coverMime ?? null,
+      photoCount: input.photoCount ?? null,
+      syncedAt: input.syncedAt ?? null,
       createdAt: new Date(),
     };
     this.rows.set(record.id, record);
     return { ...record };
   }
 
-  async update(
-    id: number,
-    input: { url?: string; name?: string | null },
-  ): Promise<FamilyIcloudAlbumRecord> {
+  async update(id: number, input: FamilyIcloudAlbumPatch): Promise<FamilyIcloudAlbumRecord> {
     const existing = this.rows.get(id);
     if (!existing) throw Object.assign(new Error("album not found"), { code: "NOT_FOUND" });
     if (input.url && input.url !== existing.url) {
@@ -47,15 +51,12 @@ export class MemoryFamilyIcloudAlbumRepository implements FamilyIcloudAlbumRepos
       ...existing,
       url: input.url ?? existing.url,
       name: input.name !== undefined ? input.name : existing.name,
+      nameLocked: input.nameLocked !== undefined ? input.nameLocked : existing.nameLocked,
+      coverPhotoId: input.coverPhotoId !== undefined ? input.coverPhotoId : existing.coverPhotoId,
+      coverMime: input.coverMime !== undefined ? input.coverMime : existing.coverMime,
+      photoCount: input.photoCount !== undefined ? input.photoCount : existing.photoCount,
+      syncedAt: input.syncedAt !== undefined ? input.syncedAt : existing.syncedAt,
     };
-    this.rows.set(id, updated);
-    return { ...updated };
-  }
-
-  async updateName(id: number, name: string | null): Promise<FamilyIcloudAlbumRecord> {
-    const existing = this.rows.get(id);
-    if (!existing) throw Object.assign(new Error("album not found"), { code: "NOT_FOUND" });
-    const updated = { ...existing, name };
     this.rows.set(id, updated);
     return { ...updated };
   }

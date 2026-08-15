@@ -20,16 +20,25 @@ export interface IcloudAlbumPhoto {
   fullUrl: string;
 }
 
-export interface LinkedIcloudAlbum {
+/** Fast list card — no Apple round-trip, photos not included. */
+export interface IcloudAlbumSummary {
   id: number;
   url: string;
   name: string | null;
+  nameLocked: boolean;
+  photoCount: number | null;
+  coverPhotoId: string | null;
+  coverUrl: string | null;
+  syncedAt: string | null;
+}
+
+export interface LinkedIcloudAlbum extends IcloudAlbumSummary {
   photos: IcloudAlbumPhoto[];
   error?: string;
 }
 
 export interface IcloudAlbumsResponse {
-  albums: LinkedIcloudAlbum[];
+  albums: IcloudAlbumSummary[];
 }
 
 export const photosApi = {
@@ -90,6 +99,10 @@ export const photosApi = {
     return apiFetch<IcloudAlbumsResponse>("/api/photos/icloud-albums", { token });
   },
 
+  getIcloudAlbum(token: string, albumId: number) {
+    return apiFetch<LinkedIcloudAlbum>(`/api/photos/icloud-albums/${albumId}`, { token });
+  },
+
   addIcloudAlbum(token: string, url: string) {
     return apiFetch<LinkedIcloudAlbum>("/api/photos/icloud-albums", {
       method: "POST",
@@ -98,11 +111,15 @@ export const photosApi = {
     });
   },
 
-  updateIcloudAlbum(token: string, albumId: number, url: string) {
+  updateIcloudAlbum(
+    token: string,
+    albumId: number,
+    body: { url?: string; name?: string; coverPhotoId?: string },
+  ) {
     return apiFetch<LinkedIcloudAlbum>(`/api/photos/icloud-albums/${albumId}`, {
       method: "PATCH",
       token,
-      body: JSON.stringify({ url }),
+      body: JSON.stringify(body),
     });
   },
 
@@ -118,6 +135,15 @@ export const photosApi = {
       `/api/photos/icloud-albums/${albumId}/file?photo=${encodeURIComponent(photoId)}`,
       { headers: { authorization: `Bearer ${token}` } },
     );
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+      throw new ApiError(data.error ?? `request failed (${res.status})`, res.status, data.code);
+    }
+    return res.blob();
+  },
+
+  async fetchIcloudCover(token: string, coverUrl: string): Promise<Blob> {
+    const res = await fetch(coverUrl, { headers: { authorization: `Bearer ${token}` } });
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
       throw new ApiError(data.error ?? `request failed (${res.status})`, res.status, data.code);

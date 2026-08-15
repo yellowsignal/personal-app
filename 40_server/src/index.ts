@@ -25,6 +25,7 @@ import { MemoryPhotoRepository } from "./domain/memoryPhotoRepository.js";
 import { PrismaPhotoRepository } from "./domain/prismaPhotoRepository.js";
 import type { PhotoRepository } from "./domain/photoRepository.js";
 import { PhotoStore, defaultPhotoDir } from "./storage/photoStore.js";
+import { AlbumCoverStore, defaultAlbumCoverDir } from "./storage/albumCoverStore.js";
 import { MemoryFamilyIcloudAlbumRepository } from "./domain/memoryFamilyIcloudAlbumRepository.js";
 import { PrismaFamilyIcloudAlbumRepository } from "./domain/prismaFamilyIcloudAlbumRepository.js";
 import type { FamilyIcloudAlbumRepository } from "./domain/familyIcloudAlbumRepository.js";
@@ -113,6 +114,7 @@ const inviteTokenRepo = useMemoryAuth
 const challengeStore = new ChallengeStore();
 const documentScanStore = new DocumentScanStore(defaultDocumentScanDir());
 const photoStore = new PhotoStore(defaultPhotoDir());
+const albumCoverStore = new AlbumCoverStore(defaultAlbumCoverDir());
 const app = createApp(store, {
   authRepo,
   assetRepo,
@@ -121,6 +123,7 @@ const app = createApp(store, {
   calendarRepo,
   photoRepo,
   photoStore,
+  albumCoverStore,
   icloudAlbumRepo,
   subscriptionRepo,
   checklistRepo,

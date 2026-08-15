@@ -61,6 +61,35 @@ export function createPhotoRouter(
       }
     });
 
+    router.get("/icloud-albums/:albumId", auth, async (req: AuthedRequest, res) => {
+      try {
+        const albumId = Number(req.params.albumId);
+        if (!Number.isFinite(albumId)) {
+          res.status(400).json({ error: "invalid id" });
+          return;
+        }
+        res.json(await icloud.get(req.userId!, albumId));
+      } catch (err) {
+        sendError(res, err);
+      }
+    });
+
+    router.get("/icloud-albums/:albumId/cover", auth, async (req: AuthedRequest, res) => {
+      try {
+        const albumId = Number(req.params.albumId);
+        if (!Number.isFinite(albumId)) {
+          res.status(400).json({ error: "invalid id" });
+          return;
+        }
+        const file = await icloud.readCover(req.userId!, albumId);
+        res.setHeader("content-type", file.mime);
+        res.setHeader("cache-control", "private, max-age=86400");
+        res.send(file.bytes);
+      } catch (err) {
+        sendError(res, err);
+      }
+    });
+
     router.patch("/icloud-albums/:albumId", auth, async (req: AuthedRequest, res) => {
       try {
         const albumId = Number(req.params.albumId);
@@ -68,7 +97,13 @@ export function createPhotoRouter(
           res.status(400).json({ error: "invalid id" });
           return;
         }
-        res.json(await icloud.update(req.userId!, albumId, req.body?.url));
+        res.json(
+          await icloud.update(req.userId!, albumId, {
+            url: req.body?.url,
+            name: req.body?.name,
+            coverPhotoId: req.body?.coverPhotoId,
+          }),
+        );
       } catch (err) {
         sendError(res, err);
       }
