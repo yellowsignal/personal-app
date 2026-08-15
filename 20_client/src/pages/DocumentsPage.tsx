@@ -1243,6 +1243,11 @@ export default function DocumentsPage() {
             {scanWizard.step === "front" && (
               <>
                 <p className="text-sm text-neutral-600">{t("documents.scanStepFront")}</p>
+                {scanWizard.target.kind === "create" && scanWizard.target.withOcr && (
+                  <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+                    {t("documents.ocrOrientationHint")}
+                  </p>
+                )}
                 <button
                   type="button"
                   onClick={() => startScanCapture("front")}
