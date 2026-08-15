@@ -372,27 +372,6 @@ export default function DocumentsPage() {
     }
   }
 
-  function buildPayloadFromParsed(parsed: ReturnType<typeof parseDocumentOcrText>): CreateDocumentInput | null {
-    const label = parsed.typeLabel?.trim() ?? "";
-    const fields: DocumentFieldInput[] = parsed.fields
-      .filter((f) => f.label.trim())
-      .map((f) => ({
-        label: f.label.trim(),
-        value: f.value,
-        isSecret: f.isSecret,
-      }));
-    const hasFieldValue = fields.some((f) => f.value?.trim());
-    if (!label || fields.length === 0 || !hasFieldValue) return null;
-    return {
-      typeLabel: label,
-      category: parsed.category ?? category,
-      fields,
-      expiryDate: parsed.expiryDate ?? null,
-      isShared: false,
-      memo: null,
-    };
-  }
-
   async function runOcrOnScanFiles(front: File, back: File | null) {
     const files = back ? [front, back] : [front];
     const text = await runOcrOnFiles(files, setOcrProgress);
@@ -406,33 +385,6 @@ export default function DocumentsPage() {
     setFromOcrReview(true);
     closeScanWizard();
     setShowCreate(true);
-  }
-
-  async function runOcrAndSave(front: File, back: File | null) {
-    if (!token) return;
-    setOcrBusy(true);
-    setOcrProgress(0);
-    setError(null);
-    try {
-      const parsed = await runOcrOnScanFiles(front, back);
-      const payload = buildPayloadFromParsed(parsed);
-      if (payload) {
-        const created = await documentsApi.create(token, payload);
-        await uploadScansForDocument(created.id, front, back);
-        closeScanWizard();
-        resetForm();
-        await load();
-        return;
-      }
-      openOcrReviewForm(front, back, parsed);
-      setError(t("documents.ocrLowConfidence"));
-    } catch {
-      setError(t("documents.ocrError"));
-      openOcrReviewForm(front, back, { typeLabel: null, category: null, fields: [], expiryDate: null });
-    } finally {
-      setOcrBusy(false);
-      setOcrProgress(0);
-    }
   }
 
   async function runOcrAndOpenCreate(front: File, back: File | null) {
@@ -484,7 +436,8 @@ export default function DocumentsPage() {
       return;
     }
     if (scanWizard.target.withOcr) {
-      await runOcrAndSave(scanWizard.frontFile, scanWizard.backFile);
+      // Always review/edit before create — never auto-save after OCR.
+      await runOcrAndOpenCreate(scanWizard.frontFile, scanWizard.backFile);
       return;
     }
     setCreateScanFront(scanWizard.frontFile);
@@ -1359,26 +1312,14 @@ export default function DocumentsPage() {
                   </div>
                 </div>
                 {scanWizard.target.kind === "create" && scanWizard.target.withOcr ? (
-                  <div className="mt-4 space-y-2">
-                    <button
-                      type="button"
-                      disabled={ocrBusy}
-                      onClick={() => void confirmScanWizard()}
-                      className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white disabled:opacity-40"
-                    >
-                      {t("documents.ocrAnalyze")}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={ocrBusy}
-                      onClick={() =>
-                        void runOcrAndOpenCreate(scanWizard.frontFile!, scanWizard.backFile)
-                      }
-                      className="w-full rounded-xl border border-neutral-200 py-3 text-sm font-semibold text-neutral-600 disabled:opacity-40"
-                    >
-                      {t("documents.ocrReviewEdit")}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    disabled={ocrBusy}
+                    onClick={() => void confirmScanWizard()}
+                    className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                  >
+                    {t("documents.ocrAnalyze")}
+                  </button>
                 ) : (
                   <button
                     type="button"
