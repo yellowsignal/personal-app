@@ -11,8 +11,9 @@ TARGET="${1:-dev}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 case "$TARGET" in
-  prod) DEST="/var/www/myfamily" ;;
-  dev)  DEST="/var/www/myfamily-dev" ;;
+  prod) DEST="/var/www/myfamilyhub" ;;
+  # dig static root on OCI (deploy-dig.sh uses the same path)
+  dev)  DEST="/var/www/myfamilyhub-dev" ;;
   *)
     echo "Usage: $0 prod|dev" >&2
     exit 1

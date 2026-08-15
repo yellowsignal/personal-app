@@ -17,8 +17,10 @@
 
 | 역할 | DuckDNS | 정적 루트 | API |
 | --- | --- | --- | --- |
-| prod | `sumicchogurashi.duckdns.org` | `/var/www/myfamily` | `127.0.0.1:3001` (`myfamilyhub-api`) |
-| dig | `sumicchogurashi-dev.duckdns.org` | `/var/www/myfamilyhub-dev` (또는 `myfamily-dev`) | `127.0.0.1:3002` (`myfamilyhub-dev-api`) |
+| prod | `sumicchogurashi.duckdns.org` | `/var/www/myfamilyhub` (nginx: `sites-enabled/myfamilyhub`) | `127.0.0.1:3001` (`myfamilyhub-api`) |
+| dig | `sumicchogurashi-dev.duckdns.org` | `/var/www/myfamilyhub-dev` | `127.0.0.1:3002` (`myfamilyhub-dev-api`) |
+
+> 주의: 레포 템플릿의 `/var/www/myfamily` 는 이 서버에서 **사용하지 않습니다**. Certbot이 만든 `myfamilyhub` conf가 실서비스입니다.
 
 둘 다 Public IP `129.225.196.226`을 가리킵니다.
 
