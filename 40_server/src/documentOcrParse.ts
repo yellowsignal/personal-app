@@ -32,6 +32,15 @@ function digitsOnly(value: string): string {
   return value.replace(/\D/g, "");
 }
 
+/** JP landline/mobile styles — must not become 番号 / fallback. */
+export function looksLikePhoneNumber(value: string): boolean {
+  const trimmed = value.trim();
+  const d = digitsOnly(trimmed);
+  if (/^0\d{9,10}$/.test(d)) return true;
+  if (/^0\d{1,4}-\d{1,4}-\d{3,4}$/.test(trimmed)) return true;
+  return false;
+}
+
 function parseDateFragment(raw: string): string | null {
   const m = raw.match(/(\d{4})\s*[./年\-]\s*(\d{1,2})\s*[./月\-]\s*(\d{1,2})/);
   if (!m) return null;
@@ -95,6 +104,8 @@ function findExpiry(text: string): string | null {
   const keyword = /(有効期限|期限|満了|expir|valid until|까지|만료|valid)/i;
   for (let i = 0; i < lines.length; i++) {
     if (keyword.test(lines[i] ?? "")) {
+      // 交付 / 資格取得 are not expiry — skip those lines
+      if (/交付|資格取得/.test(lines[i] ?? "")) continue;
       const inline = parseDateFragment(lines[i] ?? "");
       if (inline) return inline;
       const next = parseDateFragment(lines[i + 1] ?? "");
@@ -144,7 +155,7 @@ function extractCardNumber(text: string): string | null {
 
 function detectType(text: string, cardNumber: string | null): string | null {
   if (/在留|재류|residence card|zairyu/i.test(text)) return "在留カード";
-  if (/保険証|健康保険|被保険/i.test(text)) return "保険証";
+  if (/保険証|健康保険|被保険|保険者番号/i.test(text)) return "保険証";
   if (/マイナンバー|my number|個人番号/i.test(text)) return "マイナンバーカード";
   if (/運転免許|운전면허|driver'?s license/i.test(text)) return "運転免許証";
   if (/旅券|passport|여권/i.test(text)) return "여권";
@@ -177,6 +188,9 @@ function detectShinsatsukenType(text: string): string | null {
 
 function pushUnique(fields: OcrParsedField[], field: OcrParsedField): void {
   if (!field.value.trim()) return;
+  if (looksLikePhoneNumber(field.value) && (field.label === "番号" || field.label === "번호" || field.label === "記号")) {
+    return;
+  }
   const fieldDigits = digitsOnly(field.value);
   if (
     fields.some((f) => {
@@ -193,14 +207,55 @@ function pushUnique(fields: OcrParsedField[], field: OcrParsedField): void {
   fields.push(field);
 }
 
+/** Japanese health-insurance card: labels often sit above/beside values as 「記号・番号」. */
+function extractHokenFields(text: string): OcrParsedField[] {
+  const fields: OcrParsedField[] = [];
+
+  const insurer = text.match(/保険者\s*番号[：:\s]*([0-9]{6,8})/i);
+  if (insurer?.[1]) {
+    pushUnique(fields, { label: "保険者番号", value: insurer[1], isSecret: false });
+  }
+
+  // 「記号・番号」 then two numbers on the same or following line (common paper layout)
+  const combo =
+    text.match(
+      /記\s*号\s*[・･·．.／/\s]*\s*番\s*号[^\d\n]{0,40}(\d{2,6})\s*[・･·．.\s／/]*\s*(\d{3,12})/i,
+    ) ??
+    text.match(/記\s*号\s*[・･·．.／/\s]*\s*番\s*号\s*\n\s*(\d{2,6})\s+(\d{3,12})/i);
+
+  if (combo?.[1] && combo[2]) {
+    pushUnique(fields, { label: "記号", value: combo[1], isSecret: false });
+    pushUnique(fields, { label: "番号", value: combo[2], isSecret: true });
+  } else {
+    // Separate lines: 記号 … \n 123 \n 番号 … \n 456
+    const kigoLine = text.match(/記\s*号(?!\s*者)[^\d\n]{0,24}(\d{2,6})/i);
+    const bangoLine = text.match(/(?<![保険者発通])番\s*号[^\d\n]{0,24}(\d{3,12})/i);
+    if (kigoLine?.[1] && !looksLikePhoneNumber(kigoLine[1])) {
+      pushUnique(fields, { label: "記号", value: kigoLine[1], isSecret: false });
+    }
+    if (bangoLine?.[1] && !looksLikePhoneNumber(bangoLine[1])) {
+      // Avoid treating 保険者番号 digits as 番号 when already captured
+      if (!insurer || bangoLine[1] !== insurer[1]) {
+        pushUnique(fields, { label: "番号", value: bangoLine[1], isSecret: true });
+      }
+    }
+  }
+
+  const edaban =
+    text.match(/[（(]?\s*枝\s*番\s*[）)]?\s*[：:\s]*([0-9]{1,4})/i) ??
+    text.match(/枝\s*番[：:\s]*([0-9]{1,4})/i);
+  if (edaban?.[1]) {
+    pushUnique(fields, { label: "枝番", value: edaban[1], isSecret: true });
+  }
+
+  return fields;
+}
+
 function extractLabeledFields(text: string): OcrParsedField[] {
   const fields: OcrParsedField[] = [];
   const patterns: Array<{ label: string; re: RegExp; isSecret: boolean }> = [
-    { label: "記号", re: /記\s*号[：:\s]*([0-9]{1,6})/i, isSecret: false },
-    { label: "番号", re: /番\s*号[：:\s]*([0-9]{1,12})/i, isSecret: true },
     { label: "患者番号", re: /患者(?:番号|Ｎｏ|No|编号)[：:\s]*([0-9]{1,12})/i, isSecret: false },
     { label: "受付番号", re: /受付(?:番号|No)[：:\s]*([0-9]{1,12})/i, isSecret: false },
-    { label: "枝番", re: /枝\s*番[：:\s]*([0-9]{1,4})/i, isSecret: true },
     { label: "기호", re: /기\s*호[：:\s]*([0-9\-]{3,})/i, isSecret: false },
     { label: "번호", re: /(?:번\s*호|번호)[：:\s]*([0-9\-]{4,})/i, isSecret: true },
     { label: "카드번호", re: /(?:카드|card)[^\d]{0,12}([0-9\s\-]{13,22})/i, isSecret: true },
@@ -211,6 +266,7 @@ function extractLabeledFields(text: string): OcrParsedField[] {
     const m = text.match(p.re);
     if (m?.[1]) {
       const value = p.label === "카드번호" || p.label === "CVC" ? digitsOnly(m[1]) : m[1].replace(/\s/g, "").trim();
+      if ((p.label === "번호" || p.label === "기호") && looksLikePhoneNumber(value)) continue;
       pushUnique(fields, {
         label: p.label,
         value,
@@ -261,31 +317,55 @@ function extractSpecialNumbers(text: string, typeLabel: string | null): OcrParse
   return fields;
 }
 
+/** Score raw OCR text so we can pick the best page orientation. */
+export function scoreOcrTextForDocuments(text: string): number {
+  const t = normalizeText(text);
+  let score = 0;
+  if (/保険証|被保険|健康保険|保険者/.test(t)) score += 80;
+  if (/記\s*号/.test(t)) score += 35;
+  if (/番\s*号/.test(t)) score += 20;
+  if (/在留カード|マイナンバー|クレジット|診察券|運転免許証/.test(t)) score += 50;
+  if (/visa|mastercard|jcb|신용카드|체크카드/i.test(t)) score += 40;
+  const cjk = (t.match(/[\u3040-\u30ff\u4e00-\u9fff]/g) ?? []).length;
+  score += Math.min(45, cjk);
+  const digits = (t.match(/\d/g) ?? []).length;
+  score += Math.min(25, digits);
+  if (t.trim().length < 24) score -= 40;
+  if (looksLikePhoneNumber(t.trim()) || (/^\s*Tel/i.test(t) && digits < 12 && cjk < 5)) score -= 20;
+  return score;
+}
+
 export function parseDocumentOcrText(text: string): OcrParseResult {
   const normalized = normalizeText(text);
   const cardNumber = extractCardNumber(normalized);
   const typeLabel = detectType(normalized, cardNumber);
   const isMedical = /診察券|患者番号|患者Ｎｏ|受付番号|診療/i.test(normalized);
+  const isHoken = typeLabel === "保険証" || /保険証|健康保険|被保険|保険者番号/i.test(normalized);
   const category = isMedical
     ? "medical"
     : typeLabel
       ? inferCategoryFromTypeLabel(typeLabel)
       : null;
-  const fields = extractLabeledFields(normalized);
+
+  const fields: OcrParsedField[] = [];
+  if (isHoken) {
+    for (const f of extractHokenFields(normalized)) pushUnique(fields, f);
+  }
+  for (const f of extractLabeledFields(normalized)) pushUnique(fields, f);
   for (const s of extractSpecialNumbers(normalized, typeLabel)) {
     pushUnique(fields, s);
   }
 
   if (fields.length === 0) {
     const fallback = normalized.match(/\b[\dA-Z\-]{10,}\b/);
-    if (fallback?.[0]) {
+    if (fallback?.[0] && !looksLikePhoneNumber(fallback[0])) {
       pushUnique(fields, { label: "번호", value: fallback[0], isSecret: true });
     }
   }
 
   return {
-    typeLabel,
-    category,
+    typeLabel: typeLabel ?? (isHoken ? "保険証" : null),
+    category: category ?? (isHoken ? "insurance" : null),
     fields,
     expiryDate: findExpiry(normalized),
   };

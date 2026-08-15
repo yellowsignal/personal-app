@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseDocumentOcrText } from "./documentOcrParse.js";
+import {
+  looksLikePhoneNumber,
+  parseDocumentOcrText,
+  scoreOcrTextForDocuments,
+} from "./documentOcrParse.js";
 
 test("parseDocumentOcrText extracts 保険証 fields", () => {
   const result = parseDocumentOcrText(`
@@ -13,6 +17,45 @@ test("parseDocumentOcrText extracts 保険証 fields", () => {
   assert.equal(result.fields.find((f) => f.label === "記号")?.value, "1234");
   assert.equal(result.fields.find((f) => f.label === "番号")?.value, "567890");
   assert.equal(result.fields.find((f) => f.label === "枝番")?.value, "01");
+});
+
+test("parseDocumentOcrText extracts 記号・番号 on following line (paper 保険証 layout)", () => {
+  const result = parseDocumentOcrText(`
+    健康保険 被保険者証
+    令和 4年 9月20日交付
+    記号・番号
+    606  54156
+    (枝番) 45
+    氏名 崔 民虎
+    保険者番号 06135396
+    Tel 03-3833-6141
+  `);
+  assert.equal(result.typeLabel, "保険証");
+  assert.equal(result.fields.find((f) => f.label === "記号")?.value, "606");
+  assert.equal(result.fields.find((f) => f.label === "番号")?.value, "54156");
+  assert.equal(result.fields.find((f) => f.label === "枝番")?.value, "45");
+  assert.equal(result.fields.find((f) => f.label === "保険者番号")?.value, "06135396");
+  assert.equal(
+    result.fields.some((f) => f.value.includes("3833") || f.value.includes("03-")),
+    false,
+    "must not treat Tel as 番号",
+  );
+});
+
+test("parseDocumentOcrText does not use phone as fallback number", () => {
+  const result = parseDocumentOcrText(`
+    Tel 03-3833-6141
+    03-3833-6141
+  `);
+  assert.equal(result.fields.some((f) => looksLikePhoneNumber(f.value)), false);
+  assert.equal(result.fields.length, 0);
+});
+
+test("scoreOcrTextForDocuments prefers 保険証 keywords over Tel-only junk", () => {
+  const good = scoreOcrTextForDocuments(`健康保険 被保険者証\n記号・番号\n606 54156\n保険者番号 06135396`);
+  const bad = scoreOcrTextForDocuments(`Tel 03-3833-6141`);
+  assert.ok(good > bad);
+  assert.ok(good >= 110);
 });
 
 test("parseDocumentOcrText extracts residence card number and expiry", () => {
