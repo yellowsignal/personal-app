@@ -570,7 +570,13 @@ export default function DocumentsPage() {
       return;
     }
     const fields: DocumentFieldInput[] = fieldDrafts
-      .filter((f) => f.label.trim())
+      .filter((f) => {
+        if (!f.label.trim()) return false;
+        if (f.value.trim()) return true;
+        // Edit: empty secret means “keep existing”; empty non-secret slots from OCR templates are dropped.
+        if (editing && f.isSecret) return true;
+        return false;
+      })
       .map((f) => {
         const base: DocumentFieldInput = {
           id: f.id,
