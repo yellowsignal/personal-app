@@ -52,7 +52,7 @@ sudo docker compose -f "$PROD_COMPOSE" --env-file "$PROD_ENV" exec -T postgres \
 sudo docker compose -f "$PROD_COMPOSE" --env-file "$PROD_ENV" exec -T postgres \
   pg_restore -U myfamilyhub -d myfamilyhub --clean --if-exists --no-owner --no-acl /tmp/prod.dump
 sudo docker compose -f "$PROD_COMPOSE" --env-file "$PROD_ENV" exec -T postgres rm -f /tmp/prod.dump
-rm -f "$DUMP_PATH"
+sudo rm -f "$DUMP_PATH"
 
 echo "==> Copy file stores dig → prod"
 mkdir -p "$PROD_DATA/photos" "$PROD_DATA/document-scans" "$PROD_DATA/icloud-covers"
