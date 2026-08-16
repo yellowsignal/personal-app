@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Copy, Eye, EyeOff, Plus, RefreshCw, TrendingDown, TrendingUp, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import TopBar from "../components/TopBar";
-import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
+import ScopeToggle, type { ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
 import OverlayScrim from "../components/OverlayScrim";
 import SwipeableRow from "../components/SwipeableRow";
@@ -24,6 +24,7 @@ import { isPasskeySupported } from "../api/passkey";
 import { ApiError } from "../api/http";
 import { formatMoney } from "../utils/formatMoney";
 import { exchangeRates } from "../mocks/data";
+import { useKeepFocusedInScrollParent } from "../hooks/useKeepFocusedInScrollParent";
 
 const CURRENCY_SYMBOL = { KRW: "₩", JPY: "¥", USD: "$" };
 const ASSET_TYPES: AssetType[] = ["deposit", "stock", "cash", "realestate"];
@@ -138,6 +139,8 @@ export default function AssetsPage() {
   const [revealBusyId, setRevealBusyId] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [copiedField, setCopiedField] = useState<"account" | "pw" | null>(null);
+  const formScrollRef = useRef<HTMLFormElement>(null);
+  useKeepFocusedInScrollParent(showForm, formScrollRef);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -696,8 +699,10 @@ export default function AssetsPage() {
           label={t("assets.cancelAction")}
         >
           <form
+            ref={formScrollRef}
             onSubmit={handleSubmit}
-            className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
+            className="relative max-h-[var(--sheet-max-height,90vh)] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
+            style={{ overflowAnchor: "none" }}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">

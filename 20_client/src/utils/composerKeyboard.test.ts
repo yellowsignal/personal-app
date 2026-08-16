@@ -3,7 +3,9 @@ import { test } from "node:test";
 import {
   keyboardOverlapPx,
   maxWindowScrollY,
+  scrollTopDeltaToRevealField,
   scrollYToPlaceAboveVisibleBottom,
+  sheetMaxHeightPx,
   visualViewportBottom,
 } from "./composerKeyboard";
 
@@ -71,4 +73,52 @@ test("scrollYToPlaceAboveVisibleBottom clamps to the page bounds", () => {
   );
   assert.equal(maxWindowScrollY(900, 800), 100);
   assert.equal(maxWindowScrollY(500, 800), 0);
+});
+
+test("sheetMaxHeightPx follows the visual viewport above the keyboard", () => {
+  assert.equal(sheetMaxHeightPx(800, null), 788);
+  assert.equal(sheetMaxHeightPx(800, { height: 500, offsetTop: 0 }), 488);
+  assert.equal(sheetMaxHeightPx(800, { height: 200, offsetTop: 0 }, 12), 240);
+});
+
+test("scrollTopDeltaToRevealField scrolls when the field sits under the keyboard", () => {
+  assert.equal(
+    scrollTopDeltaToRevealField({
+      parentTop: 100,
+      parentBottom: 700,
+      fieldTop: 620,
+      fieldBottom: 680,
+      visibleTop: 0,
+      visibleBottom: 500,
+    }),
+    196,
+  );
+});
+
+test("scrollTopDeltaToRevealField scrolls up when Safari jumped past the field", () => {
+  assert.equal(
+    scrollTopDeltaToRevealField({
+      parentTop: 100,
+      parentBottom: 700,
+      fieldTop: 40,
+      fieldBottom: 90,
+      visibleTop: 0,
+      visibleBottom: 500,
+    }),
+    -76,
+  );
+});
+
+test("scrollTopDeltaToRevealField is zero when the field is already visible", () => {
+  assert.equal(
+    scrollTopDeltaToRevealField({
+      parentTop: 100,
+      parentBottom: 700,
+      fieldTop: 200,
+      fieldBottom: 250,
+      visibleTop: 0,
+      visibleBottom: 500,
+    }),
+    0,
+  );
 });

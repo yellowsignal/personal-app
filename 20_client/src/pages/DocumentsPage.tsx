@@ -30,6 +30,7 @@ import { mergePdfBlobs } from "../utils/pdfMerge";
 import { runOcrOnFiles } from "../utils/documentOcr";
 import { parseDocumentOcrText } from "@personal-app/document-ocr-parse";
 import { readPinnedDocumentIds, togglePinnedDocumentId } from "../utils/documentPins";
+import { useKeepFocusedInScrollParent } from "../hooks/useKeepFocusedInScrollParent";
 
 interface FieldDraft {
   key: string;
@@ -100,6 +101,8 @@ export default function DocumentsPage() {
   const [pinnedIds, setPinnedIds] = useState<number[]>(() => readPinnedDocumentIds());
   const scanInputRef = useRef<HTMLInputElement>(null);
   const scanCaptureSideRef = useRef<ScanSide>("front");
+  const formScrollRef = useRef<HTMLFormElement>(null);
+  useKeepFocusedInScrollParent(showCreate, formScrollRef);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -999,8 +1002,10 @@ export default function DocumentsPage() {
           label={t("documents.cancel")}
         >
           <form
+            ref={formScrollRef}
             onSubmit={handleSubmit}
-            className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="relative max-h-[var(--sheet-max-height,90vh)] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            style={{ overflowAnchor: "none" }}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">
