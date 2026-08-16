@@ -47,6 +47,9 @@ import { MemoryPushRepository } from "./domain/memoryPushRepository.js";
 import { PrismaPushRepository } from "./domain/prismaPushRepository.js";
 import { MemoryFamilyActivityRepository } from "./domain/memoryFamilyActivityRepository.js";
 import { PrismaFamilyActivityRepository } from "./domain/prismaFamilyActivityRepository.js";
+import { MemoryVaultItemRepository } from "./domain/memoryVaultItemRepository.js";
+import { PrismaVaultItemRepository } from "./domain/prismaVaultItemRepository.js";
+import type { VaultItemRepository } from "./domain/vaultTypes.js";
 import { loadOrCreateVapidKeys, PushService, WebPushSender } from "./services/pushService.js";
 import { ReminderDispatcher, startReminderScheduler } from "./services/reminderDispatcher.js";
 
@@ -102,6 +105,9 @@ const photoRepo: PhotoRepository = useMemoryAuth
 const icloudAlbumRepo: FamilyIcloudAlbumRepository = useMemoryAuth
   ? new MemoryFamilyIcloudAlbumRepository()
   : new PrismaFamilyIcloudAlbumRepository(prisma);
+const vaultRepo: VaultItemRepository = useMemoryAuth
+  ? new MemoryVaultItemRepository()
+  : new PrismaVaultItemRepository(prisma);
 let reminderDispatcher!: ReminderDispatcher;
 const pushService = new PushService(pushRepo, vapidKeys, new WebPushSender(vapidKeys), () =>
   reminderDispatcher.tick(),
@@ -125,6 +131,7 @@ const app = createApp(store, {
   photoStore,
   albumCoverStore,
   icloudAlbumRepo,
+  vaultRepo,
   subscriptionRepo,
   checklistRepo,
   documentRepo,
@@ -142,7 +149,7 @@ app.listen(PORT, () => {
   console.log(`[server] personal-app API listening on http://localhost:${PORT}`);
   console.log(`[server] persisting tasks to ${DATA_FILE}`);
   console.log(
-    `[server] auth/family/assets/subscriptions/checklists/documents/calendar/photos/passkey/push routes enabled (JWT, store=${
+    `[server] auth/family/assets/subscriptions/checklists/documents/calendar/photos/vault/passkey/push routes enabled (JWT, store=${
       useMemoryAuth ? "memory" : "prisma"
     })`,
   );
