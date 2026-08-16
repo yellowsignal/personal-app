@@ -28,7 +28,7 @@ test("formatReminderClock uses 오전/오후 and 午前/午後", () => {
   assert.equal(formatReminderClock(midnight, true, "ja"), "終日");
 });
 
-test("formatCalendarReminderPayload is event title / time(+memo)", () => {
+test("formatCalendarReminderPayload is event title / lead · time(+memo)", () => {
   const start = new Date("2026-08-14T07:13:00.000Z");
   const withMemo = formatCalendarReminderPayload({
     eventTitle: "테스트",
@@ -36,9 +36,10 @@ test("formatCalendarReminderPayload is event title / time(+memo)", () => {
     start,
     isAllDay: false,
     languagePref: "ko",
+    reminderMinutesBefore: 10,
   });
   assert.equal(withMemo.title, "테스트");
-  assert.equal(withMemo.body, "오전 7:13 메모 내용");
+  assert.equal(withMemo.body, "10분 전 · 오전 7:13 메모 내용");
 
   const noMemo = formatCalendarReminderPayload({
     eventTitle: "테스트",
@@ -46,9 +47,10 @@ test("formatCalendarReminderPayload is event title / time(+memo)", () => {
     start,
     isAllDay: false,
     languagePref: "ko",
+    reminderMinutesBefore: 60,
   });
   assert.equal(noMemo.title, "테스트");
-  assert.equal(noMemo.body, "오전 7:13");
+  assert.equal(noMemo.body, "1시간 전 · 오전 7:13");
 
   const emptyTitle = formatCalendarReminderPayload({
     eventTitle: "  ",
@@ -56,9 +58,20 @@ test("formatCalendarReminderPayload is event title / time(+memo)", () => {
     start,
     isAllDay: true,
     languagePref: "ko",
+    reminderMinutesBefore: 1440,
   });
   assert.equal(emptyTitle.title, APP_DISPLAY_NAME);
-  assert.equal(emptyTitle.body, "하루 종일");
+  assert.equal(emptyTitle.body, "1일 전 · 하루 종일");
+
+  const ja = formatCalendarReminderPayload({
+    eventTitle: "会議",
+    description: null,
+    start: new Date("2026-08-14T15:00:00.000Z"),
+    isAllDay: false,
+    languagePref: "ja",
+    reminderMinutesBefore: 30,
+  });
+  assert.equal(ja.body, "30分前 · 午後 3:00");
 });
 
 test("all-day reminder anchors to morning instead of previous UTC night", () => {

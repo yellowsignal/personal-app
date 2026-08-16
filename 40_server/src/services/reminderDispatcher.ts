@@ -94,10 +94,29 @@ export function formatReminderClock(
   return `${period} ${h12}:${String(minutes).padStart(2, "0")}`;
 }
 
+/** How long until the event (matches reminderMinutesBefore options: 10 / 30 / 60 / 1440). */
+export function formatReminderLead(
+  minutesBefore: number | null | undefined,
+  languagePref: string | null | undefined,
+): string {
+  const ja = (languagePref ?? "").trim().toLowerCase() === "ja";
+  const m = typeof minutesBefore === "number" && Number.isFinite(minutesBefore) ? minutesBefore : 0;
+  if (m >= 1440) {
+    const days = Math.round(m / 1440);
+    return ja ? `${days}日前` : `${days}일 전`;
+  }
+  if (m >= 60 && m % 60 === 0) {
+    const hours = m / 60;
+    return ja ? `${hours}時間前` : `${hours}시간 전`;
+  }
+  if (m > 0) return ja ? `${m}分前` : `${m}분 전`;
+  return ja ? "まもなく" : "곧";
+}
+
 /**
  * Lock-screen layout (iOS PWA also prepends the app name / “from …” itself):
  * 1. title → event title
- * 2. body → time (+ memo when present)
+ * 2. body → lead (how soon) · clock (+ memo when present)
  */
 export function formatCalendarReminderPayload(input: {
   eventTitle: string;
@@ -105,11 +124,13 @@ export function formatCalendarReminderPayload(input: {
   start: Date;
   isAllDay: boolean;
   languagePref: string | null | undefined;
+  reminderMinutesBefore?: number | null;
 }): { title: string; body: string } {
   const eventTitle = input.eventTitle.trim() || APP_DISPLAY_NAME;
+  const lead = formatReminderLead(input.reminderMinutesBefore, input.languagePref);
   const clock = formatReminderClock(input.start, input.isAllDay, input.languagePref);
   const memo = typeof input.description === "string" ? input.description.trim() : "";
-  const body = memo ? `${clock} ${memo}` : clock;
+  const body = memo ? `${lead} · ${clock} ${memo}` : `${lead} · ${clock}`;
   return { title: eventTitle, body };
 }
 
@@ -148,6 +169,7 @@ export class ReminderDispatcher {
             start,
             isAllDay: ev.isAllDay,
             languagePref: prefs.languagePref,
+            reminderMinutesBefore: ev.reminderMinutesBefore,
           });
           // Unique tag/topic per attempt (parity with settings test push) so iOS/APNs
           // does not collapse a calendar reminder into a prior undelivered topic.
