@@ -138,7 +138,9 @@ test("shared calendar create notifies family activity feed and push", async () =
 
     assert.ok(delivered.length >= 1);
     assert.equal(delivered[0]?.unreadCount, 1);
+    assert.equal(delivered[0]?.title, "민호 · 일정");
     assert.match(delivered[0]?.body ?? "", /등록/);
+    assert.doesNotMatch(delivered[0]?.body ?? "", /일정을/);
 
     const events = await fetch(`${base}/api/calendar/events?from=2026-09-01&to=2026-09-30&scope=all`, {
       headers: { authorization: `Bearer ${owner.token}` },
@@ -173,7 +175,9 @@ test("shared calendar create notifies family activity feed and push", async () =
     assert.match(dateChange!.summary, /2026-09-01/);
     assert.match(dateChange!.summary, /2026-09-10/);
     assert.ok(delivered.length >= 1);
+    assert.equal(delivered[0]?.title, "민호 · 일정");
     assert.match(delivered[0]?.body ?? "", /2026-09-10/);
+    assert.match(delivered[0]?.body ?? "", /날짜/);
 
     const read = await fetch(`${base}/api/family/activity/read`, {
       method: "POST",

@@ -92,7 +92,7 @@ export class FamilyActivityService {
             title: formatFamilyActivityPushTitle({
               languagePref: member.languagePref,
               actorName: input.actorName,
-              action: activity.action,
+              entityType: activity.entityType,
             }),
             body: summary,
             url: pathForEntity(activity.entityType, activity.entityId),

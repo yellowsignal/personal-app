@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   collectChanges,
+  formatFamilyActivityPushTitle,
   formatFamilyActivitySummary,
   serializeActivityDetail,
 } from "./domain/familyActivityFormat.js";
@@ -22,8 +23,8 @@ test("formatFamilyActivitySummary describes calendar date change", () => {
   assert.match(ko, /여행/);
   assert.match(ko, /2026-08-16/);
   assert.match(ko, /2026-08-20/);
-  assert.match(ko, /일정/);
   assert.match(ko, /날짜/);
+  assert.doesNotMatch(ko, /일정/);
 });
 
 test("formatFamilyActivitySummary create and delete", () => {
@@ -55,4 +56,19 @@ test("formatFamilyActivitySummary localizes shared toggle", () => {
     detailJson,
   });
   assert.match(ko, /켜짐/);
+});
+
+test("formatFamilyActivityPushTitle is who + feature", () => {
+  const ko = formatFamilyActivityPushTitle({
+    languagePref: "ko",
+    actorName: "민호",
+    entityType: "CALENDAR_EVENT",
+  });
+  assert.equal(ko, "민호 · 일정");
+  const ja = formatFamilyActivityPushTitle({
+    languagePref: "ja",
+    actorName: "민호",
+    entityType: "CHECKLIST",
+  });
+  assert.equal(ja, "민호さん · チェックリスト");
 });

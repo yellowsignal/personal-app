@@ -154,7 +154,7 @@ function formatChangeLine(change: ActivityChange, ja: boolean): string {
 /** Sentinel for all-day events when recording time changes. */
 export const FAMILY_ACTIVITY_ALL_DAY = ALL_DAY;
 
-/** Localized one-line summary for feed + push body. */
+/** Localized one-line summary for feed + push body (action + content; no feature label). */
 export function formatFamilyActivitySummary(input: {
   languagePref: string | null | undefined;
   action: FamilyActivityAction;
@@ -163,7 +163,6 @@ export function formatFamilyActivitySummary(input: {
   detailJson?: string | null;
 }): string {
   const ja = input.languagePref === "ja";
-  const kind = kindLabel(input.entityType, ja);
   const name = quoteTitle(input.title);
   const detail = parseActivityDetail(input.detailJson);
   const changeBits =
@@ -173,34 +172,28 @@ export function formatFamilyActivitySummary(input: {
       .map((c) => formatChangeLine(c, ja)) ?? [];
 
   if (input.action === "CREATED") {
-    return ja ? `${name} ${kind}を登録しました` : `${name} ${kind}을(를) 등록했어요`;
+    return ja ? `${name}を登録しました` : `${name}을(를) 등록했어요`;
   }
   if (input.action === "DELETED") {
-    return ja ? `${name} ${kind}を削除しました` : `${name} ${kind}을(를) 삭제했어요`;
+    return ja ? `${name}を削除しました` : `${name}을(를) 삭제했어요`;
   }
   // UPDATED
   if (changeBits.length > 0) {
-    return ja
-      ? `${name} ${kind} · ${changeBits.join("、")}`
-      : `${name} ${kind} · ${changeBits.join(", ")}`;
+    return ja ? `${name} · ${changeBits.join("、")}` : `${name} · ${changeBits.join(", ")}`;
   }
-  return ja ? `${name} ${kind}を更新しました` : `${name} ${kind}을(를) 수정했어요`;
+  return ja ? `${name}を更新しました` : `${name}을(를) 수정했어요`;
 }
 
+/** Push notification title: who + which feature (iOS line 1). */
 export function formatFamilyActivityPushTitle(input: {
   languagePref: string | null | undefined;
   actorName: string;
-  action: FamilyActivityAction;
+  entityType: FamilyActivityEntityType;
 }): string {
   const ja = input.languagePref === "ja";
   const name = input.actorName.trim() || "?";
-  if (input.action === "CREATED") {
-    return ja ? `${name}さんが登録しました` : `${name}님이 등록했어요`;
-  }
-  if (input.action === "DELETED") {
-    return ja ? `${name}さんが削除しました` : `${name}님이 삭제했어요`;
-  }
-  return ja ? `${name}さんが更新しました` : `${name}님이 수정했어요`;
+  const kind = kindLabel(input.entityType, ja);
+  return ja ? `${name}さん · ${kind}` : `${name} · ${kind}`;
 }
 
 export function collectChanges(
