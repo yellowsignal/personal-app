@@ -807,6 +807,7 @@ export default function CalendarPage() {
     <div>
       <TopBar
         title={t("calendar.title")}
+        subtitle={t("calendar.subtitle")}
         right={
           <button
             type="button"

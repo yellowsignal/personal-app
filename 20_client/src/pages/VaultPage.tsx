@@ -175,11 +175,12 @@ export default function VaultPage() {
     <div className="flex h-full min-h-0 flex-col">
       <TopBar
         title={t("vault.title")}
+        subtitle={t("vault.subtitle")}
         right={
           <button
             type="button"
             onClick={openCreate}
-            className="rounded-full bg-indigo-500 p-2 text-white shadow-sm"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-white"
             aria-label={t("vault.add")}
           >
             <Plus size={18} />

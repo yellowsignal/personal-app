@@ -647,6 +647,7 @@ export const dict: Record<Lang, Record<string, string>> = {
     "checklists.errorSave": "저장에 실패했어요",
 
     "vault.title": "계정 보관함",
+    "vault.subtitle": "사번 · 사이트 · 제품키를 안전하게",
     "vault.add": "추가",
     "vault.edit": "수정",
     "vault.delete": "삭제",
@@ -1322,6 +1323,7 @@ export const dict: Record<Lang, Record<string, string>> = {
     "checklists.errorSave": "保存に失敗しました",
 
     "vault.title": "アカウント保管庫",
+    "vault.subtitle": "社員番号・サイト・プロダクトキーを安全に",
     "vault.add": "追加",
     "vault.edit": "編集",
     "vault.delete": "削除",
