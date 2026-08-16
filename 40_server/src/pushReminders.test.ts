@@ -271,7 +271,7 @@ test("timed 1h reminder fires at JST wall clock not raw UTC", async () => {
     const onTime = await dispatcher.tick(new Date("2026-08-14T05:00:00.000Z")); // 14:00 KST
     assert.equal(onTime, 1);
     assert.equal(delivered[0]?.title, "테스트");
-    assert.equal(delivered[0]?.body, "1시간 전 · 오후 3:00");
+    assert.equal(delivered[0]?.body, "오후 3:00 · 1시간 전");
   } finally {
     server.close();
   }

@@ -116,7 +116,7 @@ export function formatReminderLead(
 /**
  * Lock-screen layout (iOS PWA also prepends the app name / “from …” itself):
  * 1. title → event title
- * 2. body → lead (how soon) · clock (+ memo when present)
+ * 2. body → clock · lead (how soon) (+ memo when present)
  */
 export function formatCalendarReminderPayload(input: {
   eventTitle: string;
@@ -130,7 +130,7 @@ export function formatCalendarReminderPayload(input: {
   const lead = formatReminderLead(input.reminderMinutesBefore, input.languagePref);
   const clock = formatReminderClock(input.start, input.isAllDay, input.languagePref);
   const memo = typeof input.description === "string" ? input.description.trim() : "";
-  const body = memo ? `${lead} · ${clock} ${memo}` : `${lead} · ${clock}`;
+  const body = memo ? `${clock} · ${lead} ${memo}` : `${clock} · ${lead}`;
   return { title: eventTitle, body };
 }
 
