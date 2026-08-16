@@ -36,6 +36,7 @@ import {
 import { ApiError } from "../api/http";
 import { enableHomeScreenPush } from "../api/push";
 import { LONG_PRESS_MS } from "../utils/swipeGesture";
+import { useKeepFocusedInScrollParent } from "../hooks/useKeepFocusedInScrollParent";
 import {
   ALL_CALENDAR_CATEGORIES as ALL_CATEGORIES,
   readActiveCalendarCategories,
@@ -394,6 +395,8 @@ export default function CalendarPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [editingEvent, setEditingEvent] = useState<PublicCalendarEvent | null>(null);
+  const formScrollRef = useRef<HTMLFormElement>(null);
+  useKeepFocusedInScrollParent(showCreate, formScrollRef);
   const [detailEvent, setDetailEvent] = useState<PublicCalendarEvent | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<PublicCalendarEvent | null>(null);
   const [swipeId, setSwipeId] = useState<string | null>(null);
@@ -1062,6 +1065,7 @@ export default function CalendarPage() {
           label={t("calendar.cancelAction")}
         >
           <form
+            ref={formScrollRef}
             onSubmit={(e) => void handleSaveEvent(e)}
             onKeyDown={(e) => {
               if (e.key !== "Enter") return;
@@ -1070,7 +1074,8 @@ export default function CalendarPage() {
               if (tag === "TEXTAREA") return;
               e.preventDefault();
             }}
-            className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="relative max-h-[var(--sheet-max-height,90vh)] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            style={{ overflowAnchor: "none" }}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">

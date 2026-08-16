@@ -125,7 +125,17 @@ bash ~/personal-app/40_server/infra/scripts/deploy-dig.sh
 bash ~/personal-app/40_server/infra/scripts/deploy-prod.sh
 ```
 
-각 스크립트가 해당 env의 `prisma migrate deploy`를 돌리므로, **마이그레이션은 dig 먼저 → 검증 → prod** 순이 됩니다.  
+### 버그 수정은 실서버(prod)까지 빨리
+
+OCR·스크롤·표시 오류처럼 **이미 prod에서 겪는 버그**는 dig에만 오래 두지 않는다. 수정 브랜치를 checkout한 뒤 dig·prod를 연속 배포해도 된다 (`main` 미머지면 `--skip-pull`).
+
+```bash
+cd ~/personal-app && git fetch origin && git checkout <fix-branch> && git reset --hard origin/<fix-branch>
+bash ~/personal-app/40_server/infra/scripts/deploy-dig.sh --skip-pull
+bash ~/personal-app/40_server/infra/scripts/deploy-prod.sh --skip-pull
+```
+
+각 스크립트가 해당 env의 `prisma migrate deploy`를 돌리므로, **마이그레이션은 dig 먼저 → 검증 → prod** 순이 기본이다.  
 데이터를 다시 통째로 덮어쓸 필요는 없습니다(최초 복제 이후는 각자 쌓임).
 
 ---
@@ -140,6 +150,25 @@ bash ~/personal-app/40_server/infra/scripts/deploy-prod.sh
 | `scripts/clone-dig-to-prod.sh` | dig → prod DB·파일 **1회** 복제 |
 | `scripts/deploy-prod.sh` | prod 전체 배포 |
 | `scripts/deploy-static.sh prod\|dev` | 프론트만 |
+| `scripts/transfer-personal-to-new-user.sh` | Passkey 재가입 후 동일 이름 dig 유저 → 새 user_id 로 개인 행 이관 |
+| `scripts/remove-stale-family-users.sh` | 컷오버 후 남은 옛 유저 삭제(대시보드에 4명처럼 보일 때). `--list` → `--keep` dry-run → `--apply` |
+
+### Passkey 재가입 후 멤버가 4명으로 보일 때
+
+dig 시절 유저(예: id 1·2)가 같은 `family_id`에 남아 있으면 홈 아바타·설정「N명 참여」가 부풀려집니다. **새 Passkey 유저 id만 남기고** 삭제하세요.
+
+```bash
+# 현황
+bash ~/personal-app/40_server/infra/scripts/remove-stale-family-users.sh --env prod --list
+
+# dry-run (예: 유지 3,4 / 나머지 삭제)
+bash ~/personal-app/40_server/infra/scripts/remove-stale-family-users.sh --env prod --keep 3,4
+
+# 실행
+bash ~/personal-app/40_server/infra/scripts/remove-stale-family-users.sh --env prod --keep 3,4 --apply
+```
+
+이름이 달라 자동 이관이 안 되면 `--map 1:3,2:4` 를 붙입니다. dig DB도 같으면 `--env dig`.
 
 ## Cloud Agent 제약
 

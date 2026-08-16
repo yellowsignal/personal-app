@@ -1,22 +1,32 @@
+const MAX_EDGE = 1800;
+
+/**
+ * Single orientation: use the photo as captured (EXIF orientation applied).
+ * Multi-angle retries were picking the wrong score and reading worse — ask the
+ * user to shoot with text upright instead.
+ */
 async function preprocessImage(file: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(file);
-  const maxW = 1800;
-  const scale = Math.min(1, maxW / bitmap.width);
+  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
   const w = Math.max(1, Math.round(bitmap.width * scale));
   const h = Math.max(1, Math.round(bitmap.height * scale));
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return file;
+  if (!ctx) {
+    bitmap.close();
+    return file;
+  }
   ctx.drawImage(bitmap, 0, 0, w, h);
   bitmap.close();
 
+  // Mild contrast — keep small JP digits readable.
   const imageData = ctx.getImageData(0, 0, w, h);
   const { data } = imageData;
   for (let i = 0; i < data.length; i += 4) {
     const gray = 0.299 * data[i]! + 0.587 * data[i + 1]! + 0.114 * data[i + 2]!;
-    const boosted = gray < 128 ? Math.max(0, gray - 20) : Math.min(255, gray + 30);
+    const boosted = gray < 140 ? Math.max(0, gray - 12) : Math.min(255, gray + 18);
     data[i] = boosted;
     data[i + 1] = boosted;
     data[i + 2] = boosted;
@@ -42,8 +52,9 @@ export async function runOcrOnFile(
     },
   });
   try {
-    const { data } = await worker.recognize(prepared);
-    return data.text;
+    // rotateAuto only corrects small skew, not 90° page turns.
+    const { data } = await worker.recognize(prepared, { rotateAuto: true });
+    return data.text ?? "";
   } finally {
     await worker.terminate();
   }

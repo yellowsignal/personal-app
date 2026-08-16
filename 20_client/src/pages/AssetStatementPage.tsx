@@ -5,12 +5,14 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
 import {
   assetsApi,
+  type BillingInterval,
   type PublicAsset,
   type PublicRecurringDeposit,
   type PublicTransaction,
 } from "../api/assets";
 import { ApiError } from "../api/http";
 import OverlayScrim from "../components/OverlayScrim";
+import { useKeepFocusedInScrollParent } from "../hooks/useKeepFocusedInScrollParent";
 import { formatMoney } from "../utils/formatMoney";
 import { readBankCsvFile } from "../utils/readBankCsvFile";
 
@@ -36,9 +38,18 @@ export default function AssetStatementPage() {
   const [showRecurringForm, setShowRecurringForm] = useState(false);
   const [recurringLabel, setRecurringLabel] = useState("");
   const [recurringAmount, setRecurringAmount] = useState("");
+  const [recurringInterval, setRecurringInterval] = useState<BillingInterval>("MONTHLY");
   const [recurringDay, setRecurringDay] = useState("15");
+  const [recurringAnchorDate, setRecurringAnchorDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
   const [savingRecurring, setSavingRecurring] = useState(false);
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const balanceFormRef = useRef<HTMLFormElement>(null);
+  const recurringFormRef = useRef<HTMLFormElement>(null);
+  useKeepFocusedInScrollParent(showBalanceEdit, balanceFormRef);
+  useKeepFocusedInScrollParent(showRecurringForm, recurringFormRef);
 
   const canManage = user?.id === asset?.userId;
 
@@ -138,27 +149,43 @@ export default function AssetStatementPage() {
     e.preventDefault();
     if (!token || !asset) return;
     const amount = Number(recurringAmount);
-    const day = Number(recurringDay);
     if (!recurringLabel.trim() || !Number.isFinite(amount) || amount <= 0) {
       setError(t("assets.recurringInvalid"));
-      return;
-    }
-    if (!Number.isInteger(day) || day < 1 || day > 31) {
-      setError(t("assets.recurringInvalidDay"));
       return;
     }
     setSavingRecurring(true);
     setError(null);
     try {
-      await assetsApi.createRecurringDeposit(token, asset.id, {
-        label: recurringLabel.trim(),
-        amount,
-        billingInterval: "MONTHLY",
-        billingDate: day,
-      });
+      if (recurringInterval === "YEARLY") {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(recurringAnchorDate)) {
+          setError(t("assets.recurringInvalidDate"));
+          setSavingRecurring(false);
+          return;
+        }
+        await assetsApi.createRecurringDeposit(token, asset.id, {
+          label: recurringLabel.trim(),
+          amount,
+          billingInterval: "YEARLY",
+          billingAnchorDate: recurringAnchorDate,
+        });
+      } else {
+        const day = Number(recurringDay);
+        if (!Number.isInteger(day) || day < 1 || day > 31) {
+          setError(t("assets.recurringInvalidDay"));
+          setSavingRecurring(false);
+          return;
+        }
+        await assetsApi.createRecurringDeposit(token, asset.id, {
+          label: recurringLabel.trim(),
+          amount,
+          billingInterval: "MONTHLY",
+          billingDate: day,
+        });
+      }
       setShowRecurringForm(false);
       setRecurringLabel("");
       setRecurringAmount("");
+      setRecurringInterval("MONTHLY");
       setRecurringDay("15");
       await load();
       setSuccess(t("assets.recurringCreated"));
@@ -205,8 +232,15 @@ export default function AssetStatementPage() {
           <div className="px-4 pb-4">
             <p className="text-[13px] font-medium text-neutral-500">
               {asset.bankCode ? t(`depositBank.${asset.bankCode}`) : t("assetType.deposit")}
+              {asset.institutionCode ? ` · ${asset.institutionCode}` : ""}
+              {asset.branchCode ? ` / ${asset.branchCode}` : ""}
             </p>
             <h1 className="mt-0.5 text-[28px] font-bold tracking-tight text-neutral-900">{asset.label}</h1>
+            {(asset.institutionName || asset.branchName) && (
+              <p className="mt-1 text-xs text-neutral-500">
+                {[asset.institutionName, asset.branchName].filter(Boolean).join(" · ")}
+              </p>
+            )}
             <div className="mt-2 flex items-end justify-between gap-3">
               <p className="text-2xl font-bold text-neutral-900">
                 {CURRENCY_SYMBOL[asset.currency]}
@@ -266,10 +300,16 @@ export default function AssetStatementPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-neutral-900">{rule.label}</p>
                       <p className="mt-0.5 text-xs text-neutral-500">
-                        {t("assets.recurringMonthly", {
-                          day: rule.billingDate,
-                          amount: `${CURRENCY_SYMBOL[rule.currency]}${formatMoney(rule.amount, rule.currency)}`,
-                        })}
+                        {rule.billingInterval === "YEARLY"
+                          ? t("assets.recurringYearly", {
+                              month: rule.billingMonth ?? 1,
+                              day: rule.billingDate,
+                              amount: `${CURRENCY_SYMBOL[rule.currency]}${formatMoney(rule.amount, rule.currency)}`,
+                            })
+                          : t("assets.recurringMonthly", {
+                              day: rule.billingDate,
+                              amount: `${CURRENCY_SYMBOL[rule.currency]}${formatMoney(rule.amount, rule.currency)}`,
+                            })}
                       </p>
                       {rule.nextDueOn && (
                         <p className="mt-0.5 text-[11px] text-indigo-500">
@@ -357,8 +397,10 @@ export default function AssetStatementPage() {
           label={t("assets.cancelAction")}
         >
           <form
+            ref={balanceFormRef}
             onSubmit={(e) => void submitBalance(e)}
-            className="relative w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="relative max-h-[var(--sheet-max-height,90vh)] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            style={{ overflowAnchor: "none" }}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">{t("assets.editBalance")}</h2>
@@ -394,8 +436,10 @@ export default function AssetStatementPage() {
           label={t("assets.cancelAction")}
         >
           <form
+            ref={recurringFormRef}
             onSubmit={(e) => void submitRecurring(e)}
-            className="relative w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="relative max-h-[var(--sheet-max-height,90vh)] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            style={{ overflowAnchor: "none" }}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">{t("assets.recurringAdd")}</h2>
@@ -420,13 +464,54 @@ export default function AssetStatementPage() {
               onChange={(e) => setRecurringAmount(e.target.value)}
               className="mb-3 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
             />
-            <label className="mb-1 block text-sm font-semibold text-neutral-700">{t("assets.recurringDay")}</label>
-            <input
-              inputMode="numeric"
-              value={recurringDay}
-              onChange={(e) => setRecurringDay(e.target.value)}
-              className="mb-4 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
-            />
+            <p className="mb-1 text-sm font-semibold text-neutral-700">{t("assets.recurringInterval")}</p>
+            <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl bg-neutral-100 p-1">
+              {(
+                [
+                  ["MONTHLY", "assets.recurringIntervalMonthly"],
+                  ["YEARLY", "assets.recurringIntervalYearly"],
+                ] as const
+              ).map(([value, key]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setRecurringInterval(value)}
+                  className={`rounded-lg py-2 text-sm font-semibold ${
+                    recurringInterval === value
+                      ? "bg-white text-indigo-600 shadow-sm"
+                      : "text-neutral-500"
+                  }`}
+                >
+                  {t(key)}
+                </button>
+              ))}
+            </div>
+            {recurringInterval === "YEARLY" ? (
+              <>
+                <label className="mb-1 block text-sm font-semibold text-neutral-700">
+                  {t("assets.recurringAnchorDate")}
+                </label>
+                <input
+                  type="date"
+                  value={recurringAnchorDate}
+                  onChange={(e) => setRecurringAnchorDate(e.target.value)}
+                  className="mb-2 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+                />
+                <p className="mb-4 text-[11px] text-neutral-400">{t("assets.recurringAnchorHintYearly")}</p>
+              </>
+            ) : (
+              <>
+                <label className="mb-1 block text-sm font-semibold text-neutral-700">
+                  {t("assets.recurringDay")}
+                </label>
+                <input
+                  inputMode="numeric"
+                  value={recurringDay}
+                  onChange={(e) => setRecurringDay(e.target.value)}
+                  className="mb-4 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+                />
+              </>
+            )}
             <button
               type="submit"
               disabled={savingRecurring}

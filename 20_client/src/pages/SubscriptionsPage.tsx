@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Eye, EyeOff, ExternalLink, Plus, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
@@ -20,6 +20,7 @@ import {
 import { ApiError } from "../api/http";
 import { formatMoney } from "../utils/formatMoney";
 import { isPasskeySupported } from "../api/passkey";
+import { useKeepFocusedInScrollParent } from "../hooks/useKeepFocusedInScrollParent";
 
 const CURRENCY_SYMBOL = { KRW: "₩", JPY: "¥", USD: "$" };
 const COLOR_PALETTE = ["#E50914", "#5B5BF6", "#34C759", "#8E8E93", "#FF6B81", "#FFB199"];
@@ -94,6 +95,8 @@ export default function SubscriptionsPage() {
   const [revealBusyId, setRevealBusyId] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [copiedField, setCopiedField] = useState<"id" | "pw" | null>(null);
+  const formScrollRef = useRef<HTMLFormElement>(null);
+  useKeepFocusedInScrollParent(showForm, formScrollRef);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -365,15 +368,37 @@ export default function SubscriptionsPage() {
       </div>
 
       {detail && (
-        <ItemDetailSheet
+          <ItemDetailSheet
           title={detail.serviceName}
-          onClose={() => setDetail(null)}
+          onClose={() => {
+            setRevealed((prev) => {
+              if (!(detail.id in prev)) return prev;
+              const next = { ...prev };
+              delete next[detail.id];
+              return next;
+            });
+            setDetail(null);
+          }}
           closeLabel={t("subscriptions.cancelAction")}
           editLabel={t("subscriptions.edit")}
           deleteLabel={t("subscriptions.delete")}
           canManage={user?.id === detail.userId}
-          onEdit={() => openEdit(detail)}
+          onEdit={() => {
+            setRevealed((prev) => {
+              if (!(detail.id in prev)) return prev;
+              const next = { ...prev };
+              delete next[detail.id];
+              return next;
+            });
+            openEdit(detail);
+          }}
           onDelete={() => {
+            setRevealed((prev) => {
+              if (!(detail.id in prev)) return prev;
+              const next = { ...prev };
+              delete next[detail.id];
+              return next;
+            });
             setConfirmDelete(detail);
             setDetail(null);
           }}
@@ -490,8 +515,10 @@ export default function SubscriptionsPage() {
           label={t("subscriptions.cancelAction")}
         >
           <form
+            ref={formScrollRef}
             onSubmit={handleSubmit}
-            className="relative max-h-[90vh] w-full max-w-md overflow-x-hidden overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
+            className="relative max-h-[var(--sheet-max-height,90vh)] w-full max-w-md overflow-x-hidden overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
+            style={{ overflowAnchor: "none" }}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">
@@ -512,6 +539,9 @@ export default function SubscriptionsPage() {
                 required
                 value={form.serviceName}
                 onChange={(e) => setForm((f) => ({ ...f, serviceName: e.target.value }))}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
                 className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
               />
             </label>

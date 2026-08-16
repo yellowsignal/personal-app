@@ -8,6 +8,12 @@ export interface CreateAssetInput {
   currency: string;
   amount: number;
   bankCode: DepositBank | null;
+  accountNumber: string | null;
+  loginPasswordCipher: string | null;
+  institutionCode: string | null;
+  institutionName: string | null;
+  branchCode: string | null;
+  branchName: string | null;
   stockMarket: StockMarket | null;
   stockCode: string | null;
   quantity: number | null;
@@ -22,6 +28,12 @@ export interface UpdateAssetInput {
   currency?: string;
   amount?: number;
   bankCode?: DepositBank | null;
+  accountNumber?: string | null;
+  loginPasswordCipher?: string | null;
+  institutionCode?: string | null;
+  institutionName?: string | null;
+  branchCode?: string | null;
+  branchName?: string | null;
   stockMarket?: StockMarket | null;
   stockCode?: string | null;
   quantity?: number | null;

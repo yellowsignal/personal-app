@@ -1,3 +1,8 @@
+import { startAuthentication } from "@simplewebauthn/browser";
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+} from "@simplewebauthn/browser";
 import { apiFetch } from "./http";
 import type { ViewScope } from "../components/ScopeToggle";
 
@@ -8,11 +13,26 @@ export type DepositBank = "SHINHAN" | "MUFG" | "YUCHO";
 
 export const DEPOSIT_BANKS: Record<
   DepositBank,
-  { country: "KR" | "JP"; currency: AssetCurrency }
+  {
+    country: "KR" | "JP";
+    currency: AssetCurrency;
+    institutionCode?: string;
+    institutionName?: string;
+  }
 > = {
   SHINHAN: { country: "KR", currency: "KRW" },
-  MUFG: { country: "JP", currency: "JPY" },
-  YUCHO: { country: "JP", currency: "JPY" },
+  MUFG: {
+    country: "JP",
+    currency: "JPY",
+    institutionCode: "0005",
+    institutionName: "三菱UFJ銀行",
+  },
+  YUCHO: {
+    country: "JP",
+    currency: "JPY",
+    institutionCode: "9900",
+    institutionName: "ゆうちょ銀行",
+  },
 };
 
 export interface PublicAsset {
@@ -24,6 +44,12 @@ export interface PublicAsset {
   currency: AssetCurrency;
   amount: number;
   bankCode: DepositBank | null;
+  accountNumber: string | null;
+  hasPassword: boolean;
+  institutionCode: string | null;
+  institutionName: string | null;
+  branchCode: string | null;
+  branchName: string | null;
   stockMarket: StockMarket | null;
   stockCode: string | null;
   quantity: number | null;
@@ -43,6 +69,13 @@ export interface CreateAssetInput {
   currency?: AssetCurrency;
   amount?: number;
   bankCode?: DepositBank;
+  accountNumber?: string;
+  /** Omit on edit to keep existing; empty string clears */
+  loginPassword?: string;
+  institutionCode?: string;
+  institutionName?: string;
+  branchCode?: string;
+  branchName?: string;
   stockMarket?: StockMarket;
   stockCode?: string;
   quantity?: number;
@@ -92,6 +125,22 @@ export const assetsApi = {
       token,
       body: "{}",
     });
+  },
+
+  async revealCredentials(token: string, id: number) {
+    const options = await apiFetch<PublicKeyCredentialRequestOptionsJSON>(
+      `/api/assets/${id}/credentials/reveal/options`,
+      { method: "POST", token, body: "{}" },
+    );
+    const response: AuthenticationResponseJSON = await startAuthentication({ optionsJSON: options });
+    return apiFetch<{ accountNumber: string | null; password: string | null }>(
+      `/api/assets/${id}/credentials/reveal/verify`,
+      {
+        method: "POST",
+        token,
+        body: JSON.stringify({ challenge: options.challenge, response }),
+      },
+    );
   },
 
   listTransactions(token: string, assetId: number) {
