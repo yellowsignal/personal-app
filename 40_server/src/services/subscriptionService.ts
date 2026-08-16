@@ -10,6 +10,7 @@ import {
 } from "../domain/subscriptionTypes.js";
 import { HttpError } from "./authService.js";
 import type { FamilyActivityService } from "./familyActivityService.js";
+import { collectChanges } from "../domain/familyActivityFormat.js";
 import type { PasskeyService } from "./passkeyService.js";
 
 const CURRENCIES = new Set(["KRW", "JPY", "USD"]);
@@ -248,6 +249,34 @@ export class SubscriptionService {
             : null,
       isShared: body.isShared === undefined ? undefined : isShared,
     });
+    const familyId = updated.familyId ?? existing.familyId ?? user.familyId;
+    if (familyId && (updated.isShared || existing.isShared)) {
+      const changes = collectChanges([
+        { field: "serviceName", from: existing.serviceName, to: updated.serviceName },
+        {
+          field: "amount",
+          from: String(existing.cost),
+          to: String(updated.cost),
+        },
+        {
+          field: "shared",
+          from: existing.isShared ? "on" : "off",
+          to: updated.isShared ? "on" : "off",
+        },
+      ]);
+      if (changes.length > 0) {
+        await this.activityService?.recordActivity({
+          familyId,
+          actorUserId: user.id,
+          actorName: user.name,
+          entityType: "SUBSCRIPTION",
+          entityId: updated.id,
+          action: "UPDATED",
+          title: updated.serviceName,
+          detail: { changes },
+        });
+      }
+    }
     return toPublicSubscription(updated, user.name);
   }
 
@@ -257,6 +286,17 @@ export class SubscriptionService {
     if (!existing) throw new HttpError(404, "subscription not found", "NOT_FOUND");
     if (existing.userId !== user.id) {
       throw new HttpError(403, "only the owner can delete this subscription", "FORBIDDEN");
+    }
+    if (existing.isShared && (existing.familyId ?? user.familyId)) {
+      await this.activityService?.recordActivity({
+        familyId: existing.familyId ?? user.familyId,
+        actorUserId: user.id,
+        actorName: user.name,
+        entityType: "SUBSCRIPTION",
+        entityId: existing.id,
+        action: "DELETED",
+        title: existing.serviceName,
+      });
     }
     await this.subscriptionRepo.remove(id);
   }

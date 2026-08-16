@@ -410,13 +410,22 @@ enum FamilyActivityEntityType {
   PHOTO
 }
 
+enum FamilyActivityAction {
+  CREATED
+  UPDATED
+  DELETED
+}
+
 model FamilyActivity {
   id          Int                      @id @default(autoincrement())
   familyId    Int                      @map("family_id")
   actorUserId Int                      @map("actor_user_id")
   entityType  FamilyActivityEntityType @map("entity_type")
   entityId    Int                      @map("entity_id")
+  action      FamilyActivityAction     @default(CREATED)
   title       String                   @db.VarChar(200)
+  /// Machine-readable change list JSON for localized summaries.
+  detailJson  String?                  @map("detail_json") @db.Text
   createdAt   DateTime                 @default(now()) @map("created_at")
 
   family Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)

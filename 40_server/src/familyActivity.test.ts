@@ -123,14 +123,57 @@ test("shared calendar create notifies family activity feed and push", async () =
     assert.equal(summary.status, 200);
     const summaryBody = (await summary.json()) as {
       unreadCount: number;
-      latest: { title: string; actorName: string } | null;
+      latest: {
+        title: string;
+        actorName: string;
+        action: string;
+        summary: string;
+      } | null;
     };
     assert.equal(summaryBody.unreadCount, 1);
     assert.equal(summaryBody.latest?.title, "가족 여행");
     assert.equal(summaryBody.latest?.actorName, "민호");
+    assert.equal(summaryBody.latest?.action, "CREATED");
+    assert.match(summaryBody.latest?.summary ?? "", /등록/);
 
     assert.ok(delivered.length >= 1);
     assert.equal(delivered[0]?.unreadCount, 1);
+    assert.match(delivered[0]?.body ?? "", /등록/);
+
+    const events = await fetch(`${base}/api/calendar/events?from=2026-09-01&to=2026-09-30&scope=all`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(events.status, 200);
+    const eventList = (await events.json()) as Array<{ id: string; title: string }>;
+    const trip = eventList.find((e) => e.title === "가족 여행");
+    assert.ok(trip);
+
+    delivered.length = 0;
+    const updated = await fetch(`${base}/api/calendar/events/${trip!.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ date: "2026-09-10" }),
+    });
+    assert.equal(updated.status, 200);
+
+    const listAfter = await fetch(`${base}/api/family/activity?limit=10`, {
+      headers: { authorization: `Bearer ${member.token}` },
+    });
+    assert.equal(listAfter.status, 200);
+    const activities = (await listAfter.json()) as Array<{
+      action: string;
+      summary: string;
+      title: string;
+    }>;
+    const dateChange = activities.find((a) => a.action === "UPDATED" && a.title === "가족 여행");
+    assert.ok(dateChange);
+    assert.match(dateChange!.summary, /2026-09-01/);
+    assert.match(dateChange!.summary, /2026-09-10/);
+    assert.ok(delivered.length >= 1);
+    assert.match(delivered[0]?.body ?? "", /2026-09-10/);
 
     const read = await fetch(`${base}/api/family/activity/read`, {
       method: "POST",

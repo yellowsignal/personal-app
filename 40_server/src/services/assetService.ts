@@ -12,6 +12,7 @@ import {
 } from "../domain/assetTypes.js";
 import { HttpError } from "./authService.js";
 import type { FamilyActivityService } from "./familyActivityService.js";
+import { collectChanges } from "../domain/familyActivityFormat.js";
 import type { PasskeyService } from "./passkeyService.js";
 import { currencyForMarket, fetchYahooPrice, toYahooSymbol } from "./stockQuote.js";
 
@@ -181,13 +182,57 @@ export class AssetService {
     record: { id: number; familyId: number | null; label: string; isShared: boolean },
   ) {
     if (!record.isShared) return;
-    await this.activityService?.recordSharedCreate({
+    await this.activityService?.recordActivity({
       familyId: record.familyId ?? user.familyId,
       actorUserId: user.id,
       actorName: user.name,
       entityType: "ASSET",
       entityId: record.id,
+      action: "CREATED",
       title: record.label,
+    });
+  }
+
+  private async notifyAssetMutation(
+    user: { id: number; name: string; familyId: number | null },
+    existing: { id: number; familyId: number | null; label: string; isShared: boolean; amount: number },
+    updated: { id: number; familyId: number | null; label: string; isShared: boolean; amount: number },
+    action: "UPDATED" | "DELETED",
+  ) {
+    const familyId = updated.familyId ?? existing.familyId ?? user.familyId;
+    if (!familyId || (!updated.isShared && !existing.isShared && action !== "DELETED")) return;
+    if (action === "DELETED") {
+      if (!existing.isShared) return;
+      await this.activityService?.recordActivity({
+        familyId,
+        actorUserId: user.id,
+        actorName: user.name,
+        entityType: "ASSET",
+        entityId: existing.id,
+        action: "DELETED",
+        title: existing.label,
+      });
+      return;
+    }
+    const changes = collectChanges([
+      { field: "label", from: existing.label, to: updated.label },
+      { field: "amount", from: String(existing.amount), to: String(updated.amount) },
+      {
+        field: "shared",
+        from: existing.isShared ? "on" : "off",
+        to: updated.isShared ? "on" : "off",
+      },
+    ]);
+    if (!changes.length) return;
+    await this.activityService?.recordActivity({
+      familyId,
+      actorUserId: user.id,
+      actorName: user.name,
+      entityType: "ASSET",
+      entityId: updated.id,
+      action: "UPDATED",
+      title: updated.label,
+      detail: { changes },
     });
   }
 
@@ -349,6 +394,7 @@ export class AssetService {
         currentPrice: null,
         isShared: body.isShared === undefined ? undefined : isShared,
       });
+      await this.notifyAssetMutation(user, existing, updated, "UPDATED");
       return toPublicAsset(updated, user.name);
     }
 
@@ -375,6 +421,7 @@ export class AssetService {
         currentPrice: null,
         isShared: body.isShared === undefined ? undefined : isShared,
       });
+      await this.notifyAssetMutation(user, existing, updated, "UPDATED");
       return toPublicAsset(updated, user.name);
     }
 
@@ -446,6 +493,7 @@ export class AssetService {
       currentPrice,
       isShared: body.isShared === undefined ? undefined : isShared,
     });
+    await this.notifyAssetMutation(user, existing, updated, "UPDATED");
     return toPublicAsset(updated, user.name);
   }
 
@@ -456,6 +504,7 @@ export class AssetService {
     if (existing.userId !== user.id) {
       throw new HttpError(403, "only the owner can delete this asset", "FORBIDDEN");
     }
+    await this.notifyAssetMutation(user, existing, existing, "DELETED");
     await this.assetRepo.remove(id);
   }
 

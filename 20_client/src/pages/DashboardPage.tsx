@@ -278,7 +278,7 @@ export default function DashboardPage() {
 
   const scopeLabel = t(scope === "all" ? "scope.all" : scope === "personal" ? "scope.personal" : "scope.family");
   const latestLine = activitySummary.latest
-    ? `${activitySummary.latest.actorName} · ${activitySummary.latest.title}`
+    ? `${activitySummary.latest.actorName} · ${activitySummary.latest.summary}`
     : t("dashboard.noFamilyActivity");
 
   return (
@@ -479,9 +479,8 @@ export default function DashboardPage() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-neutral-900">
                           {item.actorName}
-                          <span className="font-medium text-neutral-400"> · </span>
-                          {item.title}
                         </p>
+                        <p className="mt-0.5 text-sm leading-snug text-neutral-800">{item.summary}</p>
                         <p className="mt-0.5 text-[11px] text-neutral-400">
                           {t(`dashboard.activityType.${item.entityType}`)}
                           {" · "}

@@ -18,6 +18,7 @@ import {
   documentExpiryReminderTitle,
 } from "./documentExpiryReminder.js";
 import type { FamilyActivityService } from "./familyActivityService.js";
+import { collectChanges } from "../domain/familyActivityFormat.js";
 import type { PasskeyService } from "./passkeyService.js";
 import type { ViewScope } from "../domain/subscriptionTypes.js";
 import type { DocumentScanStore, ScanSide } from "../storage/documentScanStore.js";
@@ -370,6 +371,34 @@ export class DocumentService {
 
     const record = await this.documentRepo.update(id, updated);
     await this.syncExpiryReminder(record);
+    const familyId = record.familyId ?? existing.familyId ?? user.familyId;
+    if (familyId && (record.isShared || existing.isShared)) {
+      const changes = collectChanges([
+        { field: "typeLabel", from: existing.typeLabel, to: record.typeLabel },
+        {
+          field: "date",
+          from: existing.expiryDate ? existing.expiryDate.toISOString().slice(0, 10) : "",
+          to: record.expiryDate ? record.expiryDate.toISOString().slice(0, 10) : "",
+        },
+        {
+          field: "shared",
+          from: existing.isShared ? "on" : "off",
+          to: record.isShared ? "on" : "off",
+        },
+      ]);
+      if (changes.length > 0) {
+        await this.activityService?.recordActivity({
+          familyId,
+          actorUserId: user.id,
+          actorName: user.name,
+          entityType: "DOCUMENT",
+          entityId: record.id,
+          action: "UPDATED",
+          title: record.typeLabel,
+          detail: { changes },
+        });
+      }
+    }
     const owner = await this.authRepo.findUserById(record.userId);
     return toPublicDocument(record, owner?.name ?? "Unknown");
   }
@@ -380,6 +409,17 @@ export class DocumentService {
     if (!existing) throw new HttpError(404, "document not found", "NOT_FOUND");
     if (!this.canModify(existing, user.id)) {
       throw new HttpError(403, "only the owner can delete this document", "FORBIDDEN");
+    }
+    if (existing.isShared && (existing.familyId ?? user.familyId)) {
+      await this.activityService?.recordActivity({
+        familyId: existing.familyId ?? user.familyId,
+        actorUserId: user.id,
+        actorName: user.name,
+        entityType: "DOCUMENT",
+        entityId: existing.id,
+        action: "DELETED",
+        title: existing.typeLabel,
+      });
     }
     if (this.calendarRepo) {
       await this.calendarRepo.removeBySourceDocumentId(id);
