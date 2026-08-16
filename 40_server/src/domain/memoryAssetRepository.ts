@@ -36,6 +36,8 @@ export class MemoryAssetRepository implements AssetRepository {
       currency: input.currency,
       amount: input.amount,
       bankCode: input.bankCode,
+      accountNumber: input.accountNumber,
+      loginPasswordCipher: input.loginPasswordCipher,
       stockMarket: input.stockMarket,
       stockCode: input.stockCode,
       quantity: input.quantity,
@@ -56,6 +58,12 @@ export class MemoryAssetRepository implements AssetRepository {
       ...existing,
       ...input,
       bankCode: input.bankCode === undefined ? existing.bankCode : input.bankCode,
+      accountNumber:
+        input.accountNumber === undefined ? existing.accountNumber : input.accountNumber,
+      loginPasswordCipher:
+        input.loginPasswordCipher === undefined
+          ? existing.loginPasswordCipher
+          : input.loginPasswordCipher,
       stockMarket: input.stockMarket === undefined ? existing.stockMarket : input.stockMarket,
       stockCode: input.stockCode === undefined ? existing.stockCode : input.stockCode,
       quantity: input.quantity === undefined ? existing.quantity : input.quantity,

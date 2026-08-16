@@ -1,3 +1,4 @@
+import { decryptSecret, encryptSecret } from "../auth/secretCrypto.js";
 import type { AuthRepository } from "../domain/authRepository.js";
 import type { AssetRepository } from "../domain/assetRepository.js";
 import {
@@ -11,6 +12,7 @@ import {
 } from "../domain/assetTypes.js";
 import { HttpError } from "./authService.js";
 import type { FamilyActivityService } from "./familyActivityService.js";
+import type { PasskeyService } from "./passkeyService.js";
 import { currencyForMarket, fetchYahooPrice, toYahooSymbol } from "./stockQuote.js";
 
 const CURRENCIES = new Set(["KRW", "JPY", "USD"]);
@@ -68,6 +70,28 @@ function parseOptionalPositive(value: unknown, field: string): number | null {
   return parsePositive(value, field);
 }
 
+function parseAccountNumber(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") throw new HttpError(400, "accountNumber must be a string");
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, 64) : null;
+}
+
+/** Create: omit/null → no password. Update: omit → keep; ""/null → clear; string → set. */
+function parseLoginPasswordCipher(
+  body: Record<string, unknown>,
+  mode: "create" | "update",
+): string | null | undefined {
+  if (!("loginPassword" in body)) {
+    return mode === "create" ? null : undefined;
+  }
+  const value = body.loginPassword;
+  if (value === null || value === "") return null;
+  if (typeof value !== "string") throw new HttpError(400, "loginPassword must be a string");
+  if (value.length > 512) throw new HttpError(400, "loginPassword is too long");
+  return encryptSecret(value);
+}
+
 function marketValue(quantity: number, price: number | null | undefined, buyPrice: number | null): number {
   const unit = price != null && price > 0 ? price : buyPrice;
   if (unit == null) return 0;
@@ -79,6 +103,7 @@ export class AssetService {
     private readonly authRepo: AuthRepository,
     private readonly assetRepo: AssetRepository,
     private readonly activityService: FamilyActivityService | null = null,
+    private readonly passkeyService: PasskeyService | null = null,
   ) {}
 
   private async requireUser(userId: number) {
@@ -182,6 +207,8 @@ export class AssetService {
         currency,
         amount,
         bankCode: null,
+        accountNumber: null,
+        loginPasswordCipher: null,
         stockMarket,
         stockCode,
         quantity,
@@ -196,6 +223,8 @@ export class AssetService {
     if (type === "deposit") {
       const bankCode = parseBank(body.bankCode);
       const currency = DEPOSIT_BANKS[bankCode].currency;
+      const accountNumber = "accountNumber" in body ? parseAccountNumber(body.accountNumber) : null;
+      const loginPasswordCipher = parseLoginPasswordCipher(body, "create") ?? null;
       const record = await this.assetRepo.create({
         userId: user.id,
         familyId: user.familyId,
@@ -204,6 +233,8 @@ export class AssetService {
         currency,
         amount: parseAmount(body.amount),
         bankCode,
+        accountNumber,
+        loginPasswordCipher,
         stockMarket: null,
         stockCode: null,
         quantity: null,
@@ -223,6 +254,8 @@ export class AssetService {
       currency: parseCurrency(body.currency),
       amount: parseAmount(body.amount),
       bankCode: null,
+      accountNumber: null,
+      loginPasswordCipher: null,
       stockMarket: null,
       stockCode: null,
       quantity: null,
@@ -255,6 +288,7 @@ export class AssetService {
             (() => {
               throw new HttpError(400, "bankCode must be SHINHAN, MUFG, or YUCHO");
             })();
+      const loginPasswordCipher = parseLoginPasswordCipher(body, "update");
       const updated = await this.assetRepo.update(id, {
         type: body.type === undefined ? undefined : nextType,
         label:
@@ -264,6 +298,8 @@ export class AssetService {
         currency: DEPOSIT_BANKS[bankCode].currency,
         amount: body.amount === undefined ? undefined : parseAmount(body.amount),
         bankCode,
+        accountNumber: "accountNumber" in body ? parseAccountNumber(body.accountNumber) : undefined,
+        loginPasswordCipher,
         stockMarket: null,
         stockCode: null,
         quantity: null,
@@ -284,6 +320,8 @@ export class AssetService {
         currency: body.currency === undefined ? undefined : parseCurrency(body.currency),
         amount: body.amount === undefined ? undefined : parseAmount(body.amount),
         bankCode: null,
+        accountNumber: null,
+        loginPasswordCipher: null,
         stockMarket: null,
         stockCode: null,
         quantity: null,
@@ -349,6 +387,8 @@ export class AssetService {
       currency: currencyForMarket(market),
       amount,
       bankCode: null,
+      accountNumber: null,
+      loginPasswordCipher: null,
       stockMarket: market,
       stockCode,
       quantity,
@@ -433,5 +473,52 @@ export class AssetService {
     }
 
     return this.list(userId, "all");
+  }
+
+  async revealCredentialOptions(userId: number, id: number) {
+    if (!this.passkeyService) {
+      throw new HttpError(503, "passkey not configured", "PASSKEY_UNAVAILABLE");
+    }
+    const user = await this.requireUser(userId);
+    const existing = await this.assetRepo.findById(id);
+    if (!existing) throw new HttpError(404, "asset not found", "NOT_FOUND");
+    if (!this.canView(existing, user.id, user.familyId)) {
+      throw new HttpError(403, "forbidden", "FORBIDDEN");
+    }
+    if (!existing.loginPasswordCipher && !existing.accountNumber) {
+      throw new HttpError(404, "no credentials stored", "NO_CREDENTIALS");
+    }
+    return this.passkeyService.credentialRevealOptions(user.id, "asset", id);
+  }
+
+  async revealCredentials(
+    userId: number,
+    id: number,
+    body: Record<string, unknown>,
+  ): Promise<{ accountNumber: string | null; password: string | null }> {
+    if (!this.passkeyService) {
+      throw new HttpError(503, "passkey not configured", "PASSKEY_UNAVAILABLE");
+    }
+    const user = await this.requireUser(userId);
+    const existing = await this.assetRepo.findById(id);
+    if (!existing) throw new HttpError(404, "asset not found", "NOT_FOUND");
+    if (!this.canView(existing, user.id, user.familyId)) {
+      throw new HttpError(403, "forbidden", "FORBIDDEN");
+    }
+    if (!existing.loginPasswordCipher && !existing.accountNumber) {
+      throw new HttpError(404, "no credentials stored", "NO_CREDENTIALS");
+    }
+
+    await this.passkeyService.credentialRevealVerify(user.id, "asset", id, body);
+
+    let password: string | null = null;
+    if (existing.loginPasswordCipher) {
+      try {
+        password = decryptSecret(existing.loginPasswordCipher);
+      } catch {
+        throw new HttpError(500, "failed to decrypt password", "DECRYPT_FAILED");
+      }
+    }
+    return { accountNumber: existing.accountNumber, password };
   }
 }

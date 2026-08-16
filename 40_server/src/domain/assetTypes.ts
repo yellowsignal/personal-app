@@ -22,6 +22,8 @@ export interface AssetRecord {
   currency: string;
   amount: number;
   bankCode: DepositBank | null;
+  accountNumber: string | null;
+  loginPasswordCipher: string | null;
   stockMarket: StockMarket | null;
   stockCode: string | null;
   quantity: number | null;
@@ -41,6 +43,8 @@ export interface PublicAsset {
   currency: string;
   amount: number;
   bankCode: DepositBank | null;
+  accountNumber: string | null;
+  hasPassword: boolean;
   stockMarket: StockMarket | null;
   stockCode: string | null;
   quantity: number | null;
@@ -74,6 +78,8 @@ export function toPublicAsset(record: AssetRecord, ownerName: string): PublicAss
     currency: record.currency,
     amount: record.amount,
     bankCode: record.bankCode,
+    accountNumber: record.accountNumber,
+    hasPassword: Boolean(record.loginPasswordCipher),
     stockMarket: record.stockMarket,
     stockCode: record.stockCode,
     quantity,

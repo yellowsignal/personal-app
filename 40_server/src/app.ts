@@ -145,7 +145,12 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
     }
 
     if (deps.assetRepo) {
-      const assetService = new AssetService(deps.authRepo, deps.assetRepo, activityService);
+      const assetService = new AssetService(
+        deps.authRepo,
+        deps.assetRepo,
+        activityService,
+        passkeyService,
+      );
       const transactionService =
         deps.transactionRepo
           ? new TransactionService(deps.authRepo, deps.assetRepo, deps.transactionRepo)

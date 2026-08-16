@@ -1,3 +1,8 @@
+import { startAuthentication } from "@simplewebauthn/browser";
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+} from "@simplewebauthn/browser";
 import { apiFetch } from "./http";
 import type { ViewScope } from "../components/ScopeToggle";
 
@@ -24,6 +29,8 @@ export interface PublicAsset {
   currency: AssetCurrency;
   amount: number;
   bankCode: DepositBank | null;
+  accountNumber: string | null;
+  hasPassword: boolean;
   stockMarket: StockMarket | null;
   stockCode: string | null;
   quantity: number | null;
@@ -43,6 +50,9 @@ export interface CreateAssetInput {
   currency?: AssetCurrency;
   amount?: number;
   bankCode?: DepositBank;
+  accountNumber?: string;
+  /** Omit on edit to keep existing; empty string clears */
+  loginPassword?: string;
   stockMarket?: StockMarket;
   stockCode?: string;
   quantity?: number;
@@ -92,6 +102,22 @@ export const assetsApi = {
       token,
       body: "{}",
     });
+  },
+
+  async revealCredentials(token: string, id: number) {
+    const options = await apiFetch<PublicKeyCredentialRequestOptionsJSON>(
+      `/api/assets/${id}/credentials/reveal/options`,
+      { method: "POST", token, body: "{}" },
+    );
+    const response: AuthenticationResponseJSON = await startAuthentication({ optionsJSON: options });
+    return apiFetch<{ accountNumber: string | null; password: string | null }>(
+      `/api/assets/${id}/credentials/reveal/verify`,
+      {
+        method: "POST",
+        token,
+        body: JSON.stringify({ challenge: options.challenge, response }),
+      },
+    );
   },
 
   listTransactions(token: string, assetId: number) {

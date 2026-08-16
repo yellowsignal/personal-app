@@ -277,3 +277,165 @@ test("asset routes require auth", async () => {
     server.close();
   }
 });
+
+test("deposit credentials encrypt password and reveal via passkey step-up", async () => {
+  process.env.PASSKEY_REVEAL_TEST_BYPASS = "1";
+  process.env.JWT_SECRET = "test-secret";
+  const { server, base } = await listen(appWithAssets());
+  try {
+    const owner = await registerOwner(base);
+    const ownerFamily = (await fetch(`${base}/api/family`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    }).then((r) => r.json())) as { inviteCode: string };
+
+    const created = await fetch(`${base}/api/assets`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        type: "deposit",
+        label: "아이 통장",
+        bankCode: "YUCHO",
+        amount: 50_000,
+        accountNumber: "1234567",
+        loginPassword: "baby-bank-pin",
+        isShared: true,
+      }),
+    });
+    assert.equal(created.status, 201);
+    const body = (await created.json()) as {
+      id: number;
+      accountNumber: string | null;
+      hasPassword: boolean;
+      loginPassword?: string;
+      loginPasswordCipher?: string;
+    };
+    assert.equal(body.accountNumber, "1234567");
+    assert.equal(body.hasPassword, true);
+    assert.equal(body.loginPassword, undefined);
+    assert.equal(body.loginPasswordCipher, undefined);
+
+    const memberReg = await fetch(`${base}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "member-asset-cred@example.com",
+        password: "password123",
+        name: "MemberAssetCred",
+        inviteCode: ownerFamily.inviteCode,
+      }),
+    });
+    const member = (await memberReg.json()) as { token: string };
+
+    const list = await fetch(`${base}/api/assets?scope=family`, {
+      headers: { authorization: `Bearer ${member.token}` },
+    });
+    const items = (await list.json()) as Array<{
+      id: number;
+      accountNumber: string | null;
+      hasPassword: boolean;
+      loginPassword?: string;
+    }>;
+    assert.equal(items.length, 1);
+    assert.equal(items[0].accountNumber, "1234567");
+    assert.equal(items[0].hasPassword, true);
+    assert.equal(items[0].loginPassword, undefined);
+
+    const optionsRes = await fetch(
+      `${base}/api/assets/${body.id}/credentials/reveal/options`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${member.token}`,
+          "content-type": "application/json",
+        },
+        body: "{}",
+      },
+    );
+    assert.equal(optionsRes.status, 200);
+    const options = (await optionsRes.json()) as { challenge: string };
+
+    const verifyRes = await fetch(
+      `${base}/api/assets/${body.id}/credentials/reveal/verify`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${member.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ challenge: options.challenge, bypass: true }),
+      },
+    );
+    assert.equal(verifyRes.status, 200);
+    const revealed = (await verifyRes.json()) as {
+      accountNumber: string | null;
+      password: string | null;
+    };
+    assert.equal(revealed.accountNumber, "1234567");
+    assert.equal(revealed.password, "baby-bank-pin");
+  } finally {
+    delete process.env.PASSKEY_REVEAL_TEST_BYPASS;
+    server.close();
+  }
+});
+
+test("family member cannot reveal credentials on private (unshared) deposit", async () => {
+  process.env.PASSKEY_REVEAL_TEST_BYPASS = "1";
+  process.env.JWT_SECRET = "test-secret";
+  const { server, base } = await listen(appWithAssets());
+  try {
+    const owner = await registerOwner(base);
+    const fam = (await fetch(`${base}/api/family`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    }).then((r) => r.json())) as { inviteCode: string };
+
+    const created = await fetch(`${base}/api/assets`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        type: "deposit",
+        label: "개인 통장",
+        bankCode: "SHINHAN",
+        amount: 10_000,
+        accountNumber: "999",
+        loginPassword: "private-pin",
+        isShared: false,
+      }),
+    });
+    assert.equal(created.status, 201);
+    const body = (await created.json()) as { id: number };
+
+    const memberReg = await fetch(`${base}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "member-asset-private@example.com",
+        password: "password123",
+        name: "MemberPrivate",
+        inviteCode: fam.inviteCode,
+      }),
+    });
+    const member = (await memberReg.json()) as { token: string };
+
+    const optionsRes = await fetch(
+      `${base}/api/assets/${body.id}/credentials/reveal/options`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${member.token}`,
+          "content-type": "application/json",
+        },
+        body: "{}",
+      },
+    );
+    assert.equal(optionsRes.status, 403);
+  } finally {
+    delete process.env.PASSKEY_REVEAL_TEST_BYPASS;
+    server.close();
+  }
+});

@@ -107,6 +107,10 @@ model Asset {
   amount     Decimal  @db.Decimal(15, 2)
   /// Deposit bank: SHINHAN | MUFG | YUCHO
   bankCode   String?  @map("bank_code") @db.VarChar(20)
+  /// Bank account number (plaintext; visible to viewers of this asset)
+  accountNumber String? @map("account_number") @db.VarChar(64)
+  /// AES-256-GCM ciphertext (base64url). Never returned from list/CRUD APIs.
+  loginPasswordCipher String? @map("login_password_cipher") @db.Text
   /// KR | JP | US — used to resolve Yahoo Finance symbols
   stockMarket String? @map("stock_market") @db.VarChar(10)
   stockCode  String?  @map("stock_code") @db.VarChar(32)
