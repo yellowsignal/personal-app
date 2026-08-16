@@ -105,12 +105,20 @@ model Asset {
   label      String   @db.VarChar(200)
   currency   String   @db.VarChar(10)
   amount     Decimal  @db.Decimal(15, 2)
-  /// Deposit bank: SHINHAN | MUFG | YUCHO
+  /// Deposit bank preset: SHINHAN | MUFG | YUCHO
   bankCode   String?  @map("bank_code") @db.VarChar(20)
   /// Bank account number (plaintext; visible to viewers of this asset)
   accountNumber String? @map("account_number") @db.VarChar(64)
   /// AES-256-GCM ciphertext (base64url). Never returned from list/CRUD APIs.
   loginPasswordCipher String? @map("login_password_cipher") @db.Text
+  /// JP 金融機関コード (e.g. 0005)
+  institutionCode String? @map("institution_code") @db.VarChar(16)
+  /// JP 銀行名
+  institutionName String? @map("institution_name") @db.VarChar(100)
+  /// JP 支店コード / 店番
+  branchCode String? @map("branch_code") @db.VarChar(16)
+  /// JP 支店名
+  branchName String? @map("branch_name") @db.VarChar(100)
   /// KR | JP | US — used to resolve Yahoo Finance symbols
   stockMarket String? @map("stock_market") @db.VarChar(10)
   stockCode  String?  @map("stock_code") @db.VarChar(32)

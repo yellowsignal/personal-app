@@ -53,6 +53,10 @@ type FormState = {
   bankCode: DepositBank;
   accountNumber: string;
   loginPassword: string;
+  institutionCode: string;
+  institutionName: string;
+  branchCode: string;
+  branchName: string;
   stockMarket: StockMarket;
   stockCode: string;
   quantity: string;
@@ -65,6 +69,7 @@ function emptyForm(
   lastMarket: StockMarket,
   lastBank: DepositBank,
 ): FormState {
+  const bank = DEPOSIT_BANKS[lastBank];
   return {
     type: "deposit",
     label: "",
@@ -73,6 +78,10 @@ function emptyForm(
     bankCode: lastBank,
     accountNumber: "",
     loginPassword: "",
+    institutionCode: bank.institutionCode ?? "",
+    institutionName: bank.institutionName ?? "",
+    branchCode: "",
+    branchName: "",
     stockMarket: lastMarket,
     stockCode: "",
     quantity: "",
@@ -82,14 +91,20 @@ function emptyForm(
 }
 
 function toForm(item: PublicAsset, lastMarket: StockMarket, lastBank: DepositBank): FormState {
+  const bankCode = item.bankCode ?? lastBank;
+  const defaults = DEPOSIT_BANKS[bankCode];
   return {
     type: item.type,
     label: item.label,
     currency: item.currency,
     amount: item.amount,
-    bankCode: item.bankCode ?? lastBank,
+    bankCode,
     accountNumber: item.accountNumber ?? "",
     loginPassword: "",
+    institutionCode: item.institutionCode ?? defaults.institutionCode ?? "",
+    institutionName: item.institutionName ?? defaults.institutionName ?? "",
+    branchCode: item.branchCode ?? "",
+    branchName: item.branchName ?? "",
     stockMarket: item.stockMarket ?? lastMarket,
     stockCode: item.stockCode ?? "",
     quantity: item.quantity != null ? String(item.quantity) : "",
@@ -220,15 +235,21 @@ export default function AssetsPage() {
         bankCode: form.bankCode,
         amount: form.amount,
         accountNumber: form.accountNumber.trim() || undefined,
+        institutionCode: form.institutionCode.trim() || undefined,
+        institutionName: form.institutionName.trim() || undefined,
+        branchCode: form.branchCode.trim() || undefined,
+        branchName: form.branchName.trim() || undefined,
         isShared: form.isShared,
       };
       if (editing) {
         if (form.loginPassword) payload.loginPassword = form.loginPassword;
+        payload.accountNumber = form.accountNumber.trim();
+        payload.institutionCode = form.institutionCode.trim();
+        payload.institutionName = form.institutionName.trim();
+        payload.branchCode = form.branchCode.trim();
+        payload.branchName = form.branchName.trim();
       } else if (form.loginPassword) {
         payload.loginPassword = form.loginPassword;
-      }
-      if (editing) {
-        payload.accountNumber = form.accountNumber.trim();
       }
       setLastBank(form.bankCode);
       window.localStorage.setItem(LAST_BANK_STORAGE_KEY, form.bankCode);
@@ -523,6 +544,18 @@ export default function AssetsPage() {
           {detail.bankCode ? (
             <DetailRow label={t("assets.fieldBank")}>{t(`depositBank.${detail.bankCode}`)}</DetailRow>
           ) : null}
+          {detail.institutionCode ? (
+            <DetailRow label={t("assets.fieldInstitutionCode")}>{detail.institutionCode}</DetailRow>
+          ) : null}
+          {detail.institutionName ? (
+            <DetailRow label={t("assets.fieldInstitutionName")}>{detail.institutionName}</DetailRow>
+          ) : null}
+          {detail.branchCode ? (
+            <DetailRow label={t("assets.fieldBranchCode")}>{detail.branchCode}</DetailRow>
+          ) : null}
+          {detail.branchName ? (
+            <DetailRow label={t("assets.fieldBranchName")}>{detail.branchName}</DetailRow>
+          ) : null}
           {detail.stockMarket ? (
             <DetailRow label={t("assets.fieldMarket")}>{t(`stockMarket.${detail.stockMarket}`)}</DetailRow>
           ) : null}
@@ -782,10 +815,15 @@ export default function AssetsPage() {
                     value={form.bankCode}
                     onChange={(e) => {
                       const bankCode = e.target.value as DepositBank;
+                      const meta = DEPOSIT_BANKS[bankCode];
                       setForm((f) => ({
                         ...f,
                         bankCode,
-                        currency: DEPOSIT_BANKS[bankCode].currency,
+                        currency: meta.currency,
+                        institutionCode: meta.institutionCode ?? "",
+                        institutionName: meta.institutionName ?? "",
+                        branchCode: meta.country === "JP" ? f.branchCode : "",
+                        branchName: meta.country === "JP" ? f.branchName : "",
                       }));
                     }}
                     className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
@@ -799,6 +837,58 @@ export default function AssetsPage() {
                     </optgroup>
                   </select>
                 </label>
+                {DEPOSIT_BANKS[form.bankCode].country === "JP" && (
+                  <div className="mt-3 rounded-xl border border-dashed border-neutral-200 p-3">
+                    <p className="text-xs font-semibold text-neutral-700">{t("assets.jpBankSection")}</p>
+                    <p className="mt-1 text-[11px] text-neutral-400">{t("assets.jpBankHint")}</p>
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <label className="block text-xs font-semibold text-neutral-500">
+                        {t("assets.fieldInstitutionCode")}
+                        <input
+                          value={form.institutionCode}
+                          onChange={(e) =>
+                            setForm((f) => ({ ...f, institutionCode: e.target.value }))
+                          }
+                          inputMode="numeric"
+                          autoComplete="off"
+                          className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
+                        />
+                      </label>
+                      <label className="block text-xs font-semibold text-neutral-500">
+                        {t("assets.fieldInstitutionName")}
+                        <input
+                          value={form.institutionName}
+                          onChange={(e) =>
+                            setForm((f) => ({ ...f, institutionName: e.target.value }))
+                          }
+                          autoComplete="off"
+                          className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
+                        />
+                      </label>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <label className="block text-xs font-semibold text-neutral-500">
+                        {t("assets.fieldBranchCode")}
+                        <input
+                          value={form.branchCode}
+                          onChange={(e) => setForm((f) => ({ ...f, branchCode: e.target.value }))}
+                          inputMode="numeric"
+                          autoComplete="off"
+                          className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
+                        />
+                      </label>
+                      <label className="block text-xs font-semibold text-neutral-500">
+                        {t("assets.fieldBranchName")}
+                        <input
+                          value={form.branchName}
+                          onChange={(e) => setForm((f) => ({ ...f, branchName: e.target.value }))}
+                          autoComplete="off"
+                          className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )}
                 <label className="mt-3 block text-xs font-semibold text-neutral-500">
                   {t("assets.fieldAmount")}
                   <input

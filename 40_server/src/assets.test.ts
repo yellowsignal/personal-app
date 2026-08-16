@@ -301,6 +301,10 @@ test("deposit credentials encrypt password and reveal via passkey step-up", asyn
         amount: 50_000,
         accountNumber: "1234567",
         loginPassword: "baby-bank-pin",
+        institutionCode: "9900",
+        institutionName: "ゆうちょ銀行",
+        branchCode: "128",
+        branchName: "二八八",
         isShared: true,
       }),
     });
@@ -309,11 +313,19 @@ test("deposit credentials encrypt password and reveal via passkey step-up", asyn
       id: number;
       accountNumber: string | null;
       hasPassword: boolean;
+      institutionCode: string | null;
+      institutionName: string | null;
+      branchCode: string | null;
+      branchName: string | null;
       loginPassword?: string;
       loginPasswordCipher?: string;
     };
     assert.equal(body.accountNumber, "1234567");
     assert.equal(body.hasPassword, true);
+    assert.equal(body.institutionCode, "9900");
+    assert.equal(body.institutionName, "ゆうちょ銀行");
+    assert.equal(body.branchCode, "128");
+    assert.equal(body.branchName, "二八八");
     assert.equal(body.loginPassword, undefined);
     assert.equal(body.loginPasswordCipher, undefined);
 

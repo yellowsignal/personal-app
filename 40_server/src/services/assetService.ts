@@ -77,6 +77,30 @@ function parseAccountNumber(value: unknown): string | null {
   return trimmed ? trimmed.slice(0, 64) : null;
 }
 
+function parseOptionalText(
+  value: unknown,
+  field: string,
+  maxLen: number,
+): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") throw new HttpError(400, `${field} must be a string`);
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, maxLen) : null;
+}
+
+function parseJpBankFields(body: Record<string, unknown>, mode: "create" | "update") {
+  const pick = (key: string, maxLen: number) => {
+    if (!(key in body)) return mode === "create" ? null : undefined;
+    return parseOptionalText(body[key], key, maxLen);
+  };
+  return {
+    institutionCode: pick("institutionCode", 16),
+    institutionName: pick("institutionName", 100),
+    branchCode: pick("branchCode", 16),
+    branchName: pick("branchName", 100),
+  };
+}
+
 /** Create: omit/null → no password. Update: omit → keep; ""/null → clear; string → set. */
 function parseLoginPasswordCipher(
   body: Record<string, unknown>,
@@ -209,6 +233,10 @@ export class AssetService {
         bankCode: null,
         accountNumber: null,
         loginPasswordCipher: null,
+        institutionCode: null,
+        institutionName: null,
+        branchCode: null,
+        branchName: null,
         stockMarket,
         stockCode,
         quantity,
@@ -225,6 +253,7 @@ export class AssetService {
       const currency = DEPOSIT_BANKS[bankCode].currency;
       const accountNumber = "accountNumber" in body ? parseAccountNumber(body.accountNumber) : null;
       const loginPasswordCipher = parseLoginPasswordCipher(body, "create") ?? null;
+      const jp = parseJpBankFields(body, "create");
       const record = await this.assetRepo.create({
         userId: user.id,
         familyId: user.familyId,
@@ -235,6 +264,10 @@ export class AssetService {
         bankCode,
         accountNumber,
         loginPasswordCipher,
+        institutionCode: jp.institutionCode ?? null,
+        institutionName: jp.institutionName ?? null,
+        branchCode: jp.branchCode ?? null,
+        branchName: jp.branchName ?? null,
         stockMarket: null,
         stockCode: null,
         quantity: null,
@@ -256,6 +289,10 @@ export class AssetService {
       bankCode: null,
       accountNumber: null,
       loginPasswordCipher: null,
+      institutionCode: null,
+      institutionName: null,
+      branchCode: null,
+      branchName: null,
       stockMarket: null,
       stockCode: null,
       quantity: null,
@@ -289,6 +326,7 @@ export class AssetService {
               throw new HttpError(400, "bankCode must be SHINHAN, MUFG, or YUCHO");
             })();
       const loginPasswordCipher = parseLoginPasswordCipher(body, "update");
+      const jp = parseJpBankFields(body, "update");
       const updated = await this.assetRepo.update(id, {
         type: body.type === undefined ? undefined : nextType,
         label:
@@ -300,6 +338,10 @@ export class AssetService {
         bankCode,
         accountNumber: "accountNumber" in body ? parseAccountNumber(body.accountNumber) : undefined,
         loginPasswordCipher,
+        institutionCode: jp.institutionCode,
+        institutionName: jp.institutionName,
+        branchCode: jp.branchCode,
+        branchName: jp.branchName,
         stockMarket: null,
         stockCode: null,
         quantity: null,
@@ -322,6 +364,10 @@ export class AssetService {
         bankCode: null,
         accountNumber: null,
         loginPasswordCipher: null,
+        institutionCode: null,
+        institutionName: null,
+        branchCode: null,
+        branchName: null,
         stockMarket: null,
         stockCode: null,
         quantity: null,
@@ -389,6 +435,10 @@ export class AssetService {
       bankCode: null,
       accountNumber: null,
       loginPasswordCipher: null,
+      institutionCode: null,
+      institutionName: null,
+      branchCode: null,
+      branchName: null,
       stockMarket: market,
       stockCode,
       quantity,

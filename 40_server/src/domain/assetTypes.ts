@@ -6,11 +6,27 @@ export type DepositBank = "SHINHAN" | "MUFG" | "YUCHO";
 
 export const DEPOSIT_BANKS: Record<
   DepositBank,
-  { country: "KR" | "JP"; currency: "KRW" | "JPY" }
+  {
+    country: "KR" | "JP";
+    currency: "KRW" | "JPY";
+    /** Default JP 金融機関コード / 銀行名 when selecting this preset */
+    institutionCode?: string;
+    institutionName?: string;
+  }
 > = {
   SHINHAN: { country: "KR", currency: "KRW" },
-  MUFG: { country: "JP", currency: "JPY" },
-  YUCHO: { country: "JP", currency: "JPY" },
+  MUFG: {
+    country: "JP",
+    currency: "JPY",
+    institutionCode: "0005",
+    institutionName: "三菱UFJ銀行",
+  },
+  YUCHO: {
+    country: "JP",
+    currency: "JPY",
+    institutionCode: "9900",
+    institutionName: "ゆうちょ銀行",
+  },
 };
 
 export interface AssetRecord {
@@ -24,6 +40,10 @@ export interface AssetRecord {
   bankCode: DepositBank | null;
   accountNumber: string | null;
   loginPasswordCipher: string | null;
+  institutionCode: string | null;
+  institutionName: string | null;
+  branchCode: string | null;
+  branchName: string | null;
   stockMarket: StockMarket | null;
   stockCode: string | null;
   quantity: number | null;
@@ -45,6 +65,10 @@ export interface PublicAsset {
   bankCode: DepositBank | null;
   accountNumber: string | null;
   hasPassword: boolean;
+  institutionCode: string | null;
+  institutionName: string | null;
+  branchCode: string | null;
+  branchName: string | null;
   stockMarket: StockMarket | null;
   stockCode: string | null;
   quantity: number | null;
@@ -80,6 +104,10 @@ export function toPublicAsset(record: AssetRecord, ownerName: string): PublicAss
     bankCode: record.bankCode,
     accountNumber: record.accountNumber,
     hasPassword: Boolean(record.loginPasswordCipher),
+    institutionCode: record.institutionCode,
+    institutionName: record.institutionName,
+    branchCode: record.branchCode,
+    branchName: record.branchName,
     stockMarket: record.stockMarket,
     stockCode: record.stockCode,
     quantity,
