@@ -332,9 +332,6 @@ export default function DashboardPage() {
             {CURRENCY_SYMBOL[displayCurrency]}
             {formatMoney(displayedTotal, displayCurrency)}
           </p>
-          <p className="mt-1 text-[11px] text-indigo-100">
-            {t("dashboard.assetsCountNote", { n: visibleAssets.length })}
-          </p>
         </section>
 
         <section className="mt-3 grid grid-cols-2 gap-3">
