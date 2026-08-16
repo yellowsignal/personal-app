@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from "react";
+import { scrollTopDeltaToRevealField } from "../utils/composerKeyboard";
 
 /**
  * Keep the focused control visible inside a scrollable sheet while the iOS
@@ -39,16 +40,17 @@ export function useKeepFocusedInScrollParent(
       const vv = window.visualViewport;
       const visibleTop = vv ? vv.offsetTop : 0;
       const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
-      const margin = 16;
 
-      // Field clipped above the sheet / under the keyboard.
-      const targetTop = Math.max(parentRect.top, visibleTop) + margin;
-      const targetBottom = Math.min(parentRect.bottom, visibleBottom) - margin;
-
-      if (fieldRect.top < targetTop) {
-        parent.scrollTop -= targetTop - fieldRect.top;
-      } else if (fieldRect.bottom > targetBottom) {
-        parent.scrollTop += fieldRect.bottom - targetBottom;
+      const delta = scrollTopDeltaToRevealField({
+        parentTop: parentRect.top,
+        parentBottom: parentRect.bottom,
+        fieldTop: fieldRect.top,
+        fieldBottom: fieldRect.bottom,
+        visibleTop,
+        visibleBottom,
+      });
+      if (delta !== 0) {
+        parent.scrollTop += delta;
       }
     };
 

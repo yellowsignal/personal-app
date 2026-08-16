@@ -136,3 +136,75 @@ test("recurring deposit applies monthly credit and set-balance works", async () 
     server.close();
   }
 });
+
+test("recurring deposit supports yearly interval", async () => {
+  const app = createApp(tmpStore(), {
+    authRepo: new MemoryAuthRepository(),
+    assetRepo: new MemoryAssetRepository(),
+    transactionRepo: new MemoryTransactionRepository(),
+    recurringDepositRepo: new MemoryRecurringDepositRepository(),
+    passkeyRepo: new MemoryPasskeyRepository(),
+    inviteTokenRepo: new MemoryInviteTokenRepository(),
+    challengeStore: new ChallengeStore(),
+    jwtSecret: "test-secret",
+  });
+
+  const { server, base } = await listen(app);
+  try {
+    const owner = await registerOwner(base);
+    const createAsset = await fetch(`${base}/api/assets`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        type: "deposit",
+        label: "아이 적금",
+        bankCode: "YUCHO",
+        amount: 0,
+        institutionCode: "9900",
+        institutionName: "ゆうちょ銀行",
+        branchCode: "001",
+        branchName: "本店",
+      }),
+    });
+    assert.equal(createAsset.status, 201);
+    const asset = (await createAsset.json()) as {
+      id: number;
+      institutionCode: string | null;
+      branchCode: string | null;
+    };
+    assert.equal(asset.institutionCode, "9900");
+    assert.equal(asset.branchCode, "001");
+
+    const today = new Date();
+    const anchor = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, "0")}-${String(today.getUTCDate()).padStart(2, "0")}`;
+    const createRule = await fetch(`${base}/api/assets/${asset.id}/recurring-deposits`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({
+        label: "연간 적립",
+        amount: 100_000,
+        billingInterval: "YEARLY",
+        billingAnchorDate: anchor,
+      }),
+    });
+    assert.equal(createRule.status, 201);
+    const rule = (await createRule.json()) as {
+      billingInterval: string;
+      billingMonth: number | null;
+      billingDate: number;
+      lastAppliedOn: string | null;
+    };
+    assert.equal(rule.billingInterval, "YEARLY");
+    assert.equal(rule.billingMonth, today.getUTCMonth() + 1);
+    assert.equal(rule.billingDate, today.getUTCDate());
+    assert.ok(rule.lastAppliedOn);
+  } finally {
+    server.close();
+  }
+});

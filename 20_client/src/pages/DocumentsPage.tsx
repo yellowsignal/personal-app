@@ -34,7 +34,6 @@ import {
   type OcrDocKind,
 } from "@personal-app/document-ocr-parse";
 import { readPinnedDocumentIds, togglePinnedDocumentId } from "../utils/documentPins";
-import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useKeepFocusedInScrollParent } from "../hooks/useKeepFocusedInScrollParent";
 
 interface FieldDraft {
@@ -110,32 +109,7 @@ export default function DocumentsPage() {
   const scanCaptureSideRef = useRef<ScanSide>("front");
   const formScrollRef = useRef<HTMLFormElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
-  const keyboardInset = useKeyboardInset();
-  const [sheetMaxPx, setSheetMaxPx] = useState<number | null>(null);
   useKeepFocusedInScrollParent(showCreate, formScrollRef);
-
-  useEffect(() => {
-    if (!showCreate) {
-      setSheetMaxPx(null);
-      return;
-    }
-    const sync = () => {
-      const vv = window.visualViewport;
-      // Cap the sheet to the visible viewport so the title isn't scrolled under the keyboard.
-      const h = vv ? vv.height : window.innerHeight;
-      setSheetMaxPx(Math.max(240, Math.floor(h - 12)));
-    };
-    sync();
-    const vv = window.visualViewport;
-    window.addEventListener("resize", sync);
-    vv?.addEventListener("resize", sync);
-    vv?.addEventListener("scroll", sync);
-    return () => {
-      window.removeEventListener("resize", sync);
-      vv?.removeEventListener("resize", sync);
-      vv?.removeEventListener("scroll", sync);
-    };
-  }, [showCreate]);
 
   function clearDocReveal(docId: number) {
     setRevealedByDoc((prev) => {
@@ -1029,12 +1003,8 @@ export default function DocumentsPage() {
           <form
             ref={formScrollRef}
             onSubmit={handleSubmit}
-            className="relative w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
-            style={{
-              maxHeight: sheetMaxPx != null ? `${sheetMaxPx}px` : "90vh",
-              paddingBottom: `calc(1.25rem + ${keyboardInset}px)`,
-              overflowAnchor: "none",
-            }}
+            className="relative max-h-[var(--sheet-max-height,90vh)] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            style={{ overflowAnchor: "none" }}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">

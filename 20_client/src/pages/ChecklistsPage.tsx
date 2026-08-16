@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useKeepLastItemAboveComposer } from "../hooks/useKeepLastItemAboveComposer";
+import { useKeepFocusedInScrollParent } from "../hooks/useKeepFocusedInScrollParent";
 import { ArrowLeft, Check, ListChecks, Plus, Share2, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
@@ -83,8 +84,14 @@ export default function ChecklistsPage() {
   const [composerFocused, setComposerFocused] = useState(false);
   const listEndRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLFormElement | null>(null);
+  const createListFormRef = useRef<HTMLFormElement>(null);
+  const editListFormRef = useRef<HTMLFormElement>(null);
+  const editItemFormRef = useRef<HTMLFormElement>(null);
 
   useKeepLastItemAboveComposer(composerFocused, listEndRef, composerRef, detail?.itemCount ?? 0);
+  useKeepFocusedInScrollParent(showCreate, createListFormRef);
+  useKeepFocusedInScrollParent(Boolean(editingList), editListFormRef);
+  useKeepFocusedInScrollParent(Boolean(editingItem), editItemFormRef);
 
   const loadLists = useCallback(async () => {
     if (!token) return;
@@ -507,8 +514,10 @@ export default function ChecklistsPage() {
             label={t("checklists.cancel")}
           >
             <form
+              ref={editItemFormRef}
               onSubmit={(e) => void handleSaveEdit(e)}
-              className="relative w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+              className="relative max-h-[var(--sheet-max-height,90vh)] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+              style={{ overflowAnchor: "none" }}
             >
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-base font-bold text-neutral-900">{t("checklists.editItem")}</h2>
@@ -693,8 +702,10 @@ export default function ChecklistsPage() {
           label={t("checklists.cancel")}
         >
           <form
+            ref={createListFormRef}
             onSubmit={(e) => void handleCreateList(e)}
-            className="relative w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="relative max-h-[var(--sheet-max-height,90vh)] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            style={{ overflowAnchor: "none" }}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">{t("checklists.newList")}</h2>
@@ -739,8 +750,10 @@ export default function ChecklistsPage() {
           label={t("checklists.cancel")}
         >
           <form
+            ref={editListFormRef}
             onSubmit={(e) => void handleSaveListEdit(e)}
-            className="relative w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="relative max-h-[var(--sheet-max-height,90vh)] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            style={{ overflowAnchor: "none" }}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">{t("checklists.editList")}</h2>

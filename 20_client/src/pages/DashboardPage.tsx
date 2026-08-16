@@ -441,7 +441,7 @@ export default function DashboardPage() {
           onDismiss={() => setActivityOpen(false)}
           label={t("dashboard.closeActivity")}
         >
-          <div className="relative max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 pt-6 shadow-xl sm:rounded-2xl">
+          <div className="relative max-h-[var(--sheet-max-height,80vh)] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 pt-6 shadow-xl sm:rounded-2xl">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-base font-bold text-neutral-900">{t("dashboard.familyActivity")}</h2>
               <button

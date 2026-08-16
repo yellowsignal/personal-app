@@ -9,7 +9,7 @@
 | `families` | `Family` | 가족 그룹 + 초대코드 |
 | `family_icloud_albums` | `FamilyIcloudAlbum` | 가족이 연결한 iCloud 공유 앨범 URL (사진은 서버에 저장하지 않음) |
 | `users` | `User` | 계정, 언어/국가/표시통화, 역할(OWNER/MEMBER) |
-| `assets` | `Asset` | 자산·주식 (`label`은 목업 연동용 추가) |
+| `assets` | `Asset` | 자산·주식. 예금은 계좌번호·비밀번호 + JP 은행/지점 코드·이름 |
 | `documents` | `Document` | 증명서·신분증 |
 | `subscriptions` | `Subscription` | 구독 |
 | `transactions` | `Transaction` | 수입/지출 |
