@@ -125,7 +125,17 @@ bash ~/personal-app/40_server/infra/scripts/deploy-dig.sh
 bash ~/personal-app/40_server/infra/scripts/deploy-prod.sh
 ```
 
-각 스크립트가 해당 env의 `prisma migrate deploy`를 돌리므로, **마이그레이션은 dig 먼저 → 검증 → prod** 순이 됩니다.  
+### 버그 수정은 실서버(prod)까지 빨리
+
+OCR·스크롤·표시 오류처럼 **이미 prod에서 겪는 버그**는 dig에만 오래 두지 않는다. 수정 브랜치를 checkout한 뒤 dig·prod를 연속 배포해도 된다 (`main` 미머지면 `--skip-pull`).
+
+```bash
+cd ~/personal-app && git fetch origin && git checkout <fix-branch> && git reset --hard origin/<fix-branch>
+bash ~/personal-app/40_server/infra/scripts/deploy-dig.sh --skip-pull
+bash ~/personal-app/40_server/infra/scripts/deploy-prod.sh --skip-pull
+```
+
+각 스크립트가 해당 env의 `prisma migrate deploy`를 돌리므로, **마이그레이션은 dig 먼저 → 검증 → prod** 순이 기본이다.  
 데이터를 다시 통째로 덮어쓸 필요는 없습니다(최초 복제 이후는 각자 쌓임).
 
 ---

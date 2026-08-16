@@ -28,7 +28,10 @@ declare module "tesseract.js" {
       logger?: (message: { status?: string; progress?: number }) => void;
     },
   ): Promise<{
-    recognize(image: Blob | File): Promise<{ data: { text: string } }>;
+    recognize(
+      image: Blob | File | HTMLCanvasElement,
+      options?: { rotateAuto?: boolean; rotateRadians?: number },
+    ): Promise<{ data: { text: string } }>;
     terminate(): Promise<void>;
   }>;
 }

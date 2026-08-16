@@ -191,7 +191,11 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
         deps.documentScanStore ?? null,
         activityService,
         deps.calendarRepo ?? null,
-        deps.reminderDispatcher ? () => deps.reminderDispatcher!.tick() : null,
+        deps.reminderDispatcher
+          ? async () => {
+              await deps.reminderDispatcher!.tick();
+            }
+          : null,
       );
       app.use("/api/documents", createDocumentRouter(documentService, jwtSecret));
     }
@@ -205,7 +209,11 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
         deps.recurringDepositRepo ?? null,
         deps.assetRepo ?? null,
         activityService,
-        deps.reminderDispatcher ? () => deps.reminderDispatcher!.tick() : null,
+        deps.reminderDispatcher
+          ? async () => {
+              await deps.reminderDispatcher!.tick();
+            }
+          : null,
       );
       app.use("/api/calendar", createCalendarRouter(calendarService, jwtSecret));
     }

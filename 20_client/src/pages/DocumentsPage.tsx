@@ -28,8 +28,14 @@ import { isPasskeySupported } from "../api/passkey";
 import { imageFileToPdfBlob } from "../utils/imageToPdf";
 import { mergePdfBlobs } from "../utils/pdfMerge";
 import { runOcrOnFiles } from "../utils/documentOcr";
-import { parseDocumentOcrText } from "@personal-app/document-ocr-parse";
+import {
+  OCR_DOC_KINDS_BY_REGION,
+  parseDocumentOcrText,
+  type OcrDocKind,
+} from "@personal-app/document-ocr-parse";
 import { readPinnedDocumentIds, togglePinnedDocumentId } from "../utils/documentPins";
+import { useKeyboardInset } from "../hooks/useKeyboardInset";
+import { useKeepFocusedInScrollParent } from "../hooks/useKeepFocusedInScrollParent";
 
 interface FieldDraft {
   key: string;
@@ -43,9 +49,11 @@ type ScanWizardTarget = { kind: "document"; docId: number } | { kind: "create"; 
 
 interface ScanWizardState {
   target: ScanWizardTarget;
-  step: "front" | "back" | "review";
+  step: "type" | "front" | "back" | "review";
   frontFile: File | null;
   backFile: File | null;
+  /** Selected before OCR capture — constrains parsing. */
+  ocrKind: OcrDocKind | null;
 }
 
 function emptyField(): FieldDraft {
@@ -100,6 +108,48 @@ export default function DocumentsPage() {
   const [pinnedIds, setPinnedIds] = useState<number[]>(() => readPinnedDocumentIds());
   const scanInputRef = useRef<HTMLInputElement>(null);
   const scanCaptureSideRef = useRef<ScanSide>("front");
+  const formScrollRef = useRef<HTMLFormElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const keyboardInset = useKeyboardInset();
+  const [sheetMaxPx, setSheetMaxPx] = useState<number | null>(null);
+  useKeepFocusedInScrollParent(showCreate, formScrollRef);
+
+  useEffect(() => {
+    if (!showCreate) {
+      setSheetMaxPx(null);
+      return;
+    }
+    const sync = () => {
+      const vv = window.visualViewport;
+      // Cap the sheet to the visible viewport so the title isn't scrolled under the keyboard.
+      const h = vv ? vv.height : window.innerHeight;
+      setSheetMaxPx(Math.max(240, Math.floor(h - 12)));
+    };
+    sync();
+    const vv = window.visualViewport;
+    window.addEventListener("resize", sync);
+    vv?.addEventListener("resize", sync);
+    vv?.addEventListener("scroll", sync);
+    return () => {
+      window.removeEventListener("resize", sync);
+      vv?.removeEventListener("resize", sync);
+      vv?.removeEventListener("scroll", sync);
+    };
+  }, [showCreate]);
+
+  function clearDocReveal(docId: number) {
+    setRevealedByDoc((prev) => {
+      if (!(docId in prev)) return prev;
+      const next = { ...prev };
+      delete next[docId];
+      return next;
+    });
+  }
+
+  function closeDetail() {
+    if (detailDoc) clearDocReveal(detailDoc.id);
+    setDetailDoc(null);
+  }
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -193,6 +243,7 @@ export default function DocumentsPage() {
   }
 
   function closeShowMode() {
+    if (showModeDoc) clearDocReveal(showModeDoc.id);
     setShowModeDoc(null);
   }
 
@@ -213,6 +264,7 @@ export default function DocumentsPage() {
   function openCreate() {
     resetForm();
     setSwipeId(null);
+    if (detailDoc) clearDocReveal(detailDoc.id);
     setDetailDoc(null);
     setShowCreate(true);
   }
@@ -237,6 +289,7 @@ export default function DocumentsPage() {
     setCreateScanFront(null);
     setCreateScanBack(null);
     setSwipeId(null);
+    if (detailDoc?.id === doc.id) clearDocReveal(doc.id);
     setDetailDoc(null);
     setShowCreate(true);
   }
@@ -325,7 +378,14 @@ export default function DocumentsPage() {
   }
 
   function openScanWizard(target: ScanWizardTarget) {
-    setScanWizard({ target, step: "front", frontFile: null, backFile: null });
+    const withOcrTypeStep = target.kind === "create" && target.withOcr;
+    setScanWizard({
+      target,
+      step: withOcrTypeStep ? "type" : "front",
+      frontFile: null,
+      backFile: null,
+      ocrKind: null,
+    });
   }
 
   function openOcrRegister() {
@@ -348,37 +408,22 @@ export default function DocumentsPage() {
     if (parsed.expiryDate) {
       setHasExpiry(true);
       setExpiryDate(parsed.expiryDate);
+    } else {
+      // Do not keep the form default (today) as a fake OCR expiry.
+      setHasExpiry(false);
+      setExpiryDate(todayIsoDate());
     }
   }
 
-  function buildPayloadFromParsed(parsed: ReturnType<typeof parseDocumentOcrText>): CreateDocumentInput | null {
-    const label = parsed.typeLabel?.trim() ?? "";
-    const fields: DocumentFieldInput[] = parsed.fields
-      .filter((f) => f.label.trim())
-      .map((f) => ({
-        label: f.label.trim(),
-        value: f.value,
-        isSecret: f.isSecret,
-      }));
-    const hasFieldValue = fields.some((f) => f.value?.trim());
-    if (!label || fields.length === 0 || !hasFieldValue) return null;
-    return {
-      typeLabel: label,
-      category: parsed.category ?? category,
-      fields,
-      expiryDate: parsed.expiryDate ?? null,
-      isShared: false,
-      memo: null,
-    };
-  }
-
-  async function runOcrOnScanFiles(front: File, back: File | null) {
+  async function runOcrOnScanFiles(front: File, back: File | null, ocrKind: OcrDocKind | null) {
     const files = back ? [front, back] : [front];
     const text = await runOcrOnFiles(files, setOcrProgress);
-    return parseDocumentOcrText(text);
+    return parseDocumentOcrText(text, { kind: ocrKind });
   }
 
   function openOcrReviewForm(front: File, back: File | null, parsed: ReturnType<typeof parseDocumentOcrText>) {
+    // Clear prior create/edit drafts so leftover 이름/만료일 never look like OCR output.
+    resetForm();
     applyOcrResult(parsed);
     setCreateScanFront(front);
     setCreateScanBack(back);
@@ -387,39 +432,12 @@ export default function DocumentsPage() {
     setShowCreate(true);
   }
 
-  async function runOcrAndSave(front: File, back: File | null) {
-    if (!token) return;
+  async function runOcrAndOpenCreate(front: File, back: File | null, ocrKind: OcrDocKind | null) {
     setOcrBusy(true);
     setOcrProgress(0);
     setError(null);
     try {
-      const parsed = await runOcrOnScanFiles(front, back);
-      const payload = buildPayloadFromParsed(parsed);
-      if (payload) {
-        const created = await documentsApi.create(token, payload);
-        await uploadScansForDocument(created.id, front, back);
-        closeScanWizard();
-        resetForm();
-        await load();
-        return;
-      }
-      openOcrReviewForm(front, back, parsed);
-      setError(t("documents.ocrLowConfidence"));
-    } catch {
-      setError(t("documents.ocrError"));
-      openOcrReviewForm(front, back, { typeLabel: null, category: null, fields: [], expiryDate: null });
-    } finally {
-      setOcrBusy(false);
-      setOcrProgress(0);
-    }
-  }
-
-  async function runOcrAndOpenCreate(front: File, back: File | null) {
-    setOcrBusy(true);
-    setOcrProgress(0);
-    setError(null);
-    try {
-      const parsed = await runOcrOnScanFiles(front, back);
+      const parsed = await runOcrOnScanFiles(front, back, ocrKind);
       openOcrReviewForm(front, back, parsed);
       if (parsed.fields.length === 0 && !parsed.typeLabel) {
         setError(t("documents.ocrLowConfidence"));
@@ -463,7 +481,8 @@ export default function DocumentsPage() {
       return;
     }
     if (scanWizard.target.withOcr) {
-      await runOcrAndSave(scanWizard.frontFile, scanWizard.backFile);
+      // Always review/edit before create — never auto-save after OCR.
+      await runOcrAndOpenCreate(scanWizard.frontFile, scanWizard.backFile, scanWizard.ocrKind);
       return;
     }
     setCreateScanFront(scanWizard.frontFile);
@@ -551,7 +570,13 @@ export default function DocumentsPage() {
       return;
     }
     const fields: DocumentFieldInput[] = fieldDrafts
-      .filter((f) => f.label.trim())
+      .filter((f) => {
+        if (!f.label.trim()) return false;
+        if (f.value.trim()) return true;
+        // Edit: empty secret means “keep existing”; empty non-secret slots from OCR templates are dropped.
+        if (editing && f.isSecret) return true;
+        return false;
+      })
       .map((f) => {
         const base: DocumentFieldInput = {
           id: f.id,
@@ -614,6 +639,7 @@ export default function DocumentsPage() {
     setError(null);
     try {
       await documentsApi.remove(token, confirmDelete.id);
+      clearDocReveal(confirmDelete.id);
       setConfirmDelete(null);
       setDetailDoc(null);
       await load();
@@ -840,13 +866,14 @@ export default function DocumentsPage() {
         return (
           <ItemDetailSheet
             title={localizeDocumentTypeLabel(d.typeLabel, t)}
-            onClose={() => setDetailDoc(null)}
+            onClose={closeDetail}
             closeLabel={t("documents.cancel")}
             editLabel={t("documents.editDocument")}
             deleteLabel={t("documents.deleteDocument")}
             canManage={canManage}
             onEdit={() => openEdit(d)}
             onDelete={() => {
+              clearDocReveal(d.id);
               setConfirmDelete(d);
               setDetailDoc(null);
             }}
@@ -974,6 +1001,7 @@ export default function DocumentsPage() {
               <button
                 type="button"
                 onClick={() => {
+                  clearDocReveal(d.id);
                   setDetailDoc(null);
                   openScanWizard({ kind: "document", docId: d.id });
                 }}
@@ -999,8 +1027,14 @@ export default function DocumentsPage() {
           label={t("documents.cancel")}
         >
           <form
+            ref={formScrollRef}
             onSubmit={handleSubmit}
-            className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="relative w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            style={{
+              maxHeight: sheetMaxPx != null ? `${sheetMaxPx}px` : "90vh",
+              paddingBottom: `calc(1.25rem + ${keyboardInset}px)`,
+              overflowAnchor: "none",
+            }}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">
@@ -1032,19 +1066,37 @@ export default function DocumentsPage() {
               ))}
             </div>
 
-            <label className="mb-2 block text-sm font-semibold text-neutral-700">{t("documents.fieldName")}</label>
+            <label className="mb-2 block text-sm font-semibold text-neutral-700" htmlFor="document-type-label">
+              {t("documents.fieldName")}
+            </label>
             <input
-              list="document-type-suggestions"
+              id="document-type-label"
+              ref={nameInputRef}
+              name="document-type-label"
               value={typeLabel}
               onChange={(e) => setTypeLabel(e.target.value)}
               placeholder={t("documents.placeholderName")}
-              className="mb-4 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              inputMode="text"
+              enterKeyHint="done"
+              data-form-type="other"
+              className="mb-2 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-indigo-400"
             />
-            <datalist id="document-type-suggestions">
-              {documentTypeSuggestions[lang].map((s) => (
-                <option key={s} value={s} />
+            <div className="mb-4 flex flex-wrap gap-1.5">
+              {documentTypeSuggestions[lang].slice(0, 6).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setTypeLabel(s)}
+                  className="rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-semibold text-neutral-600"
+                >
+                  {s}
+                </button>
               ))}
-            </datalist>
+            </div>
 
             <div className="mb-2 flex items-center justify-between">
               <label className="text-sm font-semibold text-neutral-700">{t("documents.fieldItems")}</label>
@@ -1240,9 +1292,54 @@ export default function DocumentsPage() {
               </button>
             </div>
 
+            {scanWizard.step === "type" && (
+              <>
+                <p className="text-sm text-neutral-600">{t("documents.ocrPickTypeHint")}</p>
+                <div className="mt-4 space-y-4">
+                  {(["jp", "kr"] as const).map((region) => (
+                    <div key={region}>
+                      <p className="mb-2 text-[11px] font-semibold tracking-wide text-neutral-400">
+                        {t(`documents.ocrRegion.${region}`)}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {OCR_DOC_KINDS_BY_REGION[region].map((kind) => (
+                          <button
+                            key={kind}
+                            type="button"
+                            onClick={() =>
+                              setScanWizard((w) => (w ? { ...w, ocrKind: kind, step: "front" } : w))
+                            }
+                            className="rounded-full bg-neutral-100 px-3.5 py-2 text-sm font-semibold text-neutral-800 ring-1 ring-neutral-200 active:bg-indigo-50 active:text-indigo-700 active:ring-indigo-200"
+                          >
+                            {t(`documents.ocrType.${kind}`)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
             {scanWizard.step === "front" && (
               <>
+                {scanWizard.target.kind === "create" && scanWizard.target.withOcr && scanWizard.ocrKind && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setScanWizard((w) => (w ? { ...w, step: "type", frontFile: null, backFile: null } : w))
+                    }
+                    className="mb-3 text-xs font-semibold text-indigo-600"
+                  >
+                    {t("documents.ocrChangeType", { type: t(`documents.ocrType.${scanWizard.ocrKind}`) })}
+                  </button>
+                )}
                 <p className="text-sm text-neutral-600">{t("documents.scanStepFront")}</p>
+                {scanWizard.target.kind === "create" && scanWizard.target.withOcr && (
+                  <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+                    {t("documents.ocrOrientationHint")}
+                  </p>
+                )}
                 <button
                   type="button"
                   onClick={() => startScanCapture("front")}
@@ -1312,26 +1409,14 @@ export default function DocumentsPage() {
                   </div>
                 </div>
                 {scanWizard.target.kind === "create" && scanWizard.target.withOcr ? (
-                  <div className="mt-4 space-y-2">
-                    <button
-                      type="button"
-                      disabled={ocrBusy}
-                      onClick={() => void confirmScanWizard()}
-                      className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white disabled:opacity-40"
-                    >
-                      {t("documents.ocrAnalyze")}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={ocrBusy}
-                      onClick={() =>
-                        void runOcrAndOpenCreate(scanWizard.frontFile!, scanWizard.backFile)
-                      }
-                      className="w-full rounded-xl border border-neutral-200 py-3 text-sm font-semibold text-neutral-600 disabled:opacity-40"
-                    >
-                      {t("documents.ocrReviewEdit")}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    disabled={ocrBusy}
+                    onClick={() => void confirmScanWizard()}
+                    className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                  >
+                    {t("documents.ocrAnalyze")}
+                  </button>
                 ) : (
                   <button
                     type="button"

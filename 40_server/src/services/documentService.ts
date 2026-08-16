@@ -163,7 +163,7 @@ export class DocumentService {
     private readonly scanStore: DocumentScanStore | null = null,
     private readonly activityService: FamilyActivityService | null = null,
     private readonly calendarRepo: CalendarRepository | null = null,
-    private readonly kickReminders: (() => Promise<void>) | null = null,
+    private readonly kickReminders: (() => Promise<unknown>) | null = null,
   ) {}
 
   private async requireUser(userId: number) {
