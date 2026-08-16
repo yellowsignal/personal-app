@@ -76,6 +76,8 @@ Environment=WEBAUTHN_RP_NAME=すみっチョぐらし
 Environment=DATA_FILE=${REPO_ROOT}/30_data/tasks-dev.json
 Environment=DOCUMENT_SCAN_DIR=${REPO_ROOT}/30_data/document-scans
 Environment=PHOTO_DIR=${REPO_ROOT}/30_data/photos
+# Solo dig testing: actor also receives family-activity push
+Environment=FAMILY_ACTIVITY_NOTIFY_ACTOR=1
 # MEMORY_AUTH intentionally unset — use Prisma/Postgres
 # TZ=UTC keeps floating calendar DateTime components stable with Prisma/Postgres.
 ExecStart=/usr/bin/node ${SERVER_DIR}/dist/index.js

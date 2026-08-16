@@ -270,3 +270,88 @@ test("shared calendar create still returns 201 when activityRepo.create throws",
     server.close();
   }
 });
+
+test("dig-only: actor also receives family activity push when FAMILY_ACTIVITY_NOTIFY_ACTOR=1", async () => {
+  const prev = process.env.FAMILY_ACTIVITY_NOTIFY_ACTOR;
+  process.env.FAMILY_ACTIVITY_NOTIFY_ACTOR = "1";
+  try {
+    const authRepo = new MemoryAuthRepository();
+    const calendarRepo = new MemoryCalendarRepository();
+    const activityRepo = new MemoryFamilyActivityRepository();
+    const pushRepo = new MemoryPushRepository();
+    const delivered: PushPayload[] = [];
+    const pushService = new PushService(
+      pushRepo,
+      { publicKey: "pub", privateKey: "priv", subject: "mailto:test@example.com" },
+      {
+        async send(_sub, payload) {
+          delivered.push(payload);
+          return "ok";
+        },
+      },
+    );
+
+    const app = createApp(tmpStore(), {
+      authRepo,
+      calendarRepo,
+      activityRepo,
+      pushService,
+      passkeyRepo: new MemoryPasskeyRepository(),
+      inviteTokenRepo: new MemoryInviteTokenRepository(),
+      challengeStore: new ChallengeStore(),
+      jwtSecret: "test-secret",
+    });
+
+    const { server, base } = await listen(app);
+    try {
+      const ownerRes = await fetch(`${base}/api/auth/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: "solo-owner@example.com",
+          password: "password123",
+          name: "민호",
+          familyName: "혼자테스트",
+        }),
+      });
+      assert.equal(ownerRes.status, 201);
+      const owner = (await ownerRes.json()) as { token: string; user: { id: number } };
+
+      await fetch(`${base}/api/push/subscribe`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${owner.token}`,
+        },
+        body: JSON.stringify({
+          endpoint: "https://push.example/solo-1",
+          keys: { p256dh: "p256", auth: "auth-token" },
+        }),
+      });
+
+      const created = await fetch(`${base}/api/calendar/events`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${owner.token}`,
+        },
+        body: JSON.stringify({
+          title: "혼자 일정",
+          date: "2026-10-01",
+          category: "family",
+          isShared: true,
+          reminderMinutesBefore: null,
+        }),
+      });
+      assert.equal(created.status, 201);
+      assert.ok(delivered.length >= 1);
+      assert.equal(delivered[0]?.title, "민호 · 일정");
+      assert.match(delivered[0]?.body ?? "", /등록/);
+    } finally {
+      server.close();
+    }
+  } finally {
+    if (prev === undefined) delete process.env.FAMILY_ACTIVITY_NOTIFY_ACTOR;
+    else process.env.FAMILY_ACTIVITY_NOTIFY_ACTOR = prev;
+  }
+});

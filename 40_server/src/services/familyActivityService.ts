@@ -12,6 +12,7 @@ import {
   serializeActivityDetail,
   type ActivityDetail,
 } from "../domain/familyActivityFormat.js";
+import { shouldNotifyFamilyActivityActor } from "../domain/familyActivityNotifySelf.js";
 import { HttpError } from "./authService.js";
 import type { PushService } from "./pushService.js";
 
@@ -78,7 +79,8 @@ export class FamilyActivityService {
       if (!this.pushService) return;
       try {
         const members = await this.authRepo.listFamilyMembers(input.familyId);
-        const recipients = members.filter((m) => m.id !== input.actorUserId);
+        const notifySelf = shouldNotifyFamilyActivityActor();
+        const recipients = members.filter((m) => notifySelf || m.id !== input.actorUserId);
         for (const member of recipients) {
           const unreadCount = await this.activityRepo.countUnreadForUser(input.familyId, member.id);
           const summary = formatFamilyActivitySummary({
