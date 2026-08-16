@@ -21,6 +21,7 @@ import {
 } from "../api/familyActivity";
 import { ApiError } from "../api/http";
 import { formatMoney } from "../utils/formatMoney";
+import { useOnAppResume } from "../hooks/useOnAppResume";
 
 const CURRENCIES: Currency[] = ["KRW", "JPY", "USD"];
 const CURRENCY_SYMBOL: Record<Currency, string> = { KRW: "₩", JPY: "¥", USD: "$" };
@@ -172,6 +173,12 @@ export default function DashboardPage() {
   useEffect(() => {
     void loadActivitySummary();
   }, [loadActivitySummary]);
+
+  // iOS PWA stays mounted on the home tab while backgrounded — remount-only
+  // fetch misses new family activity until the user navigates away and back.
+  useOnAppResume(() => {
+    void loadActivitySummary();
+  });
 
   async function openActivitySheet() {
     if (!token) return;

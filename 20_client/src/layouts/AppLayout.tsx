@@ -1,10 +1,15 @@
+import { useCallback } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import BottomNav from "../components/BottomNav";
 import PushOnboardingSheet from "../components/PushOnboardingSheet";
 import { useBodyScrollLock, useResetWindowScroll } from "../hooks/useBodyScrollLock";
+import { useOnAppResume } from "../hooks/useOnAppResume";
+import { useAuth } from "../context/AuthContext";
+import { familyActivityApi, syncAppBadge } from "../api/familyActivity";
 
 export default function AppLayout() {
   const { pathname } = useLocation();
+  const { token } = useAuth();
   const hideBottomNav = /^\/assets\/\d+\/statement\/?$/.test(pathname);
   const isHome = pathname === "/";
 
@@ -13,6 +18,20 @@ export default function AppLayout() {
 
   // Home uses a fixed viewport; do not restore the previous page's scrollY when leaving home.
   useBodyScrollLock(isHome, { restoreScroll: false });
+
+  const refreshAppBadge = useCallback(() => {
+    if (!token) return;
+    void familyActivityApi
+      .summary(token)
+      .then((summary) => syncAppBadge(summary.unreadCount))
+      .catch(() => {
+        /* ignore — badge is best-effort */
+      });
+  }, [token]);
+
+  // Keep the home-screen icon badge in sync when returning from iOS home,
+  // even if the user was on Calendar/etc. (not only Dashboard mount).
+  useOnAppResume(refreshAppBadge);
 
   return (
     <div className={`flex justify-center bg-neutral-200 ${isHome ? "h-[100dvh] overflow-hidden overscroll-none" : "min-h-screen"}`}>
