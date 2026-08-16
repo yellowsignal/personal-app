@@ -95,9 +95,9 @@ export function formatReminderClock(
 }
 
 /**
- * Lock-screen layout:
- * 1. title → app name
- * 2–3. body → event title, then time (+ memo when present)
+ * Lock-screen layout (iOS PWA also prepends the app name / “from …” itself):
+ * 1. title → event title
+ * 2. body → time (+ memo when present)
  */
 export function formatCalendarReminderPayload(input: {
   eventTitle: string;
@@ -106,12 +106,11 @@ export function formatCalendarReminderPayload(input: {
   isAllDay: boolean;
   languagePref: string | null | undefined;
 }): { title: string; body: string } {
-  const title = APP_DISPLAY_NAME;
-  const eventTitle = input.eventTitle.trim() || title;
+  const eventTitle = input.eventTitle.trim() || APP_DISPLAY_NAME;
   const clock = formatReminderClock(input.start, input.isAllDay, input.languagePref);
   const memo = typeof input.description === "string" ? input.description.trim() : "";
-  const third = memo ? `${clock} ${memo}` : clock;
-  return { title, body: `${eventTitle}\n${third}` };
+  const body = memo ? `${clock} ${memo}` : clock;
+  return { title: eventTitle, body };
 }
 
 export class ReminderDispatcher {
