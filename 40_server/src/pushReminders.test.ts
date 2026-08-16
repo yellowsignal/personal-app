@@ -107,8 +107,8 @@ test("web push subscribe and due calendar reminder is dispatched", async () => {
     });
     assert.equal(created.status, 201);
     assert.equal(delivered.length, 1);
-    assert.equal(delivered[0]?.title, "すみっチョぐらし");
-    assert.match(delivered[0]?.body ?? "", /^회의\n/);
+    assert.equal(delivered[0]?.title, "회의");
+    assert.match(delivered[0]?.body ?? "", /오전|오후|午前|午後/);
 
     const again = await dispatcher.tick();
     assert.equal(again, 0);
@@ -188,8 +188,8 @@ test("all-day reminder still fires when created after the ideal fire time", asyn
     const dispatcher = new ReminderDispatcher(authRepo, calendarRepo, pushService);
     const sent = await dispatcher.tick(now);
     assert.equal(sent, 1);
-    assert.equal(delivered[0]?.title, "すみっチョぐらし");
-    assert.match(delivered[0]?.body ?? "", /^ダンボールごみ捨て\n/);
+    assert.equal(delivered[0]?.title, "ダンボールごみ捨て");
+    assert.match(delivered[0]?.body ?? "", /하루 종일|終日/);
   } finally {
     server.close();
   }
@@ -269,8 +269,8 @@ test("timed 1h reminder fires at JST wall clock not raw UTC", async () => {
 
     const onTime = await dispatcher.tick(new Date("2026-08-14T05:00:00.000Z")); // 14:00 KST
     assert.equal(onTime, 1);
-    assert.equal(delivered[0]?.title, "すみっチョぐらし");
-    assert.equal(delivered[0]?.body, "테스트\n오후 3:00");
+    assert.equal(delivered[0]?.title, "테스트");
+    assert.equal(delivered[0]?.body, "오후 3:00");
   } finally {
     server.close();
   }
@@ -412,8 +412,8 @@ test("failed web push is not marked sent so the next tick can retry", async () =
   shouldFail = false;
   const second = await dispatcher.tick();
   assert.equal(second, 1);
-  assert.equal(delivered[0]?.title, "すみっチョぐらし");
-  assert.match(delivered[0]?.body ?? "", /^재시도\n/);
+  assert.equal(delivered[0]?.title, "재시도");
+  assert.match(delivered[0]?.body ?? "", /오전|오후|午前|午後/);
 });
 
 test("push subscribe kicks already-due reminders", async () => {
@@ -467,8 +467,8 @@ test("push subscribe kicks already-due reminders", async () => {
     "iPhone",
   );
   assert.equal(delivered.length, 1);
-  assert.equal(delivered[0]?.title, "すみっチョぐらし");
-  assert.match(delivered[0]?.body ?? "", /^already due\n/);
+  assert.equal(delivered[0]?.title, "already due");
+  assert.match(delivered[0]?.body ?? "", /하루 종일|終日|오전|오후|午前|午後/);
   assert.match(String(delivered[0]?.tag), /^cal-\d+-/);
 });
 
@@ -547,6 +547,6 @@ test("one event throwing does not skip the rest of the tick", async () => {
 
   const sent = await dispatcher.tick();
   assert.equal(sent, 1);
-  assert.equal(delivered[0]?.title, "すみっチョぐらし");
-  assert.match(delivered[0]?.body ?? "", /^ok-member\n/);
+  assert.equal(delivered[0]?.title, "ok-member");
+  assert.match(delivered[0]?.body ?? "", /오전|오후|午前|午後/);
 });
