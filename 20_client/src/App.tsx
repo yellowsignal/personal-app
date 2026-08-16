@@ -11,6 +11,7 @@ import CalendarPage from "./pages/CalendarPage";
 import PhotosPage from "./pages/PhotosPage";
 import ChecklistsPage from "./pages/ChecklistsPage";
 import SettingsPage from "./pages/SettingsPage";
+import VaultPage from "./pages/VaultPage";
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/photos" element={<PhotosPage />} />
           <Route path="/checklists" element={<ChecklistsPage />} />
+          <Route path="/vault" element={<VaultPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>

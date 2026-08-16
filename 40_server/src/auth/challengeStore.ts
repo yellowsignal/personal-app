@@ -17,7 +17,7 @@ export interface PendingRegistration {
 }
 
 export type AuthenticationPurpose = "login" | "reveal-credentials";
-export type RevealResourceKind = "subscription" | "document" | "asset";
+export type RevealResourceKind = "subscription" | "document" | "asset" | "vault";
 
 export interface PendingAuthentication {
   expiresAt: number;

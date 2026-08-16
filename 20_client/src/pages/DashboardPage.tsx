@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Bell, ChevronRight, IdCard, Images, ListChecks, Settings, Users, X } from "lucide-react";
+import { Bell, ChevronRight, IdCard, Images, KeyRound, Settings, Users, X } from "lucide-react";
 import TopBar from "../components/TopBar";
 import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import OverlayScrim from "../components/OverlayScrim";
@@ -404,15 +404,6 @@ export default function DashboardPage() {
 
         <section className="mt-3 mb-3 grid grid-cols-2 gap-3">
           <Link
-            to="/checklists"
-            className="flex items-center gap-3 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-black/5"
-          >
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-50">
-              <ListChecks size={18} className="text-teal-600" />
-            </div>
-            <span className="text-sm font-semibold text-neutral-800">{t("dashboard.checklists")}</span>
-          </Link>
-          <Link
             to="/photos"
             className="flex items-center gap-3 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-black/5"
           >
@@ -429,6 +420,15 @@ export default function DashboardPage() {
               <IdCard size={18} className="text-sky-500" />
             </div>
             <span className="text-sm font-semibold text-neutral-800">{t("nav.documents")}</span>
+          </Link>
+          <Link
+            to="/vault"
+            className="flex items-center gap-3 rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-black/5"
+          >
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-50">
+              <KeyRound size={18} className="text-violet-500" />
+            </div>
+            <span className="text-sm font-semibold text-neutral-800">{t("dashboard.vault")}</span>
           </Link>
           <Link
             to="/settings"

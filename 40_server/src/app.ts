@@ -45,6 +45,9 @@ import type { FetchLike } from "./services/icloudSharedAlbum.js";
 import type { FamilyIcloudAlbumRepository } from "./domain/familyIcloudAlbumRepository.js";
 import { MemoryFamilyIcloudAlbumRepository } from "./domain/memoryFamilyIcloudAlbumRepository.js";
 import { AlbumCoverStore, defaultAlbumCoverDir } from "./storage/albumCoverStore.js";
+import type { VaultItemRepository } from "./domain/vaultTypes.js";
+import { VaultService } from "./services/vaultService.js";
+import { createVaultRouter } from "./routes/vaultRoutes.js";
 
 export interface AppDeps {
   authRepo?: AuthRepository;
@@ -60,6 +63,7 @@ export interface AppDeps {
   albumCoverStore?: AlbumCoverStore;
   icloudFetch?: FetchLike;
   icloudAlbumRepo?: FamilyIcloudAlbumRepository;
+  vaultRepo?: VaultItemRepository;
   pushService?: PushService;
   reminderDispatcher?: ReminderDispatcher;
   activityRepo?: FamilyActivityRepository;
@@ -234,6 +238,11 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
         deps.icloudFetch ?? fetch,
       );
       app.use("/api/photos", createPhotoRouter(photoService, jwtSecret, icloudService));
+    }
+
+    if (deps.vaultRepo) {
+      const vaultService = new VaultService(deps.authRepo, deps.vaultRepo, passkeyService);
+      app.use("/api/vault", createVaultRouter(vaultService, jwtSecret));
     }
 
     if (deps.pushService) {

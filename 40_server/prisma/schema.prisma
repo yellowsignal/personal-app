@@ -90,6 +90,7 @@ model User {
   pushSubscriptions PushSubscription[]
   activitiesActed   FamilyActivity[]     @relation("FamilyActivityActor")
   activityReads     FamilyActivityRead[]
+  vaultItems        VaultItem[]
 
   @@index([familyId])
   @@map("users")
@@ -449,4 +450,31 @@ model FamilyActivityRead {
   @@unique([activityId, userId])
   @@index([userId])
   @@map("family_activity_reads")
+}
+
+enum VaultCategory {
+  LOGIN
+  PRODUCT_KEY
+  OTHER
+}
+
+/// Personal-only ID/password/product-key vault (never family-shared).
+model VaultItem {
+  id           Int           @id @default(autoincrement())
+  userId       Int           @map("user_id")
+  title        String        @db.VarChar(200)
+  category     VaultCategory @default(LOGIN)
+  url          String?       @db.VarChar(500)
+  /// Username / employee no. — never returned until Passkey reveal.
+  loginId      String?       @map("login_id") @db.VarChar(255)
+  /// Password or product key (AES-GCM). Null if only loginId stored.
+  secretCipher String?       @map("secret_cipher") @db.Text
+  memo         String?       @db.VarChar(2000)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+  @@map("vault_items")
 }
