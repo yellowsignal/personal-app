@@ -10,6 +10,7 @@ import SwipeableRow from "../components/SwipeableRow";
 import ItemDetailSheet, { DetailRow } from "../components/ItemDetailSheet";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
+import { useResetWindowScroll } from "../hooks/useBodyScrollLock";
 import {
   checklistsApi,
   type PublicChecklist,
@@ -92,6 +93,8 @@ export default function ChecklistsPage() {
   useKeepFocusedInScrollParent(showCreate, createListFormRef);
   useKeepFocusedInScrollParent(Boolean(editingList), editListFormRef);
   useKeepFocusedInScrollParent(Boolean(editingItem), editItemFormRef);
+  // List detail is in-page (no route change) — start at the top when opening or leaving.
+  useResetWindowScroll(activeId);
 
   const loadLists = useCallback(async () => {
     if (!token) return;
