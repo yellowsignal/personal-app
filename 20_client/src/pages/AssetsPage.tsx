@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Copy, Eye, EyeOff, Plus, RefreshCw, TrendingDown, TrendingUp, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import TopBar from "../components/TopBar";
-import ScopeToggle, type { ViewScope } from "../components/ScopeToggle";
+import ScopeToggle, { type ViewScope } from "../components/ScopeToggle";
 import SharedBadge from "../components/SharedBadge";
 import OverlayScrim from "../components/OverlayScrim";
 import SwipeableRow from "../components/SwipeableRow";

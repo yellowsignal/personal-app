@@ -12,6 +12,7 @@ import {
 } from "../api/assets";
 import { ApiError } from "../api/http";
 import OverlayScrim from "../components/OverlayScrim";
+import { useKeepFocusedInScrollParent } from "../hooks/useKeepFocusedInScrollParent";
 import { formatMoney } from "../utils/formatMoney";
 import { readBankCsvFile } from "../utils/readBankCsvFile";
 
@@ -45,6 +46,10 @@ export default function AssetStatementPage() {
   });
   const [savingRecurring, setSavingRecurring] = useState(false);
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const balanceFormRef = useRef<HTMLFormElement>(null);
+  const recurringFormRef = useRef<HTMLFormElement>(null);
+  useKeepFocusedInScrollParent(showBalanceEdit, balanceFormRef);
+  useKeepFocusedInScrollParent(showRecurringForm, recurringFormRef);
 
   const canManage = user?.id === asset?.userId;
 
@@ -392,8 +397,10 @@ export default function AssetStatementPage() {
           label={t("assets.cancelAction")}
         >
           <form
+            ref={balanceFormRef}
             onSubmit={(e) => void submitBalance(e)}
-            className="relative w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="relative max-h-[var(--sheet-max-height,90vh)] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            style={{ overflowAnchor: "none" }}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">{t("assets.editBalance")}</h2>
@@ -429,8 +436,10 @@ export default function AssetStatementPage() {
           label={t("assets.cancelAction")}
         >
           <form
+            ref={recurringFormRef}
             onSubmit={(e) => void submitRecurring(e)}
-            className="relative w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            className="relative max-h-[var(--sheet-max-height,90vh)] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+            style={{ overflowAnchor: "none" }}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">{t("assets.recurringAdd")}</h2>

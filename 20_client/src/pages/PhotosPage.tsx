@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ArrowLeft, Cloud, MoreHorizontal, Plus } from "lucide-react";
 import TopBar from "../components/TopBar";
 import OverlayScrim from "../components/OverlayScrim";
@@ -7,6 +7,7 @@ import PhotoLightbox from "../components/PhotoLightbox";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
 import { useAuthedImage } from "../hooks/useAuthedImage";
+import { useKeepFocusedInScrollParent } from "../hooks/useKeepFocusedInScrollParent";
 import {
   photosApi,
   type IcloudAlbumSummary,
@@ -72,6 +73,10 @@ export default function PhotosPage() {
   const [pickingCoverId, setPickingCoverId] = useState<string | null>(null);
   const [coverFlash, setCoverFlash] = useState<string | null>(null);
   const [showHowTo, setShowHowTo] = useState(false);
+  const icloudFormRef = useRef<HTMLFormElement>(null);
+  const renameFormRef = useRef<HTMLFormElement>(null);
+  useKeepFocusedInScrollParent(icloudFormOpen, icloudFormRef);
+  useKeepFocusedInScrollParent(Boolean(renameAlbum), renameFormRef);
 
   const loadIcloud = useCallback(async () => {
     if (!token || !family) {
@@ -546,7 +551,7 @@ export default function PhotosPage() {
           onDismiss={() => setShowHowTo(false)}
           label={t("photos.cancel")}
         >
-          <div className="relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+          <div className="relative z-10 max-h-[var(--sheet-max-height,85vh)] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
             <h2 className="text-base font-bold text-neutral-900">{t("photos.icloudHowToTitle")}</h2>
             <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-neutral-700">
               {t("photos.icloudHowToSteps")}
@@ -572,8 +577,10 @@ export default function PhotosPage() {
           label={t("photos.cancel")}
         >
           <form
+            ref={icloudFormRef}
             onSubmit={(e) => void handleSaveIcloud(e)}
-            className="relative w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
+            className="relative max-h-[var(--sheet-max-height,90vh)] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
+            style={{ overflowAnchor: "none" }}
           >
             <h2 className="text-base font-bold text-neutral-900">
               {editingUrlAlbum ? t("photos.icloudChange") : t("photos.icloudAdd")}
@@ -628,8 +635,10 @@ export default function PhotosPage() {
           label={t("photos.cancel")}
         >
           <form
+            ref={renameFormRef}
             onSubmit={(e) => void handleRename(e)}
-            className="relative w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
+            className="relative max-h-[var(--sheet-max-height,90vh)] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
+            style={{ overflowAnchor: "none" }}
           >
             <h2 className="text-base font-bold text-neutral-900">{t("photos.icloudRename")}</h2>
             <input
