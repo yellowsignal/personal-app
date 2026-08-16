@@ -29,6 +29,7 @@ import {
 } from "../domain/recurrence.js";
 import { HttpError } from "./authService.js";
 import type { FamilyActivityService } from "./familyActivityService.js";
+import { collectChanges, FAMILY_ACTIVITY_ALL_DAY } from "../domain/familyActivityFormat.js";
 
 const USER_CATEGORIES = new Set(["personal", "family", "holiday"]);
 const REMINDER_MINUTES = new Set([10, 30, 60, 1440]);
@@ -353,12 +354,13 @@ export class CalendarService {
     if (isShared) {
       // Activity feed must never roll back / fail an already-persisted calendar create.
       try {
-        await this.activityService?.recordSharedCreate({
+        await this.activityService?.recordActivity({
           familyId: record.familyId,
           actorUserId: user.id,
           actorName: user.name,
           entityType: "CALENDAR_EVENT",
           entityId: record.id,
+          action: "CREATED",
           title: record.title,
         });
       } catch (err) {
@@ -385,7 +387,13 @@ export class CalendarService {
     if (isDateKey(body.date) || isDateKey(body.endDate)) {
       const publicExisting = toPublicCalendarEvent(existing, "");
       const date = isDateKey(body.date) ? body.date : publicExisting.date;
-      const endDate = isDateKey(body.endDate) ? body.endDate : publicExisting.endDate;
+      // If only `date` moves and the event was single-day, keep it single-day.
+      const wasSingleDay = publicExisting.endDate === publicExisting.date;
+      const endDate = isDateKey(body.endDate)
+        ? body.endDate
+        : isDateKey(body.date) && wasSingleDay
+          ? date
+          : publicExisting.endDate;
       const time =
         typeof body.time === "string" && /^\d{2}:\d{2}$/.test(body.time)
           ? body.time
@@ -463,6 +471,48 @@ export class CalendarService {
         ? { isReminderSent: false, reminderSentFor: null as string | null }
         : {}),
     });
+
+    const familyId = updated.familyId ?? existing.familyId ?? user.familyId;
+    if (familyId && (updated.isShared || existing.isShared)) {
+      try {
+        const before = toPublicCalendarEvent(existing, "");
+        const after = toPublicCalendarEvent(updated, "");
+        const changes = collectChanges([
+          { field: "title", from: before.title, to: after.title },
+          { field: "date", from: before.date, to: after.date },
+          {
+            field: "time",
+            from: before.time ?? (before.isAllDay ? FAMILY_ACTIVITY_ALL_DAY : ""),
+            to: after.time ?? (after.isAllDay ? FAMILY_ACTIVITY_ALL_DAY : ""),
+          },
+          {
+            field: "endDate",
+            from: before.endDate && before.endDate !== before.date ? before.endDate : "",
+            to: after.endDate && after.endDate !== after.date ? after.endDate : "",
+          },
+          {
+            field: "shared",
+            from: existing.isShared ? "on" : "off",
+            to: updated.isShared ? "on" : "off",
+          },
+        ]);
+        if (changes.length > 0) {
+          await this.activityService?.recordActivity({
+            familyId,
+            actorUserId: user.id,
+            actorName: user.name,
+            entityType: "CALENDAR_EVENT",
+            entityId: updated.id,
+            action: "UPDATED",
+            title: updated.title,
+            detail: { changes },
+          });
+        }
+      } catch (err) {
+        console.error("[calendar] family activity after update failed", err);
+      }
+    }
+
     await this.kickReminders();
     return toPublicCalendarEvent(updated, user.name, true);
   }
@@ -476,6 +526,21 @@ export class CalendarService {
     if (existing.userId !== user.id) throw new HttpError(403, "only the owner can delete this event", "FORBIDDEN");
     if (existing.sourceDocumentId != null) {
       throw new HttpError(400, "derived events cannot be deleted here");
+    }
+    if (existing.isShared && (existing.familyId ?? user.familyId)) {
+      try {
+        await this.activityService?.recordActivity({
+          familyId: existing.familyId ?? user.familyId,
+          actorUserId: user.id,
+          actorName: user.name,
+          entityType: "CALENDAR_EVENT",
+          entityId: existing.id,
+          action: "DELETED",
+          title: existing.title,
+        });
+      } catch (err) {
+        console.error("[calendar] family activity after delete failed", err);
+      }
     }
     await this.calendarRepo.remove(id);
   }

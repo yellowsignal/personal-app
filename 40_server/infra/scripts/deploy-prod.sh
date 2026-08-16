@@ -99,6 +99,7 @@ if [[ "$FRONTEND_ONLY" -eq 0 ]]; then
 [Service]
 Environment=TZ=UTC
 Environment=GIT_COMMIT=${GIT_COMMIT}
+Environment=FAMILY_ACTIVITY_NOTIFY_ACTOR=0
 EOF
   sudo systemctl daemon-reload
   echo "==> restart myfamilyhub-api"

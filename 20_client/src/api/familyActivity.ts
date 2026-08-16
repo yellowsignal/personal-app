@@ -8,13 +8,17 @@ export type FamilyActivityEntityType =
   | "SUBSCRIPTION"
   | "PHOTO";
 
+export type FamilyActivityAction = "CREATED" | "UPDATED" | "DELETED";
+
 export interface PublicFamilyActivity {
   id: number;
   actorUserId: number;
   actorName: string;
   entityType: FamilyActivityEntityType;
   entityId: number;
+  action: FamilyActivityAction;
   title: string;
+  summary: string;
   path: string;
   createdAt: string;
   isRead: boolean;

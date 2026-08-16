@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import type {
   CreateFamilyActivityInput,
+  FamilyActivityAction,
   FamilyActivityEntityType,
   FamilyActivityRecord,
   FamilyActivityRepository,
@@ -12,7 +13,9 @@ function mapRow(row: {
   actorUserId: number;
   entityType: FamilyActivityEntityType;
   entityId: number;
+  action: FamilyActivityAction;
   title: string;
+  detailJson: string | null;
   createdAt: Date;
 }): FamilyActivityRecord {
   return {
@@ -21,7 +24,9 @@ function mapRow(row: {
     actorUserId: row.actorUserId,
     entityType: row.entityType,
     entityId: row.entityId,
+    action: row.action,
     title: row.title,
+    detailJson: row.detailJson,
     createdAt: row.createdAt,
   };
 }
@@ -36,7 +41,9 @@ export class PrismaFamilyActivityRepository implements FamilyActivityRepository 
         actorUserId: input.actorUserId,
         entityType: input.entityType,
         entityId: input.entityId,
+        action: input.action,
         title: input.title.slice(0, 200),
+        detailJson: input.detailJson ?? null,
       },
     });
     return mapRow(row);

@@ -90,6 +90,8 @@ Environment=PHOTO_DIR=${PROD_DATA}/photos
 Environment=ICLOUD_COVER_DIR=${PROD_DATA}/icloud-covers
 # Prefer prod VAPID file if present (clone-dig-to-prod copies dig keys once)
 Environment=VAPID_FILE=${PROD_DATA}/vapid.json
+# Never self-notify on prod (dig-only solo testing flag)
+Environment=FAMILY_ACTIVITY_NOTIFY_ACTOR=0
 ExecStart=/usr/bin/node ${SERVER_DIR}/dist/index.js
 Restart=on-failure
 RestartSec=3

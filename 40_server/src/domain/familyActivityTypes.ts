@@ -6,13 +6,17 @@ export type FamilyActivityEntityType =
   | "SUBSCRIPTION"
   | "PHOTO";
 
+export type FamilyActivityAction = "CREATED" | "UPDATED" | "DELETED";
+
 export interface FamilyActivityRecord {
   id: number;
   familyId: number;
   actorUserId: number;
   entityType: FamilyActivityEntityType;
   entityId: number;
+  action: FamilyActivityAction;
   title: string;
+  detailJson: string | null;
   createdAt: Date;
 }
 
@@ -21,7 +25,9 @@ export interface CreateFamilyActivityInput {
   actorUserId: number;
   entityType: FamilyActivityEntityType;
   entityId: number;
+  action: FamilyActivityAction;
   title: string;
+  detailJson?: string | null;
 }
 
 export interface FamilyActivityRepository {

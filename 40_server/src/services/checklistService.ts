@@ -12,6 +12,7 @@ import {
 } from "../domain/checklistTypes.js";
 import { HttpError } from "./authService.js";
 import type { FamilyActivityService } from "./familyActivityService.js";
+import { collectChanges } from "../domain/familyActivityFormat.js";
 
 function parseScope(value: unknown): ViewScope {
   if (value === "personal" || value === "family" || value === "all") return value;
@@ -167,6 +168,28 @@ export class ChecklistService {
       isShared: body.isShared === undefined ? undefined : isShared,
       familyId: user.familyId,
     });
+    if (user.familyId && (updated.isShared || existing.isShared)) {
+      const changes = collectChanges([
+        { field: "title", from: existing.title, to: updated.title },
+        {
+          field: "shared",
+          from: existing.isShared ? "on" : "off",
+          to: updated.isShared ? "on" : "off",
+        },
+      ]);
+      if (changes.length > 0) {
+        await this.activityService?.recordActivity({
+          familyId: user.familyId,
+          actorUserId: user.id,
+          actorName: user.name,
+          entityType: "CHECKLIST",
+          entityId: updated.id,
+          action: "UPDATED",
+          title: updated.title,
+          detail: { changes },
+        });
+      }
+    }
     const itemCount = await this.checklistRepo.countItems(id);
     const completedCount = await this.checklistRepo.countCompletedItems(id);
     return toPublicChecklist(updated, user.name, itemCount, completedCount);
@@ -178,6 +201,17 @@ export class ChecklistService {
     if (!existing) throw new HttpError(404, "checklist not found", "NOT_FOUND");
     if (existing.userId !== user.id) {
       throw new HttpError(403, "only the owner can delete this checklist", "FORBIDDEN");
+    }
+    if (existing.isShared && user.familyId) {
+      await this.activityService?.recordActivity({
+        familyId: user.familyId,
+        actorUserId: user.id,
+        actorName: user.name,
+        entityType: "CHECKLIST",
+        entityId: existing.id,
+        action: "DELETED",
+        title: existing.title,
+      });
     }
     await this.checklistRepo.remove(id);
   }

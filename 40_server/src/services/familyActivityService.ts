@@ -1,10 +1,18 @@
 import type { AuthRepository } from "../domain/authRepository.js";
 import type {
+  FamilyActivityAction,
   FamilyActivityEntityType,
   FamilyActivityRecord,
   FamilyActivityRepository,
 } from "../domain/familyActivityTypes.js";
 import { pathForEntity } from "../domain/familyActivityTypes.js";
+import {
+  formatFamilyActivityPushTitle,
+  formatFamilyActivitySummary,
+  serializeActivityDetail,
+  type ActivityDetail,
+} from "../domain/familyActivityFormat.js";
+import { shouldNotifyFamilyActivityActor } from "../domain/familyActivityNotifySelf.js";
 import { HttpError } from "./authService.js";
 import type { PushService } from "./pushService.js";
 
@@ -14,7 +22,10 @@ export interface PublicFamilyActivity {
   actorName: string;
   entityType: FamilyActivityEntityType;
   entityId: number;
+  action: FamilyActivityAction;
   title: string;
+  /** Localized one-line explanation for the viewer. */
+  summary: string;
   path: string;
   createdAt: string;
   isRead: boolean;
@@ -23,37 +34,6 @@ export interface PublicFamilyActivity {
 export interface FamilyActivitySummary {
   unreadCount: number;
   latest: PublicFamilyActivity | null;
-}
-
-function pushCopy(
-  lang: string,
-  actorName: string,
-  entityType: FamilyActivityEntityType,
-  title: string,
-): { title: string; body: string } {
-  const ja = lang === "ja";
-  const kind = (() => {
-    switch (entityType) {
-      case "CALENDAR_EVENT":
-        return ja ? "家族の予定" : "가족 일정";
-      case "DOCUMENT":
-        return ja ? "家族の書類" : "가족 문서";
-      case "CHECKLIST":
-        return ja ? "家族のチェックリスト" : "가족 체크리스트";
-      case "ASSET":
-        return ja ? "家族の資産" : "가족 자산";
-      case "SUBSCRIPTION":
-        return ja ? "家族のサブスク" : "가족 구독";
-      case "PHOTO":
-        return ja ? "家族の写真" : "가족 사진";
-      default:
-        return ja ? "家族の共有" : "가족 공유";
-    }
-  })();
-  return {
-    title: ja ? `${actorName}さんが共有しました` : `${actorName}님이 공유했어요`,
-    body: `${kind} · ${title}`,
-  };
 }
 
 export class FamilyActivityService {
@@ -70,17 +50,18 @@ export class FamilyActivityService {
   }
 
   /**
-   * Record a shared create and notify other family members.
-   * Best-effort: never throws — callers (calendar/assets/…) must not fail the primary create
-   * if the activity feed or push side-effect breaks (missing table, Prisma error, etc.).
+   * Record a family feed item and notify other members (push + badge count).
+   * Best-effort: never throws into the primary create/update/delete path.
    */
-  async recordSharedCreate(input: {
+  async recordActivity(input: {
     familyId: number | null | undefined;
     actorUserId: number;
     actorName: string;
     entityType: FamilyActivityEntityType;
     entityId: number;
+    action: FamilyActivityAction;
     title: string;
+    detail?: ActivityDetail | null;
   }): Promise<void> {
     if (input.familyId == null) return;
     const title = input.title.trim().slice(0, 200) || "(untitled)";
@@ -90,20 +71,33 @@ export class FamilyActivityService {
         actorUserId: input.actorUserId,
         entityType: input.entityType,
         entityId: input.entityId,
+        action: input.action,
         title,
+        detailJson: serializeActivityDetail(input.detail),
       });
 
       if (!this.pushService) return;
       try {
         const members = await this.authRepo.listFamilyMembers(input.familyId);
-        const recipients = members.filter((m) => m.id !== input.actorUserId);
+        const notifySelf = shouldNotifyFamilyActivityActor();
+        const recipients = members.filter((m) => notifySelf || m.id !== input.actorUserId);
         for (const member of recipients) {
           const unreadCount = await this.activityRepo.countUnreadForUser(input.familyId, member.id);
-          const copy = pushCopy(member.languagePref, input.actorName, input.entityType, title);
+          const summary = formatFamilyActivitySummary({
+            languagePref: member.languagePref,
+            action: activity.action,
+            entityType: activity.entityType,
+            title: activity.title,
+            detailJson: activity.detailJson,
+          });
           await this.pushService.sendToUsers([member.id], {
-            title: copy.title,
-            body: copy.body,
-            url: "/",
+            title: formatFamilyActivityPushTitle({
+              languagePref: member.languagePref,
+              actorName: input.actorName,
+              entityType: activity.entityType,
+            }),
+            body: summary,
+            url: pathForEntity(activity.entityType, activity.entityId),
             tag: `family-activity-${activity.id}`,
             unreadCount,
           });
@@ -112,8 +106,20 @@ export class FamilyActivityService {
         console.error("[family-activity] push failed", err);
       }
     } catch (err) {
-      console.error("[family-activity] recordSharedCreate failed", err);
+      console.error("[family-activity] recordActivity failed", err);
     }
+  }
+
+  /** @deprecated Prefer recordActivity({ action: "CREATED" }) */
+  async recordSharedCreate(input: {
+    familyId: number | null | undefined;
+    actorUserId: number;
+    actorName: string;
+    entityType: FamilyActivityEntityType;
+    entityId: number;
+    title: string;
+  }): Promise<void> {
+    await this.recordActivity({ ...input, action: "CREATED" });
   }
 
   async summary(userId: number): Promise<FamilyActivitySummary> {
@@ -132,11 +138,10 @@ export class FamilyActivityService {
     const out: PublicFamilyActivity[] = [];
     for (const row of rows) {
       if (row.actorUserId === user.id) {
-        // Still show own shares in the feed, always "read"
-        out.push(await this.toPublic(row, true));
+        out.push(await this.toPublic(row, true, user.languagePref));
         continue;
       }
-      out.push(await this.toPublic(row, !unreadIds.has(row.id)));
+      out.push(await this.toPublic(row, !unreadIds.has(row.id), user.languagePref));
     }
     return out;
   }
@@ -154,7 +159,11 @@ export class FamilyActivityService {
     return { unreadCount };
   }
 
-  private async toPublic(row: FamilyActivityRecord, isRead: boolean): Promise<PublicFamilyActivity> {
+  private async toPublic(
+    row: FamilyActivityRecord,
+    isRead: boolean,
+    languagePref: string | null | undefined,
+  ): Promise<PublicFamilyActivity> {
     const actor = await this.authRepo.findUserById(row.actorUserId);
     return {
       id: row.id,
@@ -162,7 +171,15 @@ export class FamilyActivityService {
       actorName: actor?.name ?? "?",
       entityType: row.entityType,
       entityId: row.entityId,
+      action: row.action,
       title: row.title,
+      summary: formatFamilyActivitySummary({
+        languagePref,
+        action: row.action,
+        entityType: row.entityType,
+        title: row.title,
+        detailJson: row.detailJson,
+      }),
       path: pathForEntity(row.entityType, row.entityId),
       createdAt: row.createdAt.toISOString(),
       isRead,

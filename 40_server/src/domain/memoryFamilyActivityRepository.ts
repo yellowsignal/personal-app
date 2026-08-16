@@ -16,7 +16,9 @@ export class MemoryFamilyActivityRepository implements FamilyActivityRepository 
       actorUserId: input.actorUserId,
       entityType: input.entityType,
       entityId: input.entityId,
+      action: input.action,
       title: input.title.slice(0, 200),
+      detailJson: input.detailJson ?? null,
       createdAt: new Date(),
     };
     this.rows.push(row);
