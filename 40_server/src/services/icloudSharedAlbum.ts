@@ -2,7 +2,9 @@
 
 export const ICLOUD_ALBUM_MAX_PHOTOS = 200;
 const ASSET_BATCH = 25;
-const REQUEST_MS = 12_000;
+/** Bootstrap hosts answer 330 quickly; the real partition can take much longer to wake. */
+export const ICLOUD_DISCOVERY_MS = 8_000;
+export const ICLOUD_REQUEST_MS = 40_000;
 const PHOTO_UA = "Photos/5.0 (Macintosh; OS X 10.15.4) AppleWebKit/605.1.15";
 const TOKEN_RE = /^[A-Za-z0-9_-]{8,80}$/;
 const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -60,6 +62,13 @@ export class IcloudAlbumError extends Error {
   }
 }
 
+export class IcloudAlbumTimeoutError extends IcloudAlbumError {
+  constructor(message = "iCloud album request timed out") {
+    super(message);
+    this.name = "IcloudAlbumTimeoutError";
+  }
+}
+
 export type FetchLike = (
   input: string | URL,
   init?: RequestInit,
@@ -69,6 +78,8 @@ export interface FetchIcloudAlbumOptions {
   http?: FetchLike;
   includeAssets?: boolean;
   maxPhotos?: number;
+  requestMs?: number;
+  discoveryMs?: number;
 }
 
 function base62ToInt(input: string): number {
@@ -86,6 +97,12 @@ export function getLegacyPartition(token: string): string {
     token[0] === "A" ? base62ToInt(token[1] ?? "0") : base62ToInt(token.substring(1, 3));
   if (serverPartition < 10) return `0${serverPartition}`;
   return String(serverPartition);
+}
+
+/** Fast 330 hosts first. Computed pNNN can hang on cold partitions (e.g. p162). */
+export function legacyDiscoveryHosts(token: string): string[] {
+  const computed = `p${getLegacyPartition(token)}-sharedstreams.icloud.com`;
+  return [...new Set(["sharedstreams.icloud.com", "p01-sharedstreams.icloud.com", "p12-sharedstreams.icloud.com", computed])];
 }
 
 function coerceUrl(raw: string): string {
@@ -132,14 +149,23 @@ export function parseIcloudSharedAlbumUrl(raw: unknown): ParsedIcloudAlbum | nul
   };
 }
 
+type PostJsonResult = { status: number; json: unknown; header: (name: string) => string | null };
+
+function isAbortError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const name = "name" in err ? String(err.name) : "";
+  return name === "AbortError" || name === "TimeoutError";
+}
+
 async function postJson(
   http: FetchLike,
   url: string,
   body: string,
   extraHeaders: Record<string, string> = {},
-): Promise<{ status: number; json: unknown; header: (name: string) => string | null }> {
+  timeoutMs: number = ICLOUD_REQUEST_MS,
+): Promise<PostJsonResult> {
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), REQUEST_MS);
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
   try {
     const response = await http(url, {
       method: "POST",
@@ -169,9 +195,42 @@ async function postJson(
     };
   } catch (err) {
     if (err instanceof IcloudAlbumError) throw err;
+    if (isAbortError(err) || ac.signal.aborted) throw new IcloudAlbumTimeoutError();
     throw new IcloudAlbumError("iCloud album request failed");
   } finally {
     clearTimeout(timer);
+  }
+}
+
+async function tryWebstream(
+  http: FetchLike,
+  host: string,
+  token: string,
+  body: string,
+  timeoutMs: number,
+): Promise<PostJsonResult | null> {
+  try {
+    return await postJson(http, `https://${host}/${token}/sharedstreams/webstream`, body, {}, timeoutMs);
+  } catch (err) {
+    if (err instanceof IcloudAlbumError) return null;
+    throw err;
+  }
+}
+
+async function webstreamWithRetry(
+  http: FetchLike,
+  host: string,
+  token: string,
+  body: string,
+  timeoutMs: number,
+): Promise<PostJsonResult> {
+  try {
+    return await postJson(http, `https://${host}/${token}/sharedstreams/webstream`, body, {}, timeoutMs);
+  } catch (err) {
+    if (err instanceof IcloudAlbumTimeoutError) {
+      return await postJson(http, `https://${host}/${token}/sharedstreams/webstream`, body, {}, timeoutMs);
+    }
+    throw err;
   }
 }
 
@@ -218,32 +277,25 @@ async function fetchLegacyAlbum(
   http: FetchLike,
   includeAssets: boolean,
   maxPhotos: number,
+  requestMs: number,
+  discoveryMs: number,
 ): Promise<IcloudAlbum> {
   const body = JSON.stringify({ streamCtag: null });
-  // Prefer a bootstrap host that returns 330 + X-Apple-MMe-Host; computed partition can 404
-  // immediately on some albums even when the redirect host is the same.
-  const bootstrapHosts = [
-    `p${getLegacyPartition(token)}-sharedstreams.icloud.com`,
-    "sharedstreams.icloud.com",
-    "p01-sharedstreams.icloud.com",
-    "p12-sharedstreams.icloud.com",
-  ];
+  const bootstrapHosts = legacyDiscoveryHosts(token);
 
   let host = bootstrapHosts[0]!;
-  let streamRes = await postJson(http, `https://${host}/${token}/sharedstreams/webstream`, body);
-
-  if (streamRes.status !== 200 && streamRes.status !== 330) {
-    for (const candidate of bootstrapHosts.slice(1)) {
-      const attempt = await postJson(http, `https://${candidate}/${token}/sharedstreams/webstream`, body);
-      if (attempt.status === 200 || attempt.status === 330) {
-        host = candidate;
-        streamRes = attempt;
-        break;
-      }
+  let streamRes: PostJsonResult | null = null;
+  for (const candidate of bootstrapHosts) {
+    const attempt = await tryWebstream(http, candidate, token, body, discoveryMs);
+    if (!attempt) continue;
+    if (attempt.status === 200 || attempt.status === 330) {
+      host = candidate;
+      streamRes = attempt;
+      break;
     }
   }
 
-  if (streamRes.status === 330) {
+  if (streamRes?.status === 330) {
     const payload = asRecord(streamRes.json);
     const redirected =
       str(payload?.["X-Apple-MMe-Host"]) ??
@@ -251,10 +303,10 @@ async function fetchLegacyAlbum(
       streamRes.header("X-Apple-MMe-Host");
     if (!redirected) throw new IcloudAlbumError("iCloud album redirect missing host");
     host = redirected.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-    streamRes = await postJson(http, `https://${host}/${token}/sharedstreams/webstream`, body);
+    streamRes = await webstreamWithRetry(http, host, token, body, requestMs);
   }
 
-  if (streamRes.status !== 200) {
+  if (!streamRes || streamRes.status !== 200) {
     throw new IcloudAlbumError("iCloud album was not found");
   }
   const stream = asRecord(streamRes.json);
@@ -299,6 +351,8 @@ async function fetchLegacyAlbum(
       http,
       `https://${host}/${token}/sharedstreams/webasseturls`,
       JSON.stringify({ photoGuids: batch.map((p) => p.id) }),
+      {},
+      requestMs,
     );
     if (assetRes.status !== 200) continue;
     const items = asRecord(asRecord(assetRes.json)?.items);
@@ -364,6 +418,7 @@ async function fetchCloudKitAlbum(
   http: FetchLike,
   includeAssets: boolean,
   maxPhotos: number,
+  requestMs: number,
 ): Promise<IcloudAlbum> {
   const resolveUrl = `${CK_HOST}/database/1/${CK_CONTAINER}/production/public/records/resolve?${CK_PARAMS}`;
   const resolveRes = await postJson(
@@ -371,6 +426,7 @@ async function fetchCloudKitAlbum(
     resolveUrl,
     JSON.stringify({ shortGUIDs: [{ value: token }] }),
     { "content-type": "application/json" },
+    requestMs,
   );
   if (resolveRes.status !== 200) throw new IcloudAlbumError("iCloud album was not found");
   const results = asRecord(resolveRes.json)?.results;
@@ -422,9 +478,13 @@ async function fetchCloudKitAlbum(
       resultsLimit: 100,
     };
     if (marker) payload.continuationMarker = marker;
-    const queryRes = await postJson(http, queryUrl, JSON.stringify(payload), {
-      "content-type": "application/json",
-    });
+    const queryRes = await postJson(
+      http,
+      queryUrl,
+      JSON.stringify(payload),
+      { "content-type": "application/json" },
+      requestMs,
+    );
     if (queryRes.status !== 200) break;
     const obj = asRecord(queryRes.json);
     const records = Array.isArray(obj?.records) ? obj.records : [];
@@ -462,10 +522,12 @@ export async function fetchIcloudSharedAlbum(
   const http = options.http ?? fetch;
   const includeAssets = options.includeAssets !== false;
   const maxPhotos = options.maxPhotos ?? ICLOUD_ALBUM_MAX_PHOTOS;
+  const requestMs = options.requestMs ?? ICLOUD_REQUEST_MS;
+  const discoveryMs = options.discoveryMs ?? ICLOUD_DISCOVERY_MS;
   if (parsed.kind === "cloudkit") {
-    const album = await fetchCloudKitAlbum(parsed.token, http, includeAssets, maxPhotos);
+    const album = await fetchCloudKitAlbum(parsed.token, http, includeAssets, maxPhotos, requestMs);
     return { ...album, photos: sortIcloudPhotosOldestFirst(album.photos) };
   }
-  const album = await fetchLegacyAlbum(parsed.token, http, includeAssets, maxPhotos);
+  const album = await fetchLegacyAlbum(parsed.token, http, includeAssets, maxPhotos, requestMs, discoveryMs);
   return { ...album, photos: sortIcloudPhotosOldestFirst(album.photos) };
 }
