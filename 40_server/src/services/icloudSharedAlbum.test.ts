@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   fetchIcloudSharedAlbum,
   getLegacyPartition,
+  legacyDiscoveryHosts,
   parseIcloudSharedAlbumUrl,
   sortIcloudPhotosOldestFirst,
   type FetchLike,
@@ -37,6 +38,13 @@ test("parseIcloudSharedAlbumUrl accepts legacy hash links and CloudKit path link
 
 test("getLegacyPartition pads single-digit partitions", () => {
   assert.equal(getLegacyPartition("B125ON9t3mbLNC").length >= 2, true);
+});
+
+test("legacyDiscoveryHosts tries sharedstreams before the computed partition", () => {
+  const hosts = legacyDiscoveryHosts("B2c532ODWKlbnx");
+  assert.equal(hosts[0], "sharedstreams.icloud.com");
+  assert.equal(hosts.includes("p162-sharedstreams.icloud.com"), true);
+  assert.ok(hosts.indexOf("sharedstreams.icloud.com") < hosts.indexOf("p162-sharedstreams.icloud.com"));
 });
 
 test("sortIcloudPhotosOldestFirst keeps undated photos last and sorts ids stably", () => {
@@ -117,6 +125,7 @@ test("fetchIcloudSharedAlbum follows 330 redirect and maps asset URLs", async ()
   assert.equal(album.photos[1].caption, "바다");
   assert.equal(album.photos[0].thumbUrl, "https://cvws.icloud-content.com/t/thumb.jpg?a=1");
   assert.equal(album.photos[0].fullUrl, "https://cvws.icloud-content.com/t/full.jpg?a=1");
+  assert.equal(calls[0]?.includes("sharedstreams.icloud.com/"), true);
   assert.equal(calls.some((u) => u.includes("p12-sharedstreams.icloud.com") && u.endsWith("/webstream")), true);
   assert.equal(calls.some((u) => u.endsWith("/webasseturls")), true);
 });
@@ -172,4 +181,80 @@ test("fetchIcloudSharedAlbum CloudKit resolve + query maps download URLs", async
   assert.equal(album.photos.length, 1);
   assert.equal(album.photos[0].thumbUrl, "https://cdn.example/med.jpg");
   assert.equal(album.photos[0].fullUrl, "https://cdn.example/full.jpg");
+});
+
+test("fetchIcloudSharedAlbum skips a hanging bootstrap host and follows 330", async () => {
+  const calls: string[] = [];
+  const http: FetchLike = async (input, init) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.includes("://sharedstreams.icloud.com/")) {
+      await new Promise<never>((_, reject) => {
+        const signal = init?.signal;
+        if (!signal) {
+          reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+          return;
+        }
+        if (signal.aborted) {
+          reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+          return;
+        }
+        signal.addEventListener("abort", () => {
+          reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+        });
+      });
+    }
+    if (url.includes("/webstream") && url.includes("p12-sharedstreams") === false) {
+      return jsonResponse(330, { "X-Apple-MMe-Host": "p12-sharedstreams.icloud.com" });
+    }
+    if (url.endsWith("/webstream")) {
+      return jsonResponse(200, { streamName: "느린 앨범", photos: [] });
+    }
+    return jsonResponse(404, {});
+  };
+
+  const album = await fetchIcloudSharedAlbum("https://www.icloud.com/sharedalbum/#B125ON9t3mbLNC", {
+    http,
+    includeAssets: false,
+    discoveryMs: 30,
+    requestMs: 200,
+  });
+  assert.equal(album.name, "느린 앨범");
+  assert.equal(calls[0]?.includes("://sharedstreams.icloud.com/"), true);
+  assert.equal(calls.some((u) => u.includes("p01-sharedstreams.icloud.com")), true);
+});
+
+test("fetchIcloudSharedAlbum retries the redirected host after a timeout", async () => {
+  let p12Attempts = 0;
+  const http: FetchLike = async (input, init) => {
+    const url = String(input);
+    if (url.includes("/webstream") && url.includes("p12-sharedstreams") === false) {
+      return jsonResponse(330, { "X-Apple-MMe-Host": "p12-sharedstreams.icloud.com" });
+    }
+    if (url.includes("p12-sharedstreams") && url.endsWith("/webstream")) {
+      p12Attempts += 1;
+      if (p12Attempts === 1) {
+        await new Promise<never>((_, reject) => {
+          const signal = init?.signal;
+          const fail = () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+          if (!signal || signal.aborted) {
+            fail();
+            return;
+          }
+          signal.addEventListener("abort", fail);
+        });
+      }
+      return jsonResponse(200, { streamName: "재시도 앨범", photos: [] });
+    }
+    return jsonResponse(404, {});
+  };
+
+  const album = await fetchIcloudSharedAlbum("https://www.icloud.com/sharedalbum/#B125ON9t3mbLNC", {
+    http,
+    includeAssets: false,
+    discoveryMs: 200,
+    requestMs: 40,
+  });
+  assert.equal(album.name, "재시도 앨범");
+  assert.equal(p12Attempts, 2);
 });
