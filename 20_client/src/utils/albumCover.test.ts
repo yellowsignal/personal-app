@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { albumCoverPhoto, sortAlbumPhotosOldestFirst } from "./albumCover";
+import { albumCoverPhoto, sortAlbumPhotosOldestFirst, withAlbumCoverCacheKey } from "./albumCover";
 import type { IcloudAlbumPhoto } from "../api/photos";
 
 function photo(id: string, date: string | null): IcloudAlbumPhoto {
@@ -31,4 +31,16 @@ test("sortAlbumPhotosOldestFirst keeps dated photos before undated ones", () => 
     sorted.map((p) => p.id),
     ["first", "second", "undated"],
   );
+});
+
+test("withAlbumCoverCacheKey changes the URL when the cover photo changes", () => {
+  const first = withAlbumCoverCacheKey("/api/photos/icloud-albums/3/cover", "guid-old");
+  const next = withAlbumCoverCacheKey("/api/photos/icloud-albums/3/cover", "guid-1");
+  assert.equal(first, "/api/photos/icloud-albums/3/cover?v=guid-old");
+  assert.equal(next, "/api/photos/icloud-albums/3/cover?v=guid-1");
+  assert.equal(
+    withAlbumCoverCacheKey("/api/photos/icloud-albums/3/cover?v=guid-old", "guid-1"),
+    "/api/photos/icloud-albums/3/cover?v=guid-1",
+  );
+  assert.equal(withAlbumCoverCacheKey(null, "guid-1"), null);
 });
