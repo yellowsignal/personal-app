@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { Download, X } from "lucide-react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
-import { useOverlayCoverStyle } from "../hooks/useOverlayCoverStyle";
-import { acquireOverlayBackdrop, setOverlayBackdropOpacity } from "../utils/overlayBackdrop";
+import { useOverlayRoot } from "../hooks/useOverlayRoot";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { IcloudAlbumPhoto } from "../api/photos";
 import {
@@ -82,7 +81,7 @@ export default function PhotoLightbox({
   const canPrev = index > 0;
   const canNext = index < photos.length - 1;
   const zoomed = isPhotoZoomed(zoom.scale);
-  const cover = useOverlayCoverStyle();
+  const overlayRoot = useOverlayRoot();
   const offset = dragging && !zoomed
     ? photoViewerDragOffset({
         axis: axis.current,
@@ -94,11 +93,6 @@ export default function PhotoLightbox({
     : { x: dx, y: Math.max(0, dy) };
 
   useBodyScrollLock(!exiting, { pinBody: false });
-
-  useLayoutEffect(() => {
-    const release = acquireOverlayBackdrop(1);
-    return release;
-  }, []);
 
   const applyZoom = useCallback((next: PhotoZoom) => {
     zoomRef.current = next;
@@ -147,7 +141,6 @@ export default function PhotoLightbox({
     setDragging(false);
     setDx(0);
     setDy(typeof window !== "undefined" ? window.innerHeight : 800);
-    setOverlayBackdropOpacity(0);
     if (closeTimer.current != null) window.clearTimeout(closeTimer.current);
     closeTimer.current = window.setTimeout(() => {
       closeTimer.current = null;
@@ -500,11 +493,7 @@ export default function PhotoLightbox({
 
   const dim = zoomed ? 1 : photoViewerBackdropOpacity(offset.y);
 
-  useLayoutEffect(() => {
-    setOverlayBackdropOpacity(exiting ? 0 : dim);
-  }, [dim, exiting]);
-
-  if (!photo || typeof document === "undefined") return null;
+  if (!photo || !overlayRoot) return null;
 
   const caption = photo.caption || albumTitle || t("photos.noCaption");
 
@@ -514,13 +503,13 @@ export default function PhotoLightbox({
       role="dialog"
       aria-modal="true"
       aria-label={caption}
-      className="fixed inset-0 z-[80] overflow-hidden"
+      className="absolute inset-0 z-[80] overflow-hidden pointer-events-auto"
       style={{
-        ...cover,
-        backgroundColor: "transparent",
+        backgroundColor: `rgba(0,0,0,${dim})`,
         pointerEvents: exiting ? "none" : "auto",
         touchAction: "none",
         overscrollBehavior: "none",
+        transition: dragging ? "none" : "background-color 200ms ease",
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -623,6 +612,6 @@ export default function PhotoLightbox({
         <p className="mt-1 text-center text-[11px] text-white/70">{t("photos.viewerHint")}</p>
       </div>
     </div>,
-    document.body,
+    overlayRoot,
   );
 }

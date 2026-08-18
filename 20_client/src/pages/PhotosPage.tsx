@@ -18,6 +18,7 @@ import { ApiError } from "../api/http";
 import { MAX_ICLOUD_ALBUMS, saveBlobLocally } from "../utils/photoUpload";
 import { sortAlbumPhotosOldestFirst, withAlbumCoverCacheKey } from "../utils/albumCover";
 import { isDrillInGhostClick } from "../utils/drillInClick";
+import { removeLegacyBodyOverlays } from "../utils/overlayRoot";
 
 function AlbumCardCover({
   token,
@@ -110,6 +111,7 @@ export default function PhotosPage() {
   useEffect(() => {
     setViewer(null);
     albumOpenedAt.current = Date.now();
+    removeLegacyBodyOverlays();
   }, [openAlbumId]);
 
   useEffect(() => {

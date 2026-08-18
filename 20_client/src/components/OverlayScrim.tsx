@@ -1,15 +1,12 @@
-import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
-import { useOverlayCoverStyle } from "../hooks/useOverlayCoverStyle";
-import {
-  OVERLAY_SCRIM_OPACITY,
-  acquireOverlayBackdrop,
-  setOverlayBackdropOpacity,
-} from "../utils/overlayBackdrop";
+import { useOverlayRoot } from "../hooks/useOverlayRoot";
 import { sheetMaxHeightPx } from "../utils/composerKeyboard";
 import SwipeToDismiss from "./SwipeToDismiss";
+
+const SCRIM_OPACITY = 0.4;
 
 /** Dimmed overlay that closes when the user taps outside the sheet (and optionally swipes down). */
 export default function OverlayScrim({
@@ -29,6 +26,7 @@ export default function OverlayScrim({
   /** Freeze the page behind the overlay so only the sheet can scroll/swipe. */
   lockBackground?: boolean;
 }) {
+  const overlayRoot = useOverlayRoot();
   const [dragY, setDragY] = useState(0);
   const [sheetMaxPx, setSheetMaxPx] = useState<number>(() =>
     typeof window === "undefined" ? 720 : sheetMaxHeightPx(window.innerHeight, null),
@@ -36,21 +34,11 @@ export default function OverlayScrim({
   const keyboardInset = useKeyboardInset();
   const enableSwipe = Boolean(onDismiss && swipeToDismiss);
   const dim = enableSwipe
-    ? Math.max(0, OVERLAY_SCRIM_OPACITY * (1 - dragY / 320))
-    : OVERLAY_SCRIM_OPACITY;
+    ? Math.max(0, SCRIM_OPACITY * (1 - dragY / 320))
+    : SCRIM_OPACITY;
   // Do not pin `body { position:fixed }` for sheets — that is what makes this
   // layer stick to the top of the document on iPhone and dim only half the page.
   useBodyScrollLock(lockBackground, { pinBody: false });
-  const cover = useOverlayCoverStyle();
-
-  useLayoutEffect(() => {
-    const release = acquireOverlayBackdrop(OVERLAY_SCRIM_OPACITY);
-    return release;
-  }, []);
-
-  useLayoutEffect(() => {
-    setOverlayBackdropOpacity(dim);
-  }, [dim]);
 
   useEffect(() => {
     const sync = () => {
@@ -74,14 +62,14 @@ export default function OverlayScrim({
     };
   }, []);
 
-  if (typeof document === "undefined") return null;
+  if (!overlayRoot) return null;
 
   return createPortal(
     <div
-      className={className.replace(/\bbg-black\/\d+\b/g, "bg-transparent")}
+      className={`${className.replace(/\bfixed\b/g, "absolute")} pointer-events-auto`}
       style={{
-        ...cover,
-        backgroundColor: "transparent", // dim lives on the persistent body backdrop
+        inset: 0,
+        backgroundColor: `rgba(0,0,0,${dim})`,
         overscrollBehavior: "none",
         touchAction: "none",
         paddingBottom: keyboardInset > 0 ? keyboardInset : undefined,
@@ -115,6 +103,6 @@ export default function OverlayScrim({
         </div>
       )}
     </div>,
-    document.body,
+    overlayRoot,
   );
 }

@@ -1,12 +1,12 @@
-import { useCallback } from "react";
+import { useCallback, useLayoutEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import BottomNav from "../components/BottomNav";
-import OverlayBackdropHost from "../components/OverlayBackdropHost";
 import PushOnboardingSheet from "../components/PushOnboardingSheet";
 import { useBodyScrollLock, useResetWindowScroll } from "../hooks/useBodyScrollLock";
 import { useOnAppResume } from "../hooks/useOnAppResume";
 import { useAuth } from "../context/AuthContext";
 import { familyActivityApi, syncAppBadge } from "../api/familyActivity";
+import { OVERLAY_ROOT_ID, removeLegacyBodyOverlays } from "../utils/overlayRoot";
 
 export default function AppLayout() {
   const { pathname } = useLocation();
@@ -16,6 +16,10 @@ export default function AppLayout() {
 
   // SPA route changes keep window scroll; also clears stale offset when leaving home lock.
   useResetWindowScroll(pathname);
+
+  useLayoutEffect(() => {
+    removeLegacyBodyOverlays();
+  }, [pathname]);
 
   // Home uses a fixed viewport; do not restore the previous page's scrollY when leaving home.
   useBodyScrollLock(isHome, { restoreScroll: false });
@@ -42,6 +46,10 @@ export default function AppLayout() {
         }`}
       >
         <div
+          id={OVERLAY_ROOT_ID}
+          className="pointer-events-none absolute inset-0 z-50 isolate"
+        />
+        <div
           className={
             hideBottomNav
               ? "flex-1"
@@ -53,7 +61,6 @@ export default function AppLayout() {
           <Outlet />
         </div>
         {!hideBottomNav && <BottomNav />}
-        <OverlayBackdropHost />
         <PushOnboardingSheet />
       </div>
     </div>
