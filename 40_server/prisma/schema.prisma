@@ -93,9 +93,24 @@ model User {
   activitiesActed   FamilyActivity[]     @relation("FamilyActivityActor")
   activityReads     FamilyActivityRead[]
   vaultItems        VaultItem[]
+  companyCalendar   CompanyCalendar?
 
   @@index([familyId])
   @@map("users")
+}
+
+model CompanyCalendar {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @unique @map("user_id")
+  sourceUrl  String?  @map("source_url") @db.VarChar(1000)
+  fiscalYear Int      @map("fiscal_year")
+  offDates   Json     @map("off_dates")
+  parsedAt   DateTime @map("parsed_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("company_calendars")
 }
 
 model Asset {

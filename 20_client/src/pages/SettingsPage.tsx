@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronRight, Copy, Bell, Fingerprint, Globe, LogOut, UserPlus, Users, CalendarDays, Factory } from "lucide-react";
 import TopBar from "../components/TopBar";
 import HolidayPrefPicker, { parseHolidayPref, type HolidayPref } from "../components/HolidayPrefPicker";
 import { ApiError } from "../api/http";
+import { companyCalendarApi, type CompanyCalendar } from "../api/companyCalendar";
 import { passkeyApi } from "../api/passkey";
 import {
   disableHomeScreenPush,
@@ -26,6 +27,12 @@ export default function SettingsPage() {
   const [linkingPasskey, setLinkingPasskey] = useState(false);
   const [savingHolidayPref, setSavingHolidayPref] = useState(false);
   const [savingCompanyHoliday, setSavingCompanyHoliday] = useState(false);
+  const [companyCal, setCompanyCal] = useState<CompanyCalendar | null>(null);
+  const [companyCalUrl, setCompanyCalUrl] = useState("");
+  const [companyCalYear, setCompanyCalYear] = useState(2026);
+  const [companyCalBusy, setCompanyCalBusy] = useState(false);
+  const [companyCalMsg, setCompanyCalMsg] = useState<string | null>(null);
+  const companyPdfRef = useRef<HTMLInputElement>(null);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushMsg, setPushMsg] = useState<string | null>(null);
@@ -45,6 +52,20 @@ export default function SettingsPage() {
       .then((s) => setPushSubscribed(s.subscribed))
       .catch(() => setPushSubscribed(false));
   }, [token]);
+
+  useEffect(() => {
+    if (!token || !companyHolidayOn) return;
+    void companyCalendarApi
+      .get(token)
+      .then((cal) => {
+        setCompanyCal(cal);
+        setCompanyCalUrl(cal.sourceUrl || cal.defaultUrl);
+        if (cal.fiscalYear) setCompanyCalYear(cal.fiscalYear);
+      })
+      .catch(() => {
+        /* ignore */
+      });
+  }, [token, companyHolidayOn]);
 
   async function togglePush() {
     if (!token) return;
@@ -104,6 +125,46 @@ export default function SettingsPage() {
       await updateMe({ companyHolidayPref: on ? "KHI_AKASHI" : "NONE" });
     } finally {
       setSavingCompanyHoliday(false);
+    }
+  }
+
+  function applyCompanyCal(cal: CompanyCalendar) {
+    setCompanyCal(cal);
+    setCompanyCalUrl(cal.sourceUrl || cal.defaultUrl);
+    if (cal.fiscalYear) setCompanyCalYear(cal.fiscalYear);
+  }
+
+  async function refreshCompanyCalFromUrl() {
+    if (!token) return;
+    setCompanyCalBusy(true);
+    setCompanyCalMsg(null);
+    try {
+      const cal = await companyCalendarApi.importUrl(token, { url: companyCalUrl, year: companyCalYear });
+      applyCompanyCal(cal);
+      setCompanyCalMsg(null);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "NEEDS_UPLOAD") {
+        setCompanyCalMsg(t("settings.companyCalNeedsUpload"));
+      } else {
+        setCompanyCalMsg(err instanceof ApiError ? err.message : t("settings.companyCalError"));
+      }
+    } finally {
+      setCompanyCalBusy(false);
+    }
+  }
+
+  async function uploadCompanyCalPdf(file: File) {
+    if (!token) return;
+    setCompanyCalBusy(true);
+    setCompanyCalMsg(null);
+    try {
+      const cal = await companyCalendarApi.importPdf(token, file, { url: companyCalUrl, year: companyCalYear });
+      applyCompanyCal(cal);
+      setCompanyCalMsg(null);
+    } catch (err) {
+      setCompanyCalMsg(err instanceof ApiError ? err.message : t("settings.companyCalError"));
+    } finally {
+      setCompanyCalBusy(false);
     }
   }
 
@@ -287,6 +348,75 @@ export default function SettingsPage() {
                 {companyHolidayOn ? t("settings.companyHolidaysOn") : t("settings.companyHolidaysOff")}
               </button>
             </div>
+            {companyHolidayOn ? (
+              <div className="mt-3 space-y-2">
+                <p className="text-[11px] text-neutral-400">{t("settings.companyCalHint")}</p>
+                <label className="block text-[11px] font-semibold text-neutral-500">
+                  {t("settings.companyCalYear")}
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={2024}
+                    max={2040}
+                    value={companyCalYear}
+                    onChange={(e) => setCompanyCalYear(Number(e.target.value) || companyCalYear)}
+                    className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm text-neutral-800"
+                  />
+                </label>
+                <label className="block text-[11px] font-semibold text-neutral-500">
+                  {t("settings.companyCalUrl")}
+                  <input
+                    type="url"
+                    value={companyCalUrl}
+                    onChange={(e) => setCompanyCalUrl(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm text-neutral-800"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={companyCalBusy}
+                    onClick={() => void refreshCompanyCalFromUrl()}
+                    className="rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-600 disabled:opacity-60"
+                  >
+                    {companyCalBusy ? t("settings.companyCalWorking") : t("settings.companyCalRefresh")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={companyCalBusy}
+                    onClick={() => companyPdfRef.current?.click()}
+                    className="rounded-full bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-700 disabled:opacity-60"
+                  >
+                    {t("settings.companyCalUpload")}
+                  </button>
+                  <input
+                    ref={companyPdfRef}
+                    type="file"
+                    accept="application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (file) void uploadCompanyCalPdf(file);
+                    }}
+                  />
+                </div>
+                {companyCal?.parsedAt ? (
+                  <p className="text-[11px] text-neutral-500">
+                    {t("settings.companyCalSynced", {
+                      year: companyCal.fiscalYear ?? companyCalYear,
+                      n: companyCal.weekdayOffCount,
+                      when: companyCal.parsedAt.slice(0, 10),
+                    })}
+                  </p>
+                ) : companyCal?.usingBakedFallback ? (
+                  <p className="text-[11px] text-neutral-400">{t("settings.companyCalFallback")}</p>
+                ) : null}
+                {companyCalMsg ? <p className="text-[11px] text-rose-600">{companyCalMsg}</p> : null}
+              </div>
+            ) : null}
           </div>
 
           <div className="px-4 py-3">

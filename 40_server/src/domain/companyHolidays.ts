@@ -1,13 +1,7 @@
 import type { HolidayName } from "./holidays.js";
+import { KHI_AKASHI_FY2026_OFF_DATES } from "./khiAkashiFy2026OffDates.js";
 
 export type CompanyHolidayCal = "NONE" | "KHI_AKASHI";
-
-export interface CompanyHoliday {
-  date: string;
-  cal: CompanyHolidayCal;
-  code: string;
-  name: HolidayName;
-}
 
 const CALS = new Set<string>(["NONE", "KHI_AKASHI"]);
 
@@ -25,40 +19,57 @@ const N = {
   company: { ko: "회사휴일", ja: "会社休日" },
 } as const satisfies Record<string, HolidayName>;
 
-type Extra = { date: string; code: string; name: HolidayName };
+type NamedRange = { from: string; to: string; code: string; name: HolidayName };
 
-/**
- * 川崎重工 明石工場・西神工場(A) weekday closures that are not already a JP national holiday.
- * Source: FY2026 factory notice (Apr 2026–Mar 2027) used by 労組カレンダー / BK117.
- * Weekends are omitted — the app already treats Sat/Sun as non-work visually via the grid.
- */
-const KHI_AKASHI_EXTRAS: Extra[] = [
-  { date: "2026-04-30", code: "gw", name: N.gw },
-  { date: "2026-05-01", code: "gw", name: N.gw },
-  { date: "2026-07-21", code: "power", name: N.power },
-  { date: "2026-07-22", code: "power", name: N.power },
-  { date: "2026-08-10", code: "summer", name: N.summer },
-  { date: "2026-08-12", code: "summer", name: N.summer },
-  { date: "2026-08-13", code: "summer", name: N.summer },
-  { date: "2026-08-14", code: "summer", name: N.summer },
-  { date: "2026-12-28", code: "year-end", name: N.yearEnd },
-  { date: "2026-12-29", code: "year-end", name: N.yearEnd },
-  { date: "2026-12-30", code: "year-end", name: N.yearEnd },
-  { date: "2026-12-31", code: "year-end", name: N.yearEnd },
+const KHI_AKASHI_NAMED_RANGES: NamedRange[] = [
+  { from: "2026-04-29", to: "2026-05-06", code: "gw", name: N.gw },
+  { from: "2026-07-21", to: "2026-07-22", code: "power", name: N.power },
+  { from: "2026-08-10", to: "2026-08-16", code: "summer", name: N.summer },
+  { from: "2026-12-28", to: "2027-01-04", code: "year-end", name: N.yearEnd },
 ];
 
-export function listCompanyHolidays(
-  fromKey: string,
-  toKey: string,
-  cal: CompanyHolidayCal,
-): CompanyHoliday[] {
-  if (cal === "NONE") return [];
-  const rows = cal === "KHI_AKASHI" ? KHI_AKASHI_EXTRAS : [];
-  return rows
-    .filter((h) => h.date >= fromKey && h.date <= toKey)
-    .map((h) => ({ date: h.date, cal, code: h.code, name: h.name }));
+export function companyOffTitle(date: string): { code: string; name: HolidayName } {
+  for (const r of KHI_AKASHI_NAMED_RANGES) {
+    if (date >= r.from && date <= r.to) return { code: r.code, name: r.name };
+  }
+  return { code: "company", name: N.company };
 }
 
-export function companyHolidayTitle(h: CompanyHoliday, lang: string): string {
-  return lang === "ja" ? h.name.ja : h.name.ko;
+export function companyEventTitle(
+  ev: { kind: "off" | "work"; name: HolidayName },
+  lang: string,
+): string {
+  return lang === "ja" ? ev.name.ja : ev.name.ko;
+}
+
+export const KHI_AKASHI_DEFAULT_URL =
+  "https://www.khiunion.or.jp/wp-content/themes/kawasakijukou/pdf/calendar/{year}/09_{year}-akashi-A.pdf";
+
+export function japanFiscalYear(now: Date = new Date()): number {
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth() + 1;
+  return m >= 4 ? y : y - 1;
+}
+
+export function khiAkashiCalendarUrl(year: number): string {
+  return KHI_AKASHI_DEFAULT_URL.replaceAll("{year}", String(year));
+}
+
+/** Replace 20xx year tokens so next year's PDF can reuse last year's URL. */
+export function substituteCalendarYear(url: string, year: number): string {
+  return url.replace(/20\d{2}/g, String(year));
+}
+
+export function bakedOffDatesForCal(cal: CompanyHolidayCal): ReadonlySet<string> | null {
+  if (cal === "KHI_AKASHI") return new Set(KHI_AKASHI_FY2026_OFF_DATES);
+  return null;
+}
+
+export function weekdayCount(dates: readonly string[]): number {
+  let n = 0;
+  for (const d of dates) {
+    const day = new Date(`${d}T00:00:00.000Z`).getUTCDay();
+    if (day !== 0 && day !== 6) n += 1;
+  }
+  return n;
 }

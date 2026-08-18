@@ -4,6 +4,7 @@ export type CalendarCategory =
   | "personal"
   | "family"
   | "holiday"
+  | "company"
   | "document_expiry"
   | "subscription_billing"
   | "recurring_deposit";

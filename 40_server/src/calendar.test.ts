@@ -273,8 +273,19 @@ test("calendar CRUD and derived document expiry / subscription billing", async (
       date: string;
       title: string;
     }>;
-    assert.ok(companyEvents.some((e) => e.category === "holiday" && e.date === "2026-08-13" && e.title === "하기휴가"));
+    assert.ok(
+      companyEvents.some((e) => e.category === "company" && e.date === "2026-08-13" && e.title === "하기휴가"),
+    );
+    assert.ok(companyEvents.some((e) => e.category === "holiday" && e.date === "2026-08-11"));
     assert.equal(companyEvents.filter((e) => e.date === "2026-08-11").length, 1);
+
+    const culture = await fetch(`${base}/api/calendar/events?from=2026-11-01&to=2026-11-30&scope=all`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    const november = (await culture.json()) as Array<{ category: string; date: string; title: string }>;
+    assert.equal(november.filter((e) => e.category === "holiday" && e.date === "2026-11-03").length, 0);
+    assert.ok(november.some((e) => e.category === "company" && e.date === "2026-11-03" && e.title.includes("출근")));
+    assert.ok(november.some((e) => e.category === "holiday" && e.date === "2026-11-23"));
   } finally {
     server.close();
   }
