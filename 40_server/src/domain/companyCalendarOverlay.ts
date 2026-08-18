@@ -32,7 +32,8 @@ function inRange(date: string, fromKey: string, toKey: string): boolean {
 
 /**
  * When a full company off-set is available it is the work/off source of truth:
- * - JP 祝日 on a weekday that is not a company off day → 出勤 (hide as 祝日)
+ * - JP 祝日 on a weekday that is not a company off day → 出勤 (keep 祝日 too so
+ *   turning the company tag off restores a normal holiday)
  * - Weekday company off that is not a remaining national holiday → 会社休日
  * - JP 祝日 that is also a company off stays a national holiday (no duplicate)
  * KR holidays are never suppressed.
@@ -67,7 +68,6 @@ export function overlayCompanyCalendar(opts: {
           ja: `出勤 · ${h.name.ja}`,
         },
       });
-      continue;
     }
     national.push(h);
     remainingNationalDates.add(h.date);

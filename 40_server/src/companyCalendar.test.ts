@@ -18,7 +18,7 @@ import { MemoryCompanyCalendarRepository } from "./domain/memoryCompanyCalendarR
 import { ChallengeStore } from "./auth/challengeStore.js";
 import { parseCompanyCalendarPdf } from "./domain/companyCalendarParse.js";
 import { assertAllowedCalendarUrl, fetchAndParseCompanyCalendarPdf } from "./domain/companyCalendarFetch.js";
-import { substituteCalendarYear } from "./domain/companyHolidays.js";
+import { fiscalYearRange, japanFiscalYear, substituteCalendarYear } from "./domain/companyHolidays.js";
 import { KHI_AKASHI_FY2026_OFF_DATES } from "./domain/khiAkashiFy2026OffDates.js";
 
 function tmpStore(): TaskStore {
@@ -185,10 +185,116 @@ test("import-pdf stores parsed off dates and uses them on the calendar", async (
       },
     );
     assert.equal(imported.status, 200);
-    const cal = (await imported.json()) as { fiscalYear: number; weekdayOffCount: number; usingBakedFallback: boolean };
+    const cal = (await imported.json()) as {
+      fiscalYear: number;
+      weekdayOffCount: number;
+      usingBakedFallback: boolean;
+      validFrom: string | null;
+      validTo: string | null;
+      expired: boolean;
+    };
     assert.equal(cal.fiscalYear, 2026);
+    assert.equal(cal.validFrom, "2026-04-01");
+    assert.equal(cal.validTo, "2027-03-31");
+    assert.equal(cal.expired, false);
     assert.equal(cal.usingBakedFallback, false);
     assert.ok(cal.weekdayOffCount >= 12);
+  } finally {
+    server.close();
+  }
+});
+
+test("company calendar GET scopes a stored PDF to one April–March year", async () => {
+  const companyCalendarRepo = new MemoryCompanyCalendarRepository();
+  const app = createApp(tmpStore(), {
+    authRepo: new MemoryAuthRepository(),
+    calendarRepo: new MemoryCalendarRepository(),
+    assetRepo: new MemoryAssetRepository(),
+    documentRepo: new MemoryDocumentRepository(),
+    subscriptionRepo: new MemorySubscriptionRepository(),
+    recurringDepositRepo: new MemoryRecurringDepositRepository(),
+    transactionRepo: new MemoryTransactionRepository(),
+    passkeyRepo: new MemoryPasskeyRepository(),
+    inviteTokenRepo: new MemoryInviteTokenRepository(),
+    challengeStore: new ChallengeStore(),
+    companyCalendarRepo,
+    jwtSecret: "test-secret",
+  });
+  const { server, base } = await listen(app);
+  try {
+    const reg = await fetch(`${base}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "fy-scope@example.com",
+        password: "password123",
+        name: "민호",
+        familyName: "최가네",
+      }),
+    });
+    assert.equal(reg.status, 201);
+    const { token, user } = (await reg.json()) as { token: string; user: { id: number } };
+
+    const empty = await fetch(`${base}/api/company-calendar`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const emptyCal = (await empty.json()) as {
+      fiscalYear: number | null;
+      expired: boolean;
+      validFrom: string | null;
+    };
+    assert.equal(emptyCal.fiscalYear, null);
+    assert.equal(emptyCal.expired, false);
+    assert.equal(emptyCal.validFrom, null);
+
+    const on = await fetch(`${base}/api/auth/me`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ companyHolidayPref: "KHI_AKASHI" }),
+    });
+    assert.equal(on.status, 200);
+
+    const baked = await fetch(`${base}/api/company-calendar`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const bakedCal = (await baked.json()) as {
+      fiscalYear: number | null;
+      expired: boolean;
+      validFrom: string | null;
+      validTo: string | null;
+      usingBakedFallback: boolean;
+    };
+    const currentFy = japanFiscalYear();
+    const currentRange = fiscalYearRange(currentFy);
+    assert.equal(bakedCal.fiscalYear, currentFy);
+    assert.equal(bakedCal.validFrom, currentRange.from);
+    assert.equal(bakedCal.validTo, currentRange.to);
+    assert.equal(bakedCal.expired, false);
+    assert.equal(bakedCal.usingBakedFallback, currentFy === 2026);
+
+    await companyCalendarRepo.upsertForUser(user.id, {
+      sourceUrl: "https://www.khiunion.or.jp/wp-content/themes/kawasakijukou/pdf/calendar/2025/09_2025-akashi-A.pdf",
+      fiscalYear: 2025,
+      offDates: ["2025-08-13", "2026-04-02"],
+    });
+    const stale = await fetch(`${base}/api/company-calendar`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const staleCal = (await stale.json()) as {
+      fiscalYear: number;
+      expired: boolean;
+      validFrom: string;
+      validTo: string;
+      offDates: string[];
+    };
+    assert.equal(staleCal.fiscalYear, 2025);
+    assert.equal(staleCal.expired, currentFy !== 2025);
+    assert.equal(staleCal.validFrom, "2025-04-01");
+    assert.equal(staleCal.validTo, "2026-03-31");
+    assert.deepEqual(staleCal.offDates, ["2025-08-13"]);
   } finally {
     server.close();
   }

@@ -51,6 +51,43 @@ export function japanFiscalYear(now: Date = new Date()): number {
   return m >= 4 ? y : y - 1;
 }
 
+/** Kawasaki factory calendar is Apr 1 – Mar 31. */
+export function fiscalYearRange(year: number): { from: string; to: string } {
+  return { from: `${year}-04-01`, to: `${year + 1}-03-31` };
+}
+
+export function fiscalYearOfDate(date: string): number {
+  const y = Number(date.slice(0, 4));
+  const m = Number(date.slice(5, 7));
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return y || 0;
+  return m >= 4 ? y : y - 1;
+}
+
+export function clipOffDatesToFiscalYear(dates: readonly string[], year: number): string[] {
+  const { from, to } = fiscalYearRange(year);
+  return dates.filter((d) => d >= from && d <= to);
+}
+
+/** Off dates apply only to the registered (or baked) fiscal year overlapping `rangeFrom`. */
+export function offDatesForFiscalYear(opts: {
+  pref: CompanyHolidayCal;
+  storedYear: number | null;
+  storedDates: readonly string[] | null;
+  rangeFrom: string;
+}): ReadonlySet<string> | null {
+  if (opts.pref === "NONE") return null;
+  const rangeFy = fiscalYearOfDate(opts.rangeFrom);
+  if (opts.storedYear != null && opts.storedDates && opts.storedDates.length > 0) {
+    if (opts.storedYear !== rangeFy) return null;
+    const clipped = clipOffDatesToFiscalYear(opts.storedDates, rangeFy);
+    return clipped.length > 0 ? new Set(clipped) : null;
+  }
+  const baked = bakedOffDatesForCal(opts.pref);
+  if (!baked) return null;
+  const clipped = clipOffDatesToFiscalYear([...baked], rangeFy);
+  return clipped.length > 0 ? new Set(clipped) : null;
+}
+
 export function khiAkashiCalendarUrl(year: number): string {
   return KHI_AKASHI_DEFAULT_URL.replaceAll("{year}", String(year));
 }

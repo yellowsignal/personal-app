@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseCompanyHolidayPref, companyOffTitle } from "./companyHolidays.js";
+import { parseCompanyHolidayPref, companyOffTitle, offDatesForFiscalYear, fiscalYearRange } from "./companyHolidays.js";
 import { overlayCompanyCalendar } from "./companyCalendarOverlay.js";
 import { listPublicHolidays } from "./holidays.js";
 import { KHI_AKASHI_FY2026_OFF_DATES } from "./khiAkashiFy2026OffDates.js";
@@ -31,7 +31,7 @@ test("overlay treats weekday company closures as a separate company category", (
   assert.equal(overlay.company.find((e) => e.date === "2026-08-13")?.name.ko, "하기휴가");
 });
 
-test("JP national holidays that are company workdays become 출근, not 祝日", () => {
+test("JP national holidays that are company workdays stay as 祝日 and add 출근", () => {
   const national = listPublicHolidays("2026-11-01", "2026-11-30", ["JP"]);
   assert.ok(national.some((h) => h.date === "2026-11-03"));
   const overlay = overlayCompanyCalendar({
@@ -41,7 +41,7 @@ test("JP national holidays that are company workdays become 출근, not 祝日",
     fromKey: "2026-11-01",
     toKey: "2026-11-30",
   });
-  assert.equal(overlay.national.filter((h) => h.date === "2026-11-03").length, 0);
+  assert.equal(overlay.national.filter((h) => h.date === "2026-11-03").length, 1);
   const work = overlay.company.find((e) => e.date === "2026-11-03");
   assert.equal(work?.kind, "work");
   assert.match(work?.name.ja ?? "", /出勤/);
@@ -77,4 +77,25 @@ test("named ranges cover GW and year-end extras", () => {
   assert.equal(companyOffTitle("2026-04-30").name.ja, "GW休業");
   assert.equal(companyOffTitle("2027-01-04").code, "year-end");
   assert.equal(companyOffTitle("2026-11-23").code, "company");
+});
+
+test("registered off dates apply only to that April–March fiscal year", () => {
+  assert.deepEqual(fiscalYearRange(2026), { from: "2026-04-01", to: "2027-03-31" });
+  const stored = ["2026-08-13", "2027-01-04", "2027-04-05"];
+  const fy2026 = offDatesForFiscalYear({
+    pref: "KHI_AKASHI",
+    storedYear: 2026,
+    storedDates: stored,
+    rangeFrom: "2026-08-01",
+  });
+  assert.ok(fy2026?.has("2026-08-13"));
+  assert.ok(fy2026?.has("2027-01-04"));
+  assert.equal(fy2026?.has("2027-04-05"), false);
+  const fy2027 = offDatesForFiscalYear({
+    pref: "KHI_AKASHI",
+    storedYear: 2026,
+    storedDates: stored,
+    rangeFrom: "2027-04-01",
+  });
+  assert.equal(fy2027, null);
 });

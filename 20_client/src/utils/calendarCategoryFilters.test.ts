@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   ALL_CALENDAR_CATEGORIES,
   CALENDAR_CATEGORY_FILTER_KEY,
+  filterEventsForCalendarTags,
   readActiveCalendarCategories,
   toggleCalendarCategory,
   writeActiveCalendarCategories,
@@ -74,4 +75,22 @@ test("corrupt storage falls back to all on", () => {
   const store = memoryStore({ [CALENDAR_CATEGORY_FILTER_KEY]: "{not-json" });
   const active = readActiveCalendarCategories(store);
   assert.equal(active.size, ALL_CALENDAR_CATEGORIES.length);
+});
+
+test("turning company tag off shows 휴일출근 days as holidays", () => {
+  const events = [
+    { category: "holiday" as const, date: "2026-11-03", description: null, title: "문화의 날" },
+    { category: "company" as const, date: "2026-11-03", description: "work", title: "출근 · 문화의 날" },
+    { category: "company" as const, date: "2026-08-13", description: "off", title: "하기휴가" },
+  ];
+  const allOn = new Set(ALL_CALENDAR_CATEGORIES);
+  const withCompany = filterEventsForCalendarTags(events, allOn);
+  assert.equal(withCompany.some((e) => e.category === "holiday" && e.date === "2026-11-03"), false);
+  assert.ok(withCompany.some((e) => e.category === "company" && e.description === "work"));
+  assert.ok(withCompany.some((e) => e.date === "2026-08-13"));
+
+  const companyOff = toggleCalendarCategory(allOn, "company");
+  const withoutCompany = filterEventsForCalendarTags(events, companyOff);
+  assert.ok(withoutCompany.some((e) => e.category === "holiday" && e.date === "2026-11-03"));
+  assert.equal(withoutCompany.some((e) => e.category === "company"), false);
 });

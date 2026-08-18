@@ -39,6 +39,7 @@ import { LONG_PRESS_MS } from "../utils/swipeGesture";
 import { useKeepFocusedInScrollParent } from "../hooks/useKeepFocusedInScrollParent";
 import {
   ALL_CALENDAR_CATEGORIES as ALL_CATEGORIES,
+  filterEventsForCalendarTags,
   readActiveCalendarCategories,
   toggleCalendarCategory,
   writeActiveCalendarCategories,
@@ -502,7 +503,7 @@ export default function CalendarPage() {
   }, [cursor]);
 
   const filteredEvents = useMemo(
-    () => events.filter((e) => activeCats.has(e.category)),
+    () => filterEventsForCalendarTags(events, activeCats),
     [events, activeCats],
   );
 

@@ -22,8 +22,8 @@ import {
 import type { CompanyCalendarRepository } from "../domain/companyCalendarRepository.js";
 import { overlayCompanyCalendar } from "../domain/companyCalendarOverlay.js";
 import {
-  bakedOffDatesForCal,
   companyEventTitle,
+  offDatesForFiscalYear,
   parseCompanyHolidayPref,
 } from "../domain/companyHolidays.js";
 import { listDueDates, utcDateOnly } from "../domain/recurringDepositTypes.js";
@@ -289,12 +289,12 @@ export class CalendarService {
     const lang = user.languagePref === "ja" ? "ja" : "ko";
     const companyCal = parseCompanyHolidayPref(user.companyHolidayPref);
     const companyStored = this.companyCalendarRepo ? await this.companyCalendarRepo.findByUserId(user.id) : null;
-    const offDates =
-      companyCal === "NONE"
-        ? null
-        : companyStored && companyStored.offDates.length > 0
-          ? new Set(companyStored.offDates)
-          : bakedOffDatesForCal(companyCal);
+    const offDates = offDatesForFiscalYear({
+      pref: companyCal,
+      storedYear: companyStored?.fiscalYear ?? null,
+      storedDates: companyStored?.offDates ?? null,
+      rangeFrom: toDateKey(from),
+    });
     const overlay = overlayCompanyCalendar({
       national: holidays,
       offDates,

@@ -8,6 +8,8 @@ import {
 } from "../domain/companyCalendarFetch.js";
 import {
   bakedOffDatesForCal,
+  clipOffDatesToFiscalYear,
+  fiscalYearRange,
   japanFiscalYear,
   khiAkashiCalendarUrl,
   parseCompanyHolidayPref,
@@ -20,6 +22,9 @@ export interface PublicCompanyCalendar {
   sourceUrl: string | null;
   defaultUrl: string;
   fiscalYear: number | null;
+  validFrom: string | null;
+  validTo: string | null;
+  expired: boolean;
   parsedAt: string | null;
   offDateCount: number;
   weekdayOffCount: number;
@@ -44,19 +49,28 @@ export class CompanyCalendarService {
     const user = await this.requireUser(userId);
     const pref = parseCompanyHolidayPref(user.companyHolidayPref);
     const stored = await this.repo.findByUserId(userId);
-    const year = stored?.fiscalYear ?? japanFiscalYear();
+    const currentFy = japanFiscalYear();
+    const year = stored?.fiscalYear ?? currentFy;
+    const range = fiscalYearRange(year);
     const baked = bakedOffDatesForCal(pref);
-    const offDates = stored?.offDates ?? (pref === "KHI_AKASHI" ? [...(baked ?? [])] : []);
+    const raw =
+      stored?.offDates ??
+      (pref === "KHI_AKASHI" && year === 2026 ? [...(baked ?? [])] : []);
+    const offDates = clipOffDatesToFiscalYear(raw, year);
+    const expired = Boolean(stored && stored.fiscalYear !== currentFy);
     return {
       pref,
       enabled: pref !== "NONE",
       sourceUrl: stored?.sourceUrl ?? (pref === "KHI_AKASHI" ? khiAkashiCalendarUrl(year) : null),
-      defaultUrl: khiAkashiCalendarUrl(year),
-      fiscalYear: stored?.fiscalYear ?? (pref === "KHI_AKASHI" ? 2026 : null),
+      defaultUrl: khiAkashiCalendarUrl(currentFy),
+      fiscalYear: pref === "NONE" && !stored ? null : year,
+      validFrom: pref === "NONE" && !stored ? null : range.from,
+      validTo: pref === "NONE" && !stored ? null : range.to,
+      expired,
       parsedAt: stored?.parsedAt.toISOString() ?? null,
       offDateCount: offDates.length,
       weekdayOffCount: weekdayCount(offDates),
-      usingBakedFallback: !stored && pref === "KHI_AKASHI",
+      usingBakedFallback: !stored && pref === "KHI_AKASHI" && year === 2026,
       offDates,
     };
   }
@@ -81,7 +95,7 @@ export class CompanyCalendarService {
     await this.repo.upsertForUser(userId, {
       sourceUrl,
       fiscalYear: parsed.fiscalYear,
-      offDates: parsed.offDates,
+      offDates: clipOffDatesToFiscalYear(parsed.offDates, parsed.fiscalYear),
     });
     if (parseCompanyHolidayPref(user.companyHolidayPref) === "NONE") {
       await this.authRepo.updateUser(userId, { companyHolidayPref: "KHI_AKASHI" });
@@ -102,7 +116,7 @@ export class CompanyCalendarService {
     await this.repo.upsertForUser(userId, {
       sourceUrl,
       fiscalYear: parsed.fiscalYear,
-      offDates: parsed.offDates,
+      offDates: clipOffDatesToFiscalYear(parsed.offDates, parsed.fiscalYear),
     });
     if (parseCompanyHolidayPref(user.companyHolidayPref) === "NONE") {
       await this.authRepo.updateUser(userId, { companyHolidayPref: "KHI_AKASHI" });
