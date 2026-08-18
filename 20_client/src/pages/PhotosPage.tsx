@@ -16,18 +16,20 @@ import {
 } from "../api/photos";
 import { ApiError } from "../api/http";
 import { MAX_ICLOUD_ALBUMS, saveBlobLocally } from "../utils/photoUpload";
-import { sortAlbumPhotosOldestFirst } from "../utils/albumCover";
+import { sortAlbumPhotosOldestFirst, withAlbumCoverCacheKey } from "../utils/albumCover";
 
 function AlbumCardCover({
   token,
   coverUrl,
+  coverPhotoId,
   alt,
 }: {
   token: string;
   coverUrl: string | null;
+  coverPhotoId: string | null;
   alt: string;
 }) {
-  const src = useAuthedImage(token, coverUrl);
+  const src = useAuthedImage(token, withAlbumCoverCacheKey(coverUrl, coverPhotoId));
   if (!src) {
     return (
       <div className="flex h-full items-center justify-center text-neutral-300">
@@ -471,6 +473,7 @@ export default function PhotosPage() {
                         <AlbumCardCover
                           token={token}
                           coverUrl={album.coverUrl}
+                          coverPhotoId={album.coverPhotoId}
                           alt={album.name || t("photos.icloudTitle")}
                         />
                       </div>
