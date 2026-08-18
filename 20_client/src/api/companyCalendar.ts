@@ -13,6 +13,19 @@ export interface CompanyCalendar {
   offDates: string[];
 }
 
+const KHI_AKASHI_DEFAULT_URL =
+  "https://www.khiunion.or.jp/wp-content/themes/kawasakijukou/pdf/calendar/{year}/09_{year}-akashi-A.pdf";
+
+export function japanFiscalYear(now: Date = new Date()): number {
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  return m >= 4 ? y : y - 1;
+}
+
+export function defaultCompanyCalendarUrl(year: number = japanFiscalYear()): string {
+  return KHI_AKASHI_DEFAULT_URL.replaceAll("{year}", String(year));
+}
+
 export const companyCalendarApi = {
   get(token: string) {
     return apiFetch<CompanyCalendar>("/api/company-calendar", { token });

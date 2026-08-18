@@ -4,7 +4,7 @@ import { ChevronRight, Copy, Bell, Fingerprint, Globe, LogOut, UserPlus, Users, 
 import TopBar from "../components/TopBar";
 import HolidayPrefPicker, { parseHolidayPref, type HolidayPref } from "../components/HolidayPrefPicker";
 import { ApiError } from "../api/http";
-import { companyCalendarApi, type CompanyCalendar } from "../api/companyCalendar";
+import { companyCalendarApi, defaultCompanyCalendarUrl, japanFiscalYear, type CompanyCalendar } from "../api/companyCalendar";
 import { passkeyApi } from "../api/passkey";
 import {
   disableHomeScreenPush,
@@ -18,7 +18,7 @@ import { useLanguage } from "../i18n/LanguageContext";
 
 export default function SettingsPage() {
   const navigate = useNavigate();
-  const { user, family, logout, token, updateMe } = useAuth();
+  const { user, family, logout, token, updateMe, refresh } = useAuth();
   const { lang, toggleLang, t } = useLanguage();
   const [copied, setCopied] = useState(false);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
@@ -28,8 +28,8 @@ export default function SettingsPage() {
   const [savingHolidayPref, setSavingHolidayPref] = useState(false);
   const [savingCompanyHoliday, setSavingCompanyHoliday] = useState(false);
   const [companyCal, setCompanyCal] = useState<CompanyCalendar | null>(null);
-  const [companyCalUrl, setCompanyCalUrl] = useState("");
-  const [companyCalYear, setCompanyCalYear] = useState(2026);
+  const [companyCalUrl, setCompanyCalUrl] = useState(() => defaultCompanyCalendarUrl(japanFiscalYear()));
+  const [companyCalYear, setCompanyCalYear] = useState(() => japanFiscalYear());
   const [companyCalBusy, setCompanyCalBusy] = useState(false);
   const [companyCalMsg, setCompanyCalMsg] = useState<string | null>(null);
   const companyPdfRef = useRef<HTMLInputElement>(null);
@@ -54,18 +54,23 @@ export default function SettingsPage() {
   }, [token]);
 
   useEffect(() => {
-    if (!token || !companyHolidayOn) return;
+    if (!token) return;
     void companyCalendarApi
       .get(token)
       .then((cal) => {
         setCompanyCal(cal);
-        setCompanyCalUrl(cal.sourceUrl || cal.defaultUrl);
+        setCompanyCalUrl(cal.sourceUrl || cal.defaultUrl || defaultCompanyCalendarUrl(cal.fiscalYear ?? japanFiscalYear()));
         if (cal.fiscalYear) setCompanyCalYear(cal.fiscalYear);
       })
       .catch(() => {
-        /* ignore */
+        setCompanyCalUrl((prev) => prev || defaultCompanyCalendarUrl(japanFiscalYear()));
       });
-  }, [token, companyHolidayOn]);
+  }, [token]);
+
+  useEffect(() => {
+    if (window.location.hash !== "#company-calendar") return;
+    document.getElementById("company-calendar")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   async function togglePush() {
     if (!token) return;
@@ -141,6 +146,7 @@ export default function SettingsPage() {
     try {
       const cal = await companyCalendarApi.importUrl(token, { url: companyCalUrl, year: companyCalYear });
       applyCompanyCal(cal);
+      await refresh();
       setCompanyCalMsg(null);
     } catch (err) {
       if (err instanceof ApiError && err.code === "NEEDS_UPLOAD") {
@@ -160,6 +166,7 @@ export default function SettingsPage() {
     try {
       const cal = await companyCalendarApi.importPdf(token, file, { url: companyCalUrl, year: companyCalYear });
       applyCompanyCal(cal);
+      await refresh();
       setCompanyCalMsg(null);
     } catch (err) {
       setCompanyCalMsg(err instanceof ApiError ? err.message : t("settings.companyCalError"));
@@ -328,7 +335,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="px-4 py-3">
+          <div id="company-calendar" className="px-4 py-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <Factory size={18} className="text-neutral-400" />
@@ -348,8 +355,7 @@ export default function SettingsPage() {
                 {companyHolidayOn ? t("settings.companyHolidaysOn") : t("settings.companyHolidaysOff")}
               </button>
             </div>
-            {companyHolidayOn ? (
-              <div className="mt-3 space-y-2">
+            <div className="mt-3 space-y-2">
                 <p className="text-[11px] text-neutral-400">{t("settings.companyCalHint")}</p>
                 <label className="block text-[11px] font-semibold text-neutral-500">
                   {t("settings.companyCalYear")}
@@ -359,7 +365,15 @@ export default function SettingsPage() {
                     min={2024}
                     max={2040}
                     value={companyCalYear}
-                    onChange={(e) => setCompanyCalYear(Number(e.target.value) || companyCalYear)}
+                    onChange={(e) => {
+                      const year = Number(e.target.value) || companyCalYear;
+                      setCompanyCalYear(year);
+                      setCompanyCalUrl((prev) => {
+                        const prevDefault = defaultCompanyCalendarUrl(companyCalYear);
+                        if (!prev.trim() || prev === prevDefault) return defaultCompanyCalendarUrl(year);
+                        return prev.replace(/20\d{2}/g, String(year));
+                      });
+                    }}
                     className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm text-neutral-800"
                   />
                 </label>
@@ -369,6 +383,7 @@ export default function SettingsPage() {
                     type="url"
                     value={companyCalUrl}
                     onChange={(e) => setCompanyCalUrl(e.target.value)}
+                    placeholder={defaultCompanyCalendarUrl(companyCalYear)}
                     className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm text-neutral-800"
                     autoCapitalize="none"
                     autoCorrect="off"
@@ -413,10 +428,11 @@ export default function SettingsPage() {
                   </p>
                 ) : companyCal?.usingBakedFallback ? (
                   <p className="text-[11px] text-neutral-400">{t("settings.companyCalFallback")}</p>
-                ) : null}
+                ) : (
+                  <p className="text-[11px] text-neutral-400">{t("settings.companyCalEmpty")}</p>
+                )}
                 {companyCalMsg ? <p className="text-[11px] text-rose-600">{companyCalMsg}</p> : null}
-              </div>
-            ) : null}
+            </div>
           </div>
 
           <div className="px-4 py-3">

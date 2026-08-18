@@ -853,6 +853,17 @@ export default function CalendarPage() {
           })}
         </div>
 
+        {activeCats.has("company") && !loading && !events.some((e) => e.category === "company") ? (
+          <button
+            type="button"
+            onClick={() => navigate("/settings#company-calendar")}
+            className="mt-2 w-full rounded-2xl bg-indigo-50 px-4 py-3 text-left shadow-sm ring-1 ring-indigo-100"
+          >
+            <p className="text-sm font-semibold text-indigo-700">{t("calendar.companyCalSetupTitle")}</p>
+            <p className="mt-0.5 text-[11px] text-indigo-500">{t("calendar.companyCalSetupHint")}</p>
+          </button>
+        ) : null}
+
         <div className="mt-2 select-none overflow-hidden rounded-2xl bg-white p-3 shadow-sm ring-1 ring-black/5">
           <div className="relative">
             <div className="mb-3 flex items-center justify-between">
