@@ -12,7 +12,7 @@ export default function TopBar({
   right?: ReactNode;
 }) {
   return (
-    <header className="safe-top sticky top-0 z-10 border-b border-black/5 bg-white/90 px-4 pb-3 pt-4 backdrop-blur">
+    <header className="safe-top sticky top-0 z-10 border-b border-black/5 bg-white px-4 pb-3 pt-4">
       <div className="mx-auto flex max-w-md items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {left}

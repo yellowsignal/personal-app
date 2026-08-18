@@ -70,9 +70,8 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-::-webkit-scrollbar {
-  width: 0px;
-  height: 0px;
+#app-overlay-root:empty {
+  display: none;
 }
 
 /* iOS Safari zooms focused fields when font-size < 16px. Keep ≥16px instead of locking zoom. */

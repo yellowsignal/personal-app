@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { LEGACY_BACKDROP_ATTR, OVERLAY_ROOT_ID } from "./overlayRoot.ts";
+import { LEGACY_BACKDROP_ATTR, OVERLAY_ROOT_CLASS, OVERLAY_ROOT_ID } from "./overlayRoot.ts";
 
 test("removeLegacyBodyOverlays deletes stuck body dim nodes and keeps the app overlay root", async () => {
   const removed: string[] = [];
@@ -45,4 +45,10 @@ test("removeLegacyBodyOverlays deletes stuck body dim nodes and keeps the app ov
   assert.equal(getOverlayRoot(), overlayRoot);
   removeLegacyBodyOverlays();
   assert.deepEqual(removed, ["legacy", "scrim"]);
+});
+
+test("overlay root is viewport-fixed so a long album cannot push sheets off-screen", () => {
+  assert.match(OVERLAY_ROOT_CLASS, /\bfixed\b/);
+  assert.match(OVERLAY_ROOT_CLASS, /\binset-0\b/);
+  assert.doesNotMatch(OVERLAY_ROOT_CLASS, /\babsolute\b/);
 });

@@ -110,6 +110,8 @@ export default function PhotosPage() {
 
   useEffect(() => {
     setViewer(null);
+    setAlbumMenu(null);
+    setShowHowTo(false);
     albumOpenedAt.current = Date.now();
     removeLegacyBodyOverlays();
   }, [openAlbumId]);
@@ -414,9 +416,7 @@ export default function PhotosPage() {
                         ? isCover
                           ? "ring-2 ring-indigo-500"
                           : "opacity-90"
-                        : isCover
-                          ? "ring-2 ring-indigo-400"
-                          : ""
+                        : ""
                     }`}
                   >
                     <img

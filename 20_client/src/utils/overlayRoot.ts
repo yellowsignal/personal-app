@@ -1,5 +1,7 @@
 export const OVERLAY_ROOT_ID = "app-overlay-root";
 export const LEGACY_BACKDROP_ATTR = "data-app-overlay-backdrop";
+/** Viewport-sized, not page-sized — sheets/lightbox must sit on the screen, not at the bottom of a long album. */
+export const OVERLAY_ROOT_CLASS = "pointer-events-none fixed inset-0 z-50 isolate max-h-[100dvh]";
 
 export function getOverlayRoot(): HTMLElement | null {
   if (typeof document === "undefined") return null;
