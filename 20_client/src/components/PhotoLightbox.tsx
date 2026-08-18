@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import { createPortal } from "react-dom";
 import { Download, X } from "lucide-react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useOverlayCoverStyle } from "../hooks/useOverlayCoverStyle";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { IcloudAlbumPhoto } from "../api/photos";
 import {
@@ -80,6 +81,7 @@ export default function PhotoLightbox({
   const canPrev = index > 0;
   const canNext = index < photos.length - 1;
   const zoomed = isPhotoZoomed(zoom.scale);
+  const cover = useOverlayCoverStyle();
   const offset = dragging && !zoomed
     ? photoViewerDragOffset({
         axis: axis.current,
@@ -90,7 +92,7 @@ export default function PhotoLightbox({
       })
     : { x: dx, y: Math.max(0, dy) };
 
-  useBodyScrollLock(true);
+  useBodyScrollLock(true, { pinBody: false });
 
   const applyZoom = useCallback((next: PhotoZoom) => {
     zoomRef.current = next;
@@ -490,6 +492,7 @@ export default function PhotoLightbox({
       aria-label={caption}
       className="fixed inset-0 z-[80] overflow-hidden"
       style={{
+        ...cover,
         backgroundColor: `rgba(0,0,0,${dim})`,
         touchAction: "none",
         overscrollBehavior: "none",

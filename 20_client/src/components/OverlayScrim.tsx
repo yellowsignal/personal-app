@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
+import { useOverlayCoverStyle } from "../hooks/useOverlayCoverStyle";
 import { sheetMaxHeightPx } from "../utils/composerKeyboard";
 import SwipeToDismiss from "./SwipeToDismiss";
 
@@ -29,7 +31,10 @@ export default function OverlayScrim({
   const keyboardInset = useKeyboardInset();
   const enableSwipe = Boolean(onDismiss && swipeToDismiss);
   const dim = enableSwipe ? Math.max(0, 0.4 * (1 - dragY / 320)) : undefined;
-  useBodyScrollLock(lockBackground);
+  // Do not pin `body { position:fixed }` for sheets — that is what makes this
+  // layer stick to the top of the document on iPhone and dim only half the page.
+  useBodyScrollLock(lockBackground, { pinBody: false });
+  const cover = useOverlayCoverStyle();
 
   useEffect(() => {
     const sync = () => {
@@ -53,23 +58,23 @@ export default function OverlayScrim({
     };
   }, []);
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div
       className={className}
       style={{
+        ...cover,
         ...(dim != null ? { backgroundColor: `rgba(0,0,0,${dim})` } : null),
         overscrollBehavior: "none",
         touchAction: "none",
-        // Lift bottom sheets above the software keyboard (iOS Safari / PWA).
         paddingBottom: keyboardInset > 0 ? keyboardInset : undefined,
         ["--keyboard-inset" as string]: `${keyboardInset}px`,
-        // Forms use max-h-[var(--sheet-max-height)] so tall sheets shrink with the keyboard.
         ["--sheet-max-height" as string]: `${sheetMaxPx}px`,
       }}
       data-keyboard-inset={keyboardInset}
       data-sheet-max={sheetMaxPx}
       onTouchMove={(e) => {
-        // Stop iOS scroll chaining into the page behind the sheet.
         if (e.target === e.currentTarget) e.preventDefault();
       }}
     >
@@ -93,6 +98,7 @@ export default function OverlayScrim({
           {children}
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

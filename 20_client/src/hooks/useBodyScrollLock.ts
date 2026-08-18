@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 
 let lockCount = 0;
 let savedScrollY = 0;
@@ -47,14 +47,19 @@ export function useResetWindowScroll(key: unknown): void {
   useEffect(() => scheduleResetWindowScroll(), [key]);
 }
 
-function lockBody(options?: { restoreScroll?: boolean }) {
+function lockBody(options?: { restoreScroll?: boolean; pinBody?: boolean }) {
   if (typeof document === "undefined") return;
   lockCount += 1;
-  if (lockCount !== 1) return;
+  const pinBody = options?.pinBody !== false;
+  if (lockCount !== 1) {
+    if (pinBody && savedStyles && document.body.style.position !== "fixed") {
+      applyBodyPin(options?.restoreScroll !== false);
+    }
+    return;
+  }
 
   const body = document.body;
   const html = document.documentElement;
-  // When restoreScroll is false (home viewport lock), never re-apply a previous page offset on unlock.
   restoreOnUnlock = options?.restoreScroll !== false;
   savedScrollY = restoreOnUnlock ? window.scrollY || html.scrollTop || 0 : 0;
   if (!restoreOnUnlock) {
@@ -72,15 +77,29 @@ function lockBody(options?: { restoreScroll?: boolean }) {
 
   const scrollbarGap = window.innerWidth - html.clientWidth;
   body.style.overflow = "hidden";
-  body.style.position = "fixed";
-  body.style.top = restoreOnUnlock ? `-${savedScrollY}px` : "0";
-  body.style.left = "0";
-  body.style.width = "100%";
+  html.style.overflow = "hidden";
+  html.style.overscrollBehavior = "none";
   if (scrollbarGap > 0) {
     body.style.paddingRight = `${scrollbarGap}px`;
   }
-  html.style.overflow = "hidden";
-  html.style.overscrollBehavior = "none";
+  if (pinBody) {
+    applyBodyPin(restoreOnUnlock);
+  }
+}
+
+function applyBodyPin(restoreScroll: boolean) {
+  const body = document.body;
+  restoreOnUnlock = restoreScroll;
+  if (restoreScroll) {
+    savedScrollY = window.scrollY || document.documentElement.scrollTop || savedScrollY;
+  } else {
+    savedScrollY = 0;
+    resetWindowScroll();
+  }
+  body.style.position = "fixed";
+  body.style.top = restoreScroll ? `-${savedScrollY}px` : "0";
+  body.style.left = "0";
+  body.style.width = "100%";
 }
 
 function unlockBody() {
@@ -113,14 +132,21 @@ function unlockBody() {
 export type BodyScrollLockOptions = {
   /** When false, unlock always returns to the top (used for the home fixed viewport). Default true. */
   restoreScroll?: boolean;
+  /**
+   * When false, only freeze overflow (used by sheets/lightbox). Pinning `body` with
+   * `position:fixed` makes iOS treat overlays as document-absolute and leaves a
+   * dark band on the page. Default true for the home viewport lock.
+   */
+  pinBody?: boolean;
 };
 
 /** Lock page scroll while a modal/sheet is open (ref-counted for stacked overlays). */
 export function useBodyScrollLock(active = true, options: BodyScrollLockOptions = {}) {
   const restoreScroll = options.restoreScroll !== false;
-  useEffect(() => {
+  const pinBody = options.pinBody !== false;
+  useLayoutEffect(() => {
     if (!active) return;
-    lockBody({ restoreScroll });
+    lockBody({ restoreScroll, pinBody });
     return () => unlockBody();
-  }, [active, restoreScroll]);
+  }, [active, restoreScroll, pinBody]);
 }
