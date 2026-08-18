@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronRight, Copy, Bell, Fingerprint, Globe, LogOut, UserPlus, Users, CalendarDays } from "lucide-react";
+import { ChevronRight, Copy, Bell, Fingerprint, Globe, LogOut, UserPlus, Users, CalendarDays, Factory } from "lucide-react";
 import TopBar from "../components/TopBar";
 import HolidayPrefPicker, { parseHolidayPref, type HolidayPref } from "../components/HolidayPrefPicker";
 import { ApiError } from "../api/http";
@@ -25,10 +25,12 @@ export default function SettingsPage() {
   const [passkeyMsg, setPasskeyMsg] = useState<string | null>(null);
   const [linkingPasskey, setLinkingPasskey] = useState(false);
   const [savingHolidayPref, setSavingHolidayPref] = useState(false);
+  const [savingCompanyHoliday, setSavingCompanyHoliday] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushMsg, setPushMsg] = useState<string | null>(null);
   const holidayPref = parseHolidayPref(user?.countryPref);
+  const companyHolidayOn = user?.companyHolidayPref === "KHI_AKASHI";
   const ios = isIosDevice();
   const standalone = isStandaloneDisplay();
 
@@ -92,6 +94,16 @@ export default function SettingsPage() {
       await updateMe({ countryPref: pref });
     } finally {
       setSavingHolidayPref(false);
+    }
+  }
+
+  async function changeCompanyHolidayPref(on: boolean) {
+    if (on === companyHolidayOn) return;
+    setSavingCompanyHoliday(true);
+    try {
+      await updateMe({ companyHolidayPref: on ? "KHI_AKASHI" : "NONE" });
+    } finally {
+      setSavingCompanyHoliday(false);
     }
   }
 
@@ -252,6 +264,28 @@ export default function SettingsPage() {
                 onChange={(v) => void changeHolidayPref(v)}
                 disabled={savingHolidayPref}
               />
+            </div>
+          </div>
+
+          <div className="px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Factory size={18} className="text-neutral-400" />
+                <div>
+                  <p className="text-sm font-medium text-neutral-800">{t("settings.companyHolidays")}</p>
+                  <p className="text-[11px] text-neutral-400">{t("settings.companyHolidaysHint")}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={savingCompanyHoliday}
+                onClick={() => void changeCompanyHolidayPref(!companyHolidayOn)}
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
+                  companyHolidayOn ? "bg-indigo-600 text-white" : "bg-neutral-100 text-neutral-500"
+                }`}
+              >
+                {companyHolidayOn ? t("settings.companyHolidaysOn") : t("settings.companyHolidaysOff")}
+              </button>
             </div>
           </div>
 

@@ -8,6 +8,7 @@ export interface PublicUser {
   role: UserRole;
   languagePref: string;
   countryPref: string;
+  companyHolidayPref: string;
   currencyPref: string;
   createdAt: string;
 }
@@ -34,6 +35,7 @@ export interface UserRecord {
   role: UserRole;
   languagePref: string;
   countryPref: string;
+  companyHolidayPref: string;
   currencyPref: string;
   createdAt: Date;
 }
@@ -54,6 +56,7 @@ export function toPublicUser(user: UserRecord): PublicUser {
     role: user.role,
     languagePref: user.languagePref,
     countryPref: user.countryPref,
+    companyHolidayPref: user.companyHolidayPref,
     currencyPref: user.currencyPref,
     createdAt: user.createdAt.toISOString(),
   };

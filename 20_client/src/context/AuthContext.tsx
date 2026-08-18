@@ -40,7 +40,7 @@ interface AuthContextValue {
   logout: () => void;
   refresh: () => Promise<void>;
   applySession: (session: AuthResponse) => void;
-  updateMe: (patch: Partial<{ languagePref: string; currencyPref: string; countryPref: string; name: string }>) => Promise<void>;
+  updateMe: (patch: Partial<{ languagePref: string; currencyPref: string; countryPref: string; companyHolidayPref: string; name: string }>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -125,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [currency, lang, token, user]);
 
   const updateMe = useCallback(
-    async (patch: Partial<{ languagePref: string; currencyPref: string; countryPref: string; name: string }>) => {
+    async (patch: Partial<{ languagePref: string; currencyPref: string; countryPref: string; companyHolidayPref: string; name: string }>) => {
       if (!token) return;
       const res = await authApi.updateMe(token, patch);
       setUser(res.user);

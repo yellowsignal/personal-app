@@ -253,6 +253,28 @@ test("calendar CRUD and derived document expiry / subscription billing", async (
     const bothEvents = (await bothHolidays.json()) as Array<{ category: string; date: string }>;
     assert.ok(bothEvents.some((e) => e.category === "holiday" && e.date === "2026-08-11"));
     assert.ok(bothEvents.some((e) => e.category === "holiday" && e.date === "2026-08-15"));
+
+    const companyOn = await fetch(`${base}/api/auth/me`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ companyHolidayPref: "KHI_AKASHI" }),
+    });
+    assert.equal(companyOn.status, 200);
+
+    const companyHolidays = await fetch(
+      `${base}/api/calendar/events?from=2026-08-01&to=2026-08-31&scope=all`,
+      { headers: { authorization: `Bearer ${owner.token}` } },
+    );
+    const companyEvents = (await companyHolidays.json()) as Array<{
+      category: string;
+      date: string;
+      title: string;
+    }>;
+    assert.ok(companyEvents.some((e) => e.category === "holiday" && e.date === "2026-08-13" && e.title === "하기휴가"));
+    assert.equal(companyEvents.filter((e) => e.date === "2026-08-11").length, 1);
   } finally {
     server.close();
   }

@@ -10,6 +10,7 @@ export interface PublicUser {
   role: UserRole;
   languagePref: string;
   countryPref: string;
+  companyHolidayPref: string;
   currencyPref: string;
   createdAt: string;
 }
@@ -72,6 +73,7 @@ export const authApi = {
       languagePref: string;
       currencyPref: string;
       countryPref: string;
+      companyHolidayPref: string;
       name: string;
     }>,
   ) {

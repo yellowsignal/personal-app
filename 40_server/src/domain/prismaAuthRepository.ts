@@ -12,6 +12,7 @@ function mapUser(user: PrismaUser): UserRecord {
     role: user.role as UserRole,
     languagePref: user.languagePref,
     countryPref: user.countryPref,
+    companyHolidayPref: user.companyHolidayPref,
     currencyPref: user.currencyPref,
     createdAt: user.createdAt,
   };
@@ -50,6 +51,7 @@ export class PrismaAuthRepository implements AuthRepository {
           role: input.role,
           languagePref: input.languagePref,
           countryPref: input.countryPref,
+          companyHolidayPref: input.companyHolidayPref ?? "NONE",
           currencyPref: input.currencyPref,
         },
       });
@@ -64,7 +66,7 @@ export class PrismaAuthRepository implements AuthRepository {
 
   async updateUser(
     id: number,
-    patch: Partial<Pick<UserRecord, "familyId" | "role" | "languagePref" | "countryPref" | "currencyPref" | "name" | "email">>,
+    patch: Partial<Pick<UserRecord, "familyId" | "role" | "languagePref" | "countryPref" | "companyHolidayPref" | "currencyPref" | "name" | "email">>,
   ): Promise<UserRecord> {
     const user = await this.db.user.update({
       where: { id },
@@ -73,6 +75,7 @@ export class PrismaAuthRepository implements AuthRepository {
         role: patch.role,
         languagePref: patch.languagePref,
         countryPref: patch.countryPref,
+        companyHolidayPref: patch.companyHolidayPref,
         currencyPref: patch.currencyPref,
         name: patch.name,
         email: patch.email?.toLowerCase(),

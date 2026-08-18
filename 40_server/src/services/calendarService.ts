@@ -19,6 +19,11 @@ import {
   listPublicHolidays,
   parseHolidayPref,
 } from "../domain/holidays.js";
+import {
+  companyHolidayTitle,
+  listCompanyHolidays,
+  parseCompanyHolidayPref,
+} from "../domain/companyHolidays.js";
 import { listDueDates, utcDateOnly } from "../domain/recurringDepositTypes.js";
 import {
   expandRecurrence,
@@ -279,6 +284,7 @@ export class CalendarService {
     const pref = parseHolidayPref(user.countryPref);
     const holidays = listPublicHolidays(toDateKey(from), toDateKey(to), holidayCountries(pref));
     const lang = user.languagePref === "ja" ? "ja" : "ko";
+    const nationalDates = new Set(holidays.map((h) => h.date));
     for (const h of holidays) {
       scoped.push({
         id: `holiday-${h.country}-${h.date}-${h.code}`,
@@ -296,6 +302,29 @@ export class CalendarService {
         ownerName:
           h.country === "KR" ? (lang === "ja" ? "韓国" : "한국") : lang === "ja" ? "日本" : "일본",
         seriesId: `holiday-${h.country}-${h.date}-${h.code}`,
+        recurrence: null,
+        reminderMinutesBefore: null,
+      });
+    }
+
+    const companyCal = parseCompanyHolidayPref(user.companyHolidayPref);
+    for (const h of listCompanyHolidays(toDateKey(from), toDateKey(to), companyCal)) {
+      if (nationalDates.has(h.date)) continue;
+      scoped.push({
+        id: `holiday-${h.cal}-${h.date}-${h.code}`,
+        userId: user.id,
+        title: companyHolidayTitle(h, lang),
+        description: h.cal,
+        date: h.date,
+        time: null,
+        endDate: h.date,
+        isAllDay: true,
+        category: "holiday",
+        isShared: true,
+        editable: false,
+        sourceDocumentId: null,
+        ownerName: lang === "ja" ? "川重" : "川重",
+        seriesId: `holiday-${h.cal}-${h.date}-${h.code}`,
         recurrence: null,
         reminderMinutesBefore: null,
       });

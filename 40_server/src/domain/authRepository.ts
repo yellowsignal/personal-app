@@ -8,6 +8,7 @@ export interface CreateUserInput {
   role: UserRole;
   languagePref: string;
   countryPref: string;
+  companyHolidayPref?: string;
   currencyPref: string;
 }
 
@@ -17,7 +18,7 @@ export interface AuthRepository {
   createUser(input: CreateUserInput): Promise<UserRecord>;
   updateUser(
     id: number,
-    patch: Partial<Pick<UserRecord, "familyId" | "role" | "languagePref" | "countryPref" | "currencyPref" | "name" | "email">>,
+    patch: Partial<Pick<UserRecord, "familyId" | "role" | "languagePref" | "countryPref" | "companyHolidayPref" | "currencyPref" | "name" | "email">>,
   ): Promise<UserRecord>;
 
   findFamilyById(id: number): Promise<FamilyRecord | null>;
