@@ -77,7 +77,8 @@ function lockBody(options?: { restoreScroll?: boolean; pinBody?: boolean }) {
 
   const scrollbarGap = window.innerWidth - html.clientWidth;
   body.style.overflow = "hidden";
-  html.style.overflow = "hidden";
+  // Do not set `html { overflow:hidden }` — iOS then treats `position:fixed`
+  // overlays as document-absolute and can leave a dark band after unmount.
   html.style.overscrollBehavior = "none";
   if (scrollbarGap > 0) {
     body.style.paddingRight = `${scrollbarGap}px`;

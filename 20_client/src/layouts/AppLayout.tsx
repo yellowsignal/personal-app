@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import BottomNav from "../components/BottomNav";
+import OverlayBackdropHost from "../components/OverlayBackdropHost";
 import PushOnboardingSheet from "../components/PushOnboardingSheet";
 import { useBodyScrollLock, useResetWindowScroll } from "../hooks/useBodyScrollLock";
 import { useOnAppResume } from "../hooks/useOnAppResume";
@@ -52,6 +53,7 @@ export default function AppLayout() {
           <Outlet />
         </div>
         {!hideBottomNav && <BottomNav />}
+        <OverlayBackdropHost />
         <PushOnboardingSheet />
       </div>
     </div>

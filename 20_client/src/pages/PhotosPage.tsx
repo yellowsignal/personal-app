@@ -17,6 +17,7 @@ import {
 import { ApiError } from "../api/http";
 import { MAX_ICLOUD_ALBUMS, saveBlobLocally } from "../utils/photoUpload";
 import { sortAlbumPhotosOldestFirst, withAlbumCoverCacheKey } from "../utils/albumCover";
+import { isDrillInGhostClick } from "../utils/drillInClick";
 
 function AlbumCardCover({
   token,
@@ -104,6 +105,12 @@ export default function PhotosPage() {
   const openAlbumId = openDetail?.id ?? null;
   // Album open/close is in-page (no route change) — still start at the top.
   useResetWindowScroll(openAlbumId);
+  const albumOpenedAt = useRef(0);
+
+  useEffect(() => {
+    setViewer(null);
+    albumOpenedAt.current = Date.now();
+  }, [openAlbumId]);
 
   useEffect(() => {
     if (!token || openAlbumId == null) return;
@@ -394,6 +401,7 @@ export default function PhotosPage() {
                         void handleSetCover(p.id);
                         return;
                       }
+                      if (isDrillInGhostClick(albumOpenedAt.current)) return;
                       setViewer({ index: photoIndex });
                     }}
                     className={`relative aspect-square overflow-hidden rounded-lg bg-neutral-100 ${

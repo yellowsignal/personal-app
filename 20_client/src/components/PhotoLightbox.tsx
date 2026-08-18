@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { Download, X } from "lucide-react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useOverlayCoverStyle } from "../hooks/useOverlayCoverStyle";
+import { acquireOverlayBackdrop, setOverlayBackdropOpacity } from "../utils/overlayBackdrop";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { IcloudAlbumPhoto } from "../api/photos";
 import {
@@ -92,7 +93,12 @@ export default function PhotoLightbox({
       })
     : { x: dx, y: Math.max(0, dy) };
 
-  useBodyScrollLock(true, { pinBody: false });
+  useBodyScrollLock(!exiting, { pinBody: false });
+
+  useLayoutEffect(() => {
+    const release = acquireOverlayBackdrop(1);
+    return release;
+  }, []);
 
   const applyZoom = useCallback((next: PhotoZoom) => {
     zoomRef.current = next;
@@ -132,6 +138,8 @@ export default function PhotoLightbox({
     };
   }, []);
 
+  const closeTimer = useRef<number | null>(null);
+
   const closeWithMotion = useCallback(() => {
     if (busy.current || exiting) return;
     busy.current = true;
@@ -139,8 +147,19 @@ export default function PhotoLightbox({
     setDragging(false);
     setDx(0);
     setDy(typeof window !== "undefined" ? window.innerHeight : 800);
-    window.setTimeout(() => onClose(), SETTLE_MS);
+    setOverlayBackdropOpacity(0);
+    if (closeTimer.current != null) window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(() => {
+      closeTimer.current = null;
+      onClose();
+    }, SETTLE_MS);
   }, [exiting, onClose]);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimer.current != null) window.clearTimeout(closeTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -479,9 +498,14 @@ export default function PhotoLightbox({
     setDy(0);
   }
 
+  const dim = zoomed ? 1 : photoViewerBackdropOpacity(offset.y);
+
+  useLayoutEffect(() => {
+    setOverlayBackdropOpacity(exiting ? 0 : dim);
+  }, [dim, exiting]);
+
   if (!photo || typeof document === "undefined") return null;
 
-  const dim = zoomed ? 1 : photoViewerBackdropOpacity(offset.y);
   const caption = photo.caption || albumTitle || t("photos.noCaption");
 
   return createPortal(
@@ -493,10 +517,10 @@ export default function PhotoLightbox({
       className="fixed inset-0 z-[80] overflow-hidden"
       style={{
         ...cover,
-        backgroundColor: `rgba(0,0,0,${dim})`,
+        backgroundColor: "transparent",
+        pointerEvents: exiting ? "none" : "auto",
         touchAction: "none",
         overscrollBehavior: "none",
-        transition: dragging ? "none" : "background-color 200ms ease",
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

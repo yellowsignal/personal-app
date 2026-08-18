@@ -1,8 +1,13 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useOverlayCoverStyle } from "../hooks/useOverlayCoverStyle";
+import {
+  OVERLAY_SCRIM_OPACITY,
+  acquireOverlayBackdrop,
+  setOverlayBackdropOpacity,
+} from "../utils/overlayBackdrop";
 import { sheetMaxHeightPx } from "../utils/composerKeyboard";
 import SwipeToDismiss from "./SwipeToDismiss";
 
@@ -30,11 +35,22 @@ export default function OverlayScrim({
   );
   const keyboardInset = useKeyboardInset();
   const enableSwipe = Boolean(onDismiss && swipeToDismiss);
-  const dim = enableSwipe ? Math.max(0, 0.4 * (1 - dragY / 320)) : undefined;
+  const dim = enableSwipe
+    ? Math.max(0, OVERLAY_SCRIM_OPACITY * (1 - dragY / 320))
+    : OVERLAY_SCRIM_OPACITY;
   // Do not pin `body { position:fixed }` for sheets — that is what makes this
   // layer stick to the top of the document on iPhone and dim only half the page.
   useBodyScrollLock(lockBackground, { pinBody: false });
   const cover = useOverlayCoverStyle();
+
+  useLayoutEffect(() => {
+    const release = acquireOverlayBackdrop(OVERLAY_SCRIM_OPACITY);
+    return release;
+  }, []);
+
+  useLayoutEffect(() => {
+    setOverlayBackdropOpacity(dim);
+  }, [dim]);
 
   useEffect(() => {
     const sync = () => {
@@ -62,10 +78,10 @@ export default function OverlayScrim({
 
   return createPortal(
     <div
-      className={className}
+      className={className.replace(/\bbg-black\/\d+\b/g, "bg-transparent")}
       style={{
         ...cover,
-        ...(dim != null ? { backgroundColor: `rgba(0,0,0,${dim})` } : null),
+        backgroundColor: "transparent", // dim lives on the persistent body backdrop
         overscrollBehavior: "none",
         touchAction: "none",
         paddingBottom: keyboardInset > 0 ? keyboardInset : undefined,
