@@ -14,7 +14,14 @@ import { HttpError } from "./authService.js";
 import type { FamilyActivityService } from "./familyActivityService.js";
 import { collectChanges } from "../domain/familyActivityFormat.js";
 import type { PasskeyService } from "./passkeyService.js";
-import { currencyForMarket, fetchYahooPrice, toYahooSymbol } from "./stockQuote.js";
+import {
+  currencyForMarket,
+  fetchYahooPrice,
+  quoteCompanyName,
+  resolveCreateStockLabel,
+  resolveUpdateStockLabel,
+  toYahooSymbol,
+} from "./stockQuote.js";
 
 const CURRENCIES = new Set(["KRW", "JPY", "USD"]);
 const ASSET_TYPES = new Set(["deposit", "stock", "cash", "realestate"]);
@@ -259,9 +266,11 @@ export class AssetService {
       const currency = currencyForMarket(stockMarket);
 
       let currentPrice: number | null = null;
+      let quoteName: string | null = null;
       try {
         const quote = await fetchYahooPrice(toYahooSymbol(stockMarket, stockCode));
         currentPrice = quote.price;
+        quoteName = quoteCompanyName(quote);
       } catch {
         // Allow create without live quote; user can refresh later
         currentPrice = null;
@@ -272,7 +281,7 @@ export class AssetService {
         userId: user.id,
         familyId: user.familyId,
         type,
-        label: body.label.trim().slice(0, 200),
+        label: resolveCreateStockLabel(body.label, stockCode, quoteName),
         currency,
         amount,
         bankCode: null,
@@ -454,6 +463,11 @@ export class AssetService {
     if (buyPrice == null) throw new HttpError(400, "buyPrice is required for stocks");
 
     let currentPrice = existing.currentPrice;
+    let quoteName: string | null = null;
+    const tickerChanged =
+      (body.stockCode !== undefined &&
+        (existing.stockCode ?? "").trim().toUpperCase() !== stockCode.trim().toUpperCase()) ||
+      (body.stockMarket !== undefined && existing.stockMarket !== market);
     const shouldRefetch =
       body.stockCode !== undefined ||
       body.stockMarket !== undefined ||
@@ -462,6 +476,7 @@ export class AssetService {
       try {
         const quote = await fetchYahooPrice(toYahooSymbol(market, stockCode));
         currentPrice = quote.price;
+        quoteName = quoteCompanyName(quote);
       } catch {
         /* keep previous */
       }
@@ -470,13 +485,21 @@ export class AssetService {
       currentPrice = parseOptionalPositive(body.currentPrice, "currentPrice");
     }
 
+    const incomingLabel =
+      typeof body.label === "string" && body.label.trim() ? body.label.trim() : undefined;
+    const nextLabel = resolveUpdateStockLabel({
+      existingLabel: existing.label,
+      incomingLabel,
+      previousCode: existing.stockCode,
+      nextCode: stockCode,
+      quoteName,
+      tickerChanged,
+    });
+
     const amount = marketValue(quantity, currentPrice, buyPrice);
     const updated = await this.assetRepo.update(id, {
       type: body.type === undefined ? undefined : nextType,
-      label:
-        typeof body.label === "string" && body.label.trim()
-          ? body.label.trim().slice(0, 200)
-          : undefined,
+      ...(nextLabel !== undefined ? { label: nextLabel } : {}),
       currency: currencyForMarket(market),
       amount,
       bankCode: null,
@@ -524,9 +547,11 @@ export class AssetService {
 
     const quote = await fetchYahooPrice(toYahooSymbol(existing.stockMarket, existing.stockCode));
     const amount = marketValue(existing.quantity, quote.price, existing.buyPrice);
+    const quoteName = quoteCompanyName(quote);
     // Only owner can persist; viewers get ephemeral public view with updated numbers
     if (existing.userId === user.id) {
       const updated = await this.assetRepo.update(id, {
+        ...(quoteName ? { label: quoteName } : {}),
         currentPrice: quote.price,
         amount,
         currency: currencyForMarket(existing.stockMarket),
@@ -538,11 +563,39 @@ export class AssetService {
     return toPublicAsset(
       {
         ...existing,
+        ...(quoteName ? { label: quoteName } : {}),
         currentPrice: quote.price,
         amount,
       },
       owner?.name ?? "Unknown",
     );
+  }
+
+  async lookupQuote(
+    userId: number,
+    marketRaw: unknown,
+    codeRaw: unknown,
+  ): Promise<{
+    price: number;
+    currency: string;
+    symbol: string;
+    shortName: string | null;
+    label: string;
+  }> {
+    await this.requireUser(userId);
+    const market = parseMarket(marketRaw);
+    const stockCode =
+      typeof codeRaw === "string" && codeRaw.trim() ? codeRaw.trim().slice(0, 32) : "";
+    if (!stockCode) throw new HttpError(400, "stockCode is required for stocks");
+    const quote = await fetchYahooPrice(toYahooSymbol(market, stockCode));
+    const shortName = quoteCompanyName(quote);
+    return {
+      price: quote.price,
+      currency: quote.currency,
+      symbol: quote.symbol,
+      shortName,
+      label: shortName || stockCode.toUpperCase(),
+    };
   }
 
   async refreshAllPrices(userId: number): Promise<PublicAsset[]> {
@@ -561,7 +614,9 @@ export class AssetService {
       try {
         const quote = await fetchYahooPrice(toYahooSymbol(stock.stockMarket!, stock.stockCode!));
         const amount = marketValue(stock.quantity!, quote.price, stock.buyPrice);
+        const quoteName = quoteCompanyName(quote);
         await this.assetRepo.update(stock.id, {
+          ...(quoteName ? { label: quoteName } : {}),
           currentPrice: quote.price,
           amount,
           currency: currencyForMarket(stock.stockMarket!),

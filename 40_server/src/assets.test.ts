@@ -451,3 +451,134 @@ test("family member cannot reveal credentials on private (unshared) deposit", as
     server.close();
   }
 });
+
+test("stock title follows Yahoo company name when ticker changes or price refreshes", async () => {
+  const originalFetch = globalThis.fetch;
+  const yahooMeta: Record<string, { price: number; shortName: string }> = {
+    GOOGL: { price: 170.1, shortName: "Alphabet Inc." },
+    MSFT: { price: 480.35, shortName: "Microsoft Corporation" },
+  };
+  globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    const url = String(input);
+    if (url.includes("finance.yahoo.com/v8/finance/chart/")) {
+      const symbol = decodeURIComponent(url.split("/chart/")[1]?.split("?")[0] ?? "");
+      const meta = yahooMeta[symbol];
+      if (!meta) {
+        return new Response(JSON.stringify({ chart: { result: [], error: { description: "not found" } } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          chart: {
+            result: [
+              {
+                meta: {
+                  regularMarketPrice: meta.price,
+                  currency: "USD",
+                  symbol,
+                  shortName: meta.shortName,
+                },
+              },
+            ],
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    return originalFetch(input, init);
+  }) as typeof fetch;
+
+  const { server, base } = await listen(appWithAssets());
+  try {
+    const owner = await registerOwner(base);
+    const auth = { "content-type": "application/json", authorization: `Bearer ${owner.token}` };
+
+    const created = await fetch(`${base}/api/assets`, {
+      method: "POST",
+      headers: auth,
+      body: JSON.stringify({
+        type: "stock",
+        label: "구글",
+        stockMarket: "US",
+        stockCode: "GOOGL",
+        quantity: 3,
+        buyPrice: 100,
+        isShared: false,
+      }),
+    });
+    assert.equal(created.status, 201);
+    const google = (await created.json()) as { id: number; label: string; stockCode: string };
+    assert.equal(google.label, "구글");
+    assert.equal(google.stockCode, "GOOGL");
+
+    const patched = await fetch(`${base}/api/assets/${google.id}`, {
+      method: "PATCH",
+      headers: auth,
+      body: JSON.stringify({
+        type: "stock",
+        label: "구글",
+        stockMarket: "US",
+        stockCode: "MSFT",
+        quantity: 3,
+        buyPrice: 369.67,
+      }),
+    });
+    assert.equal(patched.status, 200);
+    const afterTicker = (await patched.json()) as { label: string; stockCode: string; currentPrice: number };
+    assert.equal(afterTicker.stockCode, "MSFT");
+    assert.equal(afterTicker.label, "Microsoft Corporation");
+    assert.equal(afterTicker.currentPrice, 480.35);
+
+    const renamed = await fetch(`${base}/api/assets/${google.id}`, {
+      method: "PATCH",
+      headers: auth,
+      body: JSON.stringify({
+        type: "stock",
+        label: "구글",
+        stockMarket: "US",
+        stockCode: "MSFT",
+        quantity: 3,
+        buyPrice: 369.67,
+      }),
+    });
+    assert.equal(renamed.status, 200);
+    assert.equal(((await renamed.json()) as { label: string }).label, "구글");
+
+    const refreshed = await fetch(`${base}/api/assets/${google.id}/refresh-price`, {
+      method: "POST",
+      headers: auth,
+      body: "{}",
+    });
+    assert.equal(refreshed.status, 200);
+    assert.equal(((await refreshed.json()) as { label: string }).label, "Microsoft Corporation");
+
+    const keptNickname = await fetch(`${base}/api/assets/${google.id}`, {
+      method: "PATCH",
+      headers: auth,
+      body: JSON.stringify({
+        type: "stock",
+        label: "마이크로소프트",
+        stockMarket: "US",
+        stockCode: "GOOGL",
+        quantity: 3,
+        buyPrice: 369.67,
+      }),
+    });
+    assert.equal(keptNickname.status, 200);
+    assert.equal(((await keptNickname.json()) as { label: string }).label, "마이크로소프트");
+
+    const quote = await fetch(`${base}/api/assets/quote?market=US&code=MSFT`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(quote.status, 200);
+    const quoteBody = (await quote.json()) as { label: string; shortName: string; price: number };
+    assert.equal(quoteBody.shortName, "Microsoft Corporation");
+    assert.equal(quoteBody.label, "Microsoft Corporation");
+    assert.equal(quoteBody.price, 480.35);
+  } finally {
+    globalThis.fetch = originalFetch;
+    server.close();
+  }
+});

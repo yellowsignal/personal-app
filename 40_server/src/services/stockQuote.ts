@@ -27,17 +27,81 @@ interface YahooChartResponse {
         regularMarketPrice?: number;
         currency?: string;
         symbol?: string;
+        shortName?: string;
+        longName?: string;
       };
     }>;
     error?: { description?: string } | null;
   };
 }
 
-export async function fetchYahooPrice(yahooSymbol: string): Promise<{
+export type StockQuote = {
   price: number;
   currency: string;
   symbol: string;
-}> {
+  shortName: string | null;
+};
+
+export function quoteCompanyName(quote: {
+  shortName?: string | null;
+  longName?: string | null;
+}): string | null {
+  const name = quote.shortName?.trim() || quote.longName?.trim() || "";
+  return name ? name.slice(0, 200) : null;
+}
+
+function sameName(a: string, b: string): boolean {
+  return a.trim().toUpperCase() === b.trim().toUpperCase();
+}
+
+/** Create: keep a real nickname; if the user only typed the ticker, use the quote name. */
+export function resolveCreateStockLabel(
+  userLabel: string,
+  stockCode: string,
+  quoteName: string | null,
+): string {
+  const trimmed = userLabel.trim().slice(0, 200);
+  const code = stockCode.trim().toUpperCase();
+  if (!trimmed || sameName(trimmed, code)) {
+    return (quoteName || code).slice(0, 200);
+  }
+  return trimmed;
+}
+
+/**
+ * Update: when the ticker/market changes, keep the submitted name only if the user
+ * actually edited it. Otherwise follow the quote's company name (or the new ticker).
+ */
+export function resolveUpdateStockLabel(opts: {
+  existingLabel: string;
+  incomingLabel: string | undefined;
+  previousCode: string | null;
+  nextCode: string;
+  quoteName: string | null;
+  tickerChanged: boolean;
+}): string | undefined {
+  const nextCode = opts.nextCode.trim().toUpperCase();
+  const prevCode = (opts.previousCode ?? "").trim().toUpperCase();
+  const incoming = opts.incomingLabel?.trim();
+  const quoteName = opts.quoteName?.trim() || null;
+
+  if (opts.tickerChanged) {
+    if (incoming) {
+      const renamed =
+        !sameName(incoming, opts.existingLabel) &&
+        !sameName(incoming, prevCode) &&
+        !sameName(incoming, nextCode) &&
+        !(quoteName && sameName(incoming, quoteName));
+      if (renamed) return incoming.slice(0, 200);
+    }
+    return (quoteName || nextCode).slice(0, 200);
+  }
+
+  if (incoming) return incoming.slice(0, 200);
+  return undefined;
+}
+
+export async function fetchYahooPrice(yahooSymbol: string): Promise<StockQuote> {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
     yahooSymbol,
   )}?interval=1d&range=1d`;
@@ -68,5 +132,6 @@ export async function fetchYahooPrice(yahooSymbol: string): Promise<{
     price,
     currency: meta?.currency ?? "USD",
     symbol: meta?.symbol ?? yahooSymbol,
+    shortName: quoteCompanyName(meta ?? {}),
   };
 }

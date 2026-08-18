@@ -134,6 +134,9 @@ export default function AssetsPage() {
   );
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [labelManual, setLabelManual] = useState(false);
+  const [formQuoteName, setFormQuoteName] = useState<string | null>(null);
+  const [detailQuoteName, setDetailQuoteName] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<PublicAsset | null>(null);
   const [revealed, setRevealed] = useState<Record<number, string>>({});
   const [revealBusyId, setRevealBusyId] = useState<number | null>(null);
@@ -177,9 +180,71 @@ export default function AssetsPage() {
 
   const hasDeposit = useMemo(() => visible.some((a) => a.type === "deposit"), [visible]);
 
+  useEffect(() => {
+    if (!showForm || form.type !== "stock" || !token) {
+      setFormQuoteName(null);
+      return;
+    }
+    const code = form.stockCode.trim();
+    if (code.length < 1) {
+      setFormQuoteName(null);
+      return;
+    }
+    const market = form.stockMarket;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void assetsApi
+        .quote(token, market, code)
+        .then((q) => {
+          if (cancelled) return;
+          setFormQuoteName(q.label);
+          if (!labelManual) {
+            setForm((f) => {
+              if (f.type !== "stock") return f;
+              if (f.stockMarket !== market) return f;
+              if (f.stockCode.trim().toUpperCase() !== code.toUpperCase()) return f;
+              if (f.label.trim() === q.label) return f;
+              return { ...f, label: q.label };
+            });
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setFormQuoteName(null);
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [showForm, form.type, form.stockMarket, form.stockCode, token, labelManual]);
+
+  useEffect(() => {
+    if (!detail || detail.type !== "stock" || !token || !detail.stockCode || !detail.stockMarket) {
+      setDetailQuoteName(null);
+      return;
+    }
+    const id = detail.id;
+    const market = detail.stockMarket;
+    const code = detail.stockCode;
+    let cancelled = false;
+    void assetsApi
+      .quote(token, market, code)
+      .then((q) => {
+        if (!cancelled && id === detail.id) setDetailQuoteName(q.label);
+      })
+      .catch(() => {
+        if (!cancelled) setDetailQuoteName(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [detail, token]);
+
   function openCreate() {
     setEditing(null);
     setForm(emptyForm(currency, lastMarket, lastBank));
+    setLabelManual(false);
+    setFormQuoteName(null);
     setSwipeId(null);
     setDetail(null);
     setShowForm(true);
@@ -188,6 +253,8 @@ export default function AssetsPage() {
   function openCreateDeposit() {
     setEditing(null);
     setForm({ ...emptyForm(currency, lastMarket, lastBank), type: "deposit" });
+    setLabelManual(false);
+    setFormQuoteName(null);
     setSwipeId(null);
     setDetail(null);
     setShowForm(true);
@@ -201,6 +268,8 @@ export default function AssetsPage() {
   function openEdit(item: PublicAsset) {
     setEditing(item);
     setForm(toForm(item, lastMarket, lastBank));
+    setLabelManual(true);
+    setFormQuoteName(null);
     setSwipeId(null);
     setDetail(null);
     setShowForm(true);
@@ -209,6 +278,8 @@ export default function AssetsPage() {
   function closeForm() {
     setShowForm(false);
     setEditing(null);
+    setLabelManual(false);
+    setFormQuoteName(null);
     setForm(emptyForm(currency, lastMarket, lastBank));
   }
 
@@ -304,6 +375,7 @@ export default function AssetsPage() {
     try {
       const data = await assetsApi.refreshAllPrices(token);
       setItems(data);
+      setDetail((cur) => (cur ? (data.find((a) => a.id === cur.id) ?? cur) : cur));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("assets.refreshError"));
     } finally {
@@ -321,6 +393,21 @@ export default function AssetsPage() {
       setDetail((cur) => (cur?.id === id ? updated : cur));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("assets.refreshError"));
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function handleApplyQuoteName() {
+    if (!token || !detail || !detailQuoteName) return;
+    setRefreshing(true);
+    setError(null);
+    try {
+      const updated = await assetsApi.update(token, detail.id, { label: detailQuoteName });
+      setItems((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      setDetail(updated);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("assets.saveError"));
     } finally {
       setRefreshing(false);
     }
@@ -565,6 +652,18 @@ export default function AssetsPage() {
           {detail.stockCode ? (
             <DetailRow label={t("assets.fieldStockCode")}>{detail.stockCode}</DetailRow>
           ) : null}
+          {detail.type === "stock" &&
+          detailQuoteName &&
+          detailQuoteName !== detail.label.trim() ? (
+            <button
+              type="button"
+              disabled={refreshing}
+              onClick={() => void handleApplyQuoteName()}
+              className="mt-2 w-full rounded-xl bg-indigo-50 px-3 py-2.5 text-left text-sm font-semibold text-indigo-700 disabled:opacity-50"
+            >
+              {t("assets.useQuoteName", { name: detailQuoteName })}
+            </button>
+          ) : null}
           {detail.quantity != null ? (
             <DetailRow label={t("assets.fieldQuantity")}>{t("assets.shares", { n: detail.quantity })}</DetailRow>
           ) : null}
@@ -739,10 +838,28 @@ export default function AssetsPage() {
               <input
                 required
                 value={form.label}
-                onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
+                onChange={(e) => {
+                  setLabelManual(true);
+                  setForm((f) => ({ ...f, label: e.target.value }));
+                }}
                 className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
               />
             </label>
+            {form.type === "stock" ? (
+              <p className="mt-1 text-[11px] font-normal text-neutral-400">{t("assets.stockLabelHint")}</p>
+            ) : null}
+            {form.type === "stock" && formQuoteName && formQuoteName !== form.label.trim() ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setLabelManual(true);
+                  setForm((f) => ({ ...f, label: formQuoteName }));
+                }}
+                className="mt-2 w-full rounded-xl bg-indigo-50 px-3 py-2 text-left text-[12px] font-semibold text-indigo-700"
+              >
+                {t("assets.useQuoteName", { name: formQuoteName })}
+              </button>
+            ) : null}
 
             {form.type === "stock" ? (
               <>
@@ -750,9 +867,11 @@ export default function AssetsPage() {
                   {t("assets.fieldMarket")}
                   <select
                     value={form.stockMarket}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, stockMarket: e.target.value as StockMarket }))
-                    }
+                    onChange={(e) => {
+                      const stockMarket = e.target.value as StockMarket;
+                      setLabelManual(false);
+                      setForm((f) => ({ ...f, stockMarket }));
+                    }}
                     className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
                   >
                     {MARKETS.map((m) => (
@@ -767,9 +886,11 @@ export default function AssetsPage() {
                   <input
                     required
                     value={form.stockCode}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, stockCode: e.target.value.toUpperCase() }))
-                    }
+                    onChange={(e) => {
+                      const stockCode = e.target.value.toUpperCase();
+                      setLabelManual(false);
+                      setForm((f) => ({ ...f, stockCode }));
+                    }}
                     placeholder={
                       form.stockMarket === "KR"
                         ? "005930"
