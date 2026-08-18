@@ -18,6 +18,7 @@ import { ApiError } from "../api/http";
 import { MAX_ICLOUD_ALBUMS, saveBlobLocally } from "../utils/photoUpload";
 import { sortAlbumPhotosOldestFirst, withAlbumCoverCacheKey } from "../utils/albumCover";
 import { isDrillInGhostClick } from "../utils/drillInClick";
+import { mergeAlbumDetailPhotos, shouldReloadAlbumToPickCover } from "../utils/albumCoverPick";
 import { removeLegacyBodyOverlays } from "../utils/overlayRoot";
 
 function AlbumCardCover({
@@ -121,12 +122,11 @@ export default function PhotosPage() {
     let cancelled = false;
     setDetailLoading(true);
     setPageError(null);
-    setPickingCover(false);
     void (async () => {
       try {
         const detail = await photosApi.getIcloudAlbum(token, openAlbumId);
         if (cancelled) return;
-        setOpenDetail(detail);
+        setOpenDetail((prev) => mergeAlbumDetailPhotos(prev, detail));
         setAlbumSummaries((prev) =>
           prev.map((a) => (a.id === detail.id ? toSummary(detail) : a)),
         );
@@ -222,9 +222,11 @@ export default function PhotosPage() {
     setIcloudSaving(true);
     setIcloudError(null);
     try {
-      const updated = await photosApi.updateIcloudAlbum(token, renameAlbum.id, { name });
+        const updated = await photosApi.updateIcloudAlbum(token, renameAlbum.id, { name });
       setAlbumSummaries((prev) => prev.map((a) => (a.id === updated.id ? toSummary(updated) : a)));
-      if (openDetail?.id === updated.id) setOpenDetail(updated);
+      if (openDetail?.id === updated.id) {
+        setOpenDetail((prev) => mergeAlbumDetailPhotos(prev, updated));
+      }
       setRenameAlbum(null);
     } catch (err) {
       setIcloudError(err instanceof ApiError ? err.message : t("photos.icloudError"));
@@ -240,7 +242,7 @@ export default function PhotosPage() {
     setPageError(null);
     try {
       const updated = await photosApi.updateIcloudAlbum(token, openDetail.id, { coverPhotoId: photoId });
-      setOpenDetail(updated);
+      setOpenDetail((prev) => mergeAlbumDetailPhotos(prev, updated));
       setAlbumSummaries((prev) => prev.map((a) => (a.id === updated.id ? toSummary(updated) : a)));
       setCoverFlash(t("photos.icloudCoverSet"));
       setPickingCover(false);
@@ -291,6 +293,23 @@ export default function PhotosPage() {
   function photoCountLabel(count: number | null | undefined) {
     if (count == null) return t("photos.photoCountPending");
     return t("photos.photoCount", { n: count });
+  }
+
+  function openAlbumFromSummary(album: IcloudAlbumSummary) {
+    setPickingCover(false);
+    setPickingCoverId(null);
+    setPageError(null);
+    setDetailLoading(true);
+    setOpenDetail({ ...album, photos: [] });
+  }
+
+  function beginPickCover(album: IcloudAlbumSummary) {
+    if (shouldReloadAlbumToPickCover(openAlbumId, album.id)) {
+      setPageError(null);
+      setDetailLoading(true);
+      setOpenDetail({ ...album, photos: [] });
+    }
+    setPickingCover(true);
   }
 
   return (
@@ -392,7 +411,7 @@ export default function PhotosPage() {
               </p>
             )}
             {openPhotos.length > 0 && (
-              <div className={`grid grid-cols-3 gap-1.5 isolate [transform:translateZ(0)] ${pickingCover ? "rounded-xl ring-2 ring-indigo-300 ring-offset-2" : ""}`}>
+              <div className="grid grid-cols-3 gap-1.5">
                 {openPhotos.map((p, photoIndex) => {
                   const isCover = openDetail.coverPhotoId === p.id;
                   const isSelecting = pickingCoverId === p.id;
@@ -412,18 +431,14 @@ export default function PhotosPage() {
                       setViewer({ index: photoIndex });
                     }}
                     className={`photos-hit relative aspect-square overflow-hidden rounded-lg bg-neutral-100 ${
-                      pickingCover
-                        ? isCover
-                          ? "ring-2 ring-indigo-500"
-                          : "opacity-90"
-                        : ""
+                      pickingCover && isCover ? "ring-2 ring-indigo-500" : ""
                     }`}
                   >
                     <img
                       src={p.thumbUrl}
                       alt={p.caption ?? t("photos.noCaption")}
                       referrerPolicy="no-referrer"
-                      className={`h-full w-full object-cover ${pickingCover && !isCover ? "brightness-90" : ""}`}
+                      className="h-full w-full object-cover"
                     />
                     {isCover && (
                       <span className="absolute left-1 top-1 rounded bg-indigo-600/90 px-1.5 py-0.5 text-[10px] font-bold text-white">
@@ -471,7 +486,7 @@ export default function PhotosPage() {
             )}
             {pageError && <p className="mt-2 text-xs text-rose-600">{pageError}</p>}
             {albumSummaries.length > 0 && token && (
-              <div className="mt-4 grid grid-cols-2 gap-3 isolate [transform:translateZ(0)]">
+              <div className="mt-4 grid grid-cols-2 gap-3">
                 {albumSummaries.map((album) => (
                   <div
                     key={album.id}
@@ -481,7 +496,7 @@ export default function PhotosPage() {
                       type="button"
                       onClick={(e) => {
                         e.currentTarget.blur();
-                        setOpenDetail({ ...album, photos: [] });
+                        openAlbumFromSummary(album);
                       }}
                       className="photos-hit block w-full bg-transparent text-left"
                     >
@@ -557,8 +572,7 @@ export default function PhotosPage() {
             onClick={() => {
               const album = albumMenu;
               setAlbumMenu(null);
-              setOpenDetail({ ...album, photos: [] });
-              setPickingCover(true);
+              beginPickCover(album);
             }}
             className="mt-3 w-full rounded-xl bg-neutral-100 py-2.5 text-sm font-semibold text-neutral-800"
           >
