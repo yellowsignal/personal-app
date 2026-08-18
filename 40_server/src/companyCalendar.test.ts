@@ -17,7 +17,7 @@ import { MemoryInviteTokenRepository } from "./domain/memoryInviteTokenRepositor
 import { MemoryCompanyCalendarRepository } from "./domain/memoryCompanyCalendarRepository.js";
 import { ChallengeStore } from "./auth/challengeStore.js";
 import { parseCompanyCalendarPdf } from "./domain/companyCalendarParse.js";
-import { assertAllowedCalendarUrl } from "./domain/companyCalendarFetch.js";
+import { assertAllowedCalendarUrl, fetchAndParseCompanyCalendarPdf } from "./domain/companyCalendarFetch.js";
 import { substituteCalendarYear } from "./domain/companyHolidays.js";
 import { KHI_AKASHI_FY2026_OFF_DATES } from "./domain/khiAkashiFy2026OffDates.js";
 
@@ -44,7 +44,30 @@ test("union calendar URL year substitution and host allowlist", () => {
   assert.throws(() => assertAllowedCalendarUrl("https://evil.example/calendar.pdf"));
 });
 
-test("import-url returns NEEDS_UPLOAD when the PDF is behind a login wall", async () => {
+test("calendar PDF fetch sends Referer so union hotlink protection allows the file", async () => {
+  const seen: { referer?: string; ua?: string } = {};
+  const url = "https://www.khiunion.or.jp/wp-content/themes/kawasakijukou/pdf/calendar/2026/09_2026-akashi-A.pdf";
+  await assert.rejects(
+    () =>
+      fetchAndParseCompanyCalendarPdf(url, {
+        year: 2026,
+        fetchImpl: (async (_input, init) => {
+          const headers = new Headers(init?.headers);
+          seen.referer = headers.get("referer") ?? "";
+          seen.ua = headers.get("user-agent") ?? "";
+          return new Response("<html>home</html>", {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          });
+        }) as typeof fetch,
+      }),
+    (err: unknown) => (err as { code?: string }).code === "NEEDS_UPLOAD",
+  );
+  assert.equal(seen.referer, "https://www.khiunion.or.jp/");
+  assert.match(seen.ua ?? "", /Mozilla\/5\.0/);
+});
+
+test("import-url returns NEEDS_UPLOAD when the site returns a homepage HTML instead of a PDF", async () => {
   const html = new TextEncoder().encode("<html>login</html>");
   const app = createApp(tmpStore(), {
     authRepo: new MemoryAuthRepository(),

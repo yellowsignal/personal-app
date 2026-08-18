@@ -4,6 +4,8 @@ import { substituteCalendarYear } from "./companyHolidays.js";
 
 const MAX_PDF_BYTES = 8 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 20_000;
+const BROWSER_UA =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1";
 
 const ALLOWED_HOSTS = new Set([
   "www.khiunion.or.jp",
@@ -56,7 +58,13 @@ export async function fetchAndParseCompanyCalendarPdf(
     res = await http(url.toString(), {
       redirect: "follow",
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      headers: { accept: "application/pdf,*/*", "user-agent": "sumicchogurashi-calendar/1.0" },
+      headers: {
+        accept: "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8",
+        "accept-language": "ja-JP,ja;q=0.9,en;q=0.8",
+        "user-agent": BROWSER_UA,
+        // Apache on the union site hotlink-protects PDFs: no Referer → 302 to the homepage HTML.
+        referer: `${url.protocol}//${url.host}/`,
+      },
     });
   } catch {
     throw new HttpError(502, "could not download calendar PDF", "FETCH_FAILED");
@@ -71,7 +79,7 @@ export async function fetchAndParseCompanyCalendarPdf(
   if (!res.ok || looksHtml) {
     throw new HttpError(
       409,
-      "calendar PDF requires login — download it on this phone and upload the file",
+      "the site blocked a direct download (not a login). open the PDF in Safari and upload the file",
       "NEEDS_UPLOAD",
     );
   }

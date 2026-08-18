@@ -151,6 +151,8 @@ export default function SettingsPage() {
     } catch (err) {
       if (err instanceof ApiError && err.code === "NEEDS_UPLOAD") {
         setCompanyCalMsg(t("settings.companyCalNeedsUpload"));
+      } else if (err instanceof ApiError && err.code === "PARSE_FAILED") {
+        setCompanyCalMsg(t("settings.companyCalParseFailed"));
       } else {
         setCompanyCalMsg(err instanceof ApiError ? err.message : t("settings.companyCalError"));
       }
@@ -169,7 +171,11 @@ export default function SettingsPage() {
       await refresh();
       setCompanyCalMsg(null);
     } catch (err) {
-      setCompanyCalMsg(err instanceof ApiError ? err.message : t("settings.companyCalError"));
+      if (err instanceof ApiError && err.code === "PARSE_FAILED") {
+        setCompanyCalMsg(t("settings.companyCalParseFailed"));
+      } else {
+        setCompanyCalMsg(err instanceof ApiError ? err.message : t("settings.companyCalError"));
+      }
     } finally {
       setCompanyCalBusy(false);
     }
