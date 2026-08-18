@@ -9,6 +9,32 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/*
+ * iOS still paints a sticky flash on <button> after tap (separate from the
+ * tap-highlight color). Album cards do not need a pressed state — it is what
+ * made えいと look "selected" while the rest of the page stayed dim.
+ */
+.photos-page,
+.photos-page * {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.photos-hit {
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: default;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+}
+
+.photos-hit:hover,
+.photos-hit:active,
+.photos-hit:focus,
+.photos-hit:focus-visible {
+  outline: none;
+  filter: none;
+}
+
 button,
 a,
 [role="button"],

@@ -292,7 +292,7 @@ export default function PhotosPage() {
   }
 
   return (
-    <div>
+    <div className="photos-page">
       <TopBar
         title={openDetail ? openDetail.name || t("photos.icloudTitle") : t("photos.title")}
         subtitle={
@@ -310,6 +310,7 @@ export default function PhotosPage() {
                 setOpenDetail(null);
                 setViewer(null);
                 setPickingCover(false);
+                if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
               }}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-600"
               aria-label={t("photos.back")}
@@ -389,7 +390,7 @@ export default function PhotosPage() {
               </p>
             )}
             {openPhotos.length > 0 && (
-              <div className={`grid grid-cols-3 gap-1.5 ${pickingCover ? "rounded-xl ring-2 ring-indigo-300 ring-offset-2" : ""}`}>
+              <div className={`grid grid-cols-3 gap-1.5 isolate [transform:translateZ(0)] ${pickingCover ? "rounded-xl ring-2 ring-indigo-300 ring-offset-2" : ""}`}>
                 {openPhotos.map((p, photoIndex) => {
                   const isCover = openDetail.coverPhotoId === p.id;
                   const isSelecting = pickingCoverId === p.id;
@@ -398,15 +399,17 @@ export default function PhotosPage() {
                     key={p.id}
                     type="button"
                     disabled={icloudSaving}
-                    onClick={() => {
+                    onClick={(e) => {
                       if (pickingCover) {
                         void handleSetCover(p.id);
+                        e.currentTarget.blur();
                         return;
                       }
                       if (isDrillInGhostClick(albumOpenedAt.current)) return;
+                      e.currentTarget.blur();
                       setViewer({ index: photoIndex });
                     }}
-                    className={`relative aspect-square overflow-hidden rounded-lg bg-neutral-100 ${
+                    className={`photos-hit relative aspect-square overflow-hidden rounded-lg bg-neutral-100 ${
                       pickingCover
                         ? isCover
                           ? "ring-2 ring-indigo-500"
@@ -468,7 +471,7 @@ export default function PhotosPage() {
             )}
             {pageError && <p className="mt-2 text-xs text-rose-600">{pageError}</p>}
             {albumSummaries.length > 0 && token && (
-              <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="mt-4 grid grid-cols-2 gap-3 isolate [transform:translateZ(0)]">
                 {albumSummaries.map((album) => (
                   <div
                     key={album.id}
@@ -476,8 +479,11 @@ export default function PhotosPage() {
                   >
                     <button
                       type="button"
-                      onClick={() => setOpenDetail({ ...album, photos: [] })}
-                      className="block w-full text-left"
+                      onClick={(e) => {
+                        e.currentTarget.blur();
+                        setOpenDetail({ ...album, photos: [] });
+                      }}
+                      className="photos-hit block w-full bg-transparent text-left"
                     >
                       <div className="aspect-[4/3] bg-neutral-100">
                         <AlbumCardCover
@@ -499,7 +505,7 @@ export default function PhotosPage() {
                     <button
                       type="button"
                       onClick={() => setAlbumMenu(album)}
-                      className="absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-black/35 text-white"
+                      className="photos-hit absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-black/35 text-white"
                       aria-label={t("photos.edit")}
                     >
                       <MoreHorizontal size={16} />
