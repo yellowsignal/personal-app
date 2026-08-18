@@ -6,6 +6,9 @@ export interface CompanyCalendar {
   sourceUrl: string | null;
   defaultUrl: string;
   fiscalYear: number | null;
+  validFrom: string | null;
+  validTo: string | null;
+  expired: boolean;
   parsedAt: string | null;
   offDateCount: number;
   weekdayOffCount: number;
@@ -20,6 +23,10 @@ export function japanFiscalYear(now: Date = new Date()): number {
   const y = now.getFullYear();
   const m = now.getMonth() + 1;
   return m >= 4 ? y : y - 1;
+}
+
+export function fiscalYearRange(year: number): { from: string; to: string } {
+  return { from: `${year}-04-01`, to: `${year + 1}-03-31` };
 }
 
 export function defaultCompanyCalendarUrl(year: number = japanFiscalYear()): string {

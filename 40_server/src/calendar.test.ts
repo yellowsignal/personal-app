@@ -283,9 +283,15 @@ test("calendar CRUD and derived document expiry / subscription billing", async (
       headers: { authorization: `Bearer ${owner.token}` },
     });
     const november = (await culture.json()) as Array<{ category: string; date: string; title: string }>;
-    assert.equal(november.filter((e) => e.category === "holiday" && e.date === "2026-11-03").length, 0);
+    assert.equal(november.filter((e) => e.category === "holiday" && e.date === "2026-11-03").length, 1);
     assert.ok(november.some((e) => e.category === "company" && e.date === "2026-11-03" && e.title.includes("출근")));
     assert.ok(november.some((e) => e.category === "holiday" && e.date === "2026-11-23"));
+
+    const nextFy = await fetch(`${base}/api/calendar/events?from=2027-04-01&to=2027-04-30&scope=all`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    const april2027 = (await nextFy.json()) as Array<{ category: string; date: string }>;
+    assert.equal(april2027.filter((e) => e.category === "company").length, 0);
   } finally {
     server.close();
   }
