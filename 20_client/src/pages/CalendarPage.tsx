@@ -140,7 +140,7 @@ function segmentInWeek(ev: PublicCalendarEvent, keys: (string | null)[]): WeekSe
 function packWeekLanes(segs: WeekSeg[]): WeekSeg[][] {
   const lanes: WeekSeg[][] = [];
   const sorted = [...segs].sort((a, b) => {
-    const rank = (c: CalendarCategory) => (c === "holiday" ? 0 : 1);
+    const rank = (c: CalendarCategory) => (c === "holiday" || c === "company" ? 0 : 1);
     const dur = (s: WeekSeg) => s.span;
     return (
       rank(a.event.category) - rank(b.event.category) ||
@@ -266,6 +266,7 @@ function MonthGrid({
               const isSelected = key === selectedDate;
               const dayEvents = eventsByDate.get(key) ?? [];
               const hasHoliday = dayEvents.some((e) => e.category === "holiday");
+              const hasCompanyOff = dayEvents.some((e) => e.category === "company" && e.description !== "work");
               const extra = hidden.filter((s) => key >= s.event.date && key <= eventEndKey(s.event)).length;
               const dateColor = isSelected
                 ? "bg-indigo-600 text-white"
@@ -273,9 +274,11 @@ function MonthGrid({
                   ? "text-indigo-600 ring-1 ring-indigo-600"
                   : hasHoliday || weekday === 0
                     ? "text-red-500"
-                    : weekday === 6
-                      ? "text-blue-500"
-                      : "text-neutral-800";
+                    : hasCompanyOff
+                      ? "text-amber-500"
+                      : weekday === 6
+                        ? "text-blue-500"
+                        : "text-neutral-800";
               return (
                 <div
                   key={key}
@@ -849,6 +852,17 @@ export default function CalendarPage() {
             );
           })}
         </div>
+
+        {activeCats.has("company") && !loading && !events.some((e) => e.category === "company") ? (
+          <button
+            type="button"
+            onClick={() => navigate("/settings#company-calendar")}
+            className="mt-2 w-full rounded-2xl bg-indigo-50 px-4 py-3 text-left shadow-sm ring-1 ring-indigo-100"
+          >
+            <p className="text-sm font-semibold text-indigo-700">{t("calendar.companyCalSetupTitle")}</p>
+            <p className="mt-0.5 text-[11px] text-indigo-500">{t("calendar.companyCalSetupHint")}</p>
+          </button>
+        ) : null}
 
         <div className="mt-2 select-none overflow-hidden rounded-2xl bg-white p-3 shadow-sm ring-1 ring-black/5">
           <div className="relative">

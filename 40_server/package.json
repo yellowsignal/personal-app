@@ -27,7 +27,8 @@
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.3",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "pdfjs-dist": "^4.10.38"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

@@ -1,5 +1,5 @@
 import cors from "cors";
-import express, { type Express } from "express";
+import express, { raw, type Express } from "express";
 import { TaskStore } from "./store.js";
 import type { AuthRepository } from "./domain/authRepository.js";
 import type { AssetRepository } from "./domain/assetRepository.js";
@@ -48,6 +48,10 @@ import { AlbumCoverStore, defaultAlbumCoverDir } from "./storage/albumCoverStore
 import type { VaultItemRepository } from "./domain/vaultTypes.js";
 import { VaultService } from "./services/vaultService.js";
 import { createVaultRouter } from "./routes/vaultRoutes.js";
+import type { CompanyCalendarRepository } from "./domain/companyCalendarRepository.js";
+import { MemoryCompanyCalendarRepository } from "./domain/memoryCompanyCalendarRepository.js";
+import { CompanyCalendarService } from "./services/companyCalendarService.js";
+import { createCompanyCalendarRouter } from "./routes/companyCalendarRoutes.js";
 
 export interface AppDeps {
   authRepo?: AuthRepository;
@@ -62,8 +66,10 @@ export interface AppDeps {
   photoStore?: PhotoStore;
   albumCoverStore?: AlbumCoverStore;
   icloudFetch?: FetchLike;
+  calendarFetch?: typeof fetch;
   icloudAlbumRepo?: FamilyIcloudAlbumRepository;
   vaultRepo?: VaultItemRepository;
+  companyCalendarRepo?: CompanyCalendarRepository;
   pushService?: PushService;
   reminderDispatcher?: ReminderDispatcher;
   activityRepo?: FamilyActivityRepository;
@@ -77,6 +83,10 @@ export interface AppDeps {
 export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
   const app = express();
   app.use(cors());
+  app.use(
+    "/api/company-calendar/import-pdf",
+    raw({ type: () => true, limit: "8mb" }),
+  );
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => {
@@ -210,6 +220,7 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
     }
 
     if (deps.calendarRepo) {
+      const companyCalendarRepo = deps.companyCalendarRepo ?? new MemoryCompanyCalendarRepository();
       const calendarService = new CalendarService(
         deps.authRepo,
         deps.calendarRepo,
@@ -223,8 +234,15 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
               await deps.reminderDispatcher!.tick();
             }
           : null,
+        companyCalendarRepo,
       );
       app.use("/api/calendar", createCalendarRouter(calendarService, jwtSecret));
+      const companyCalendarService = new CompanyCalendarService(
+        deps.authRepo,
+        companyCalendarRepo,
+        deps.calendarFetch ?? fetch,
+      );
+      app.use("/api/company-calendar", createCompanyCalendarRouter(companyCalendarService, jwtSecret));
     }
 
     if (deps.photoRepo && deps.photoStore) {

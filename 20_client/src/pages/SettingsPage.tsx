@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronRight, Copy, Bell, Fingerprint, Globe, LogOut, UserPlus, Users, CalendarDays } from "lucide-react";
+import { ChevronRight, Copy, Bell, Fingerprint, Globe, LogOut, UserPlus, Users, CalendarDays, Factory } from "lucide-react";
 import TopBar from "../components/TopBar";
 import HolidayPrefPicker, { parseHolidayPref, type HolidayPref } from "../components/HolidayPrefPicker";
 import { ApiError } from "../api/http";
+import { companyCalendarApi, defaultCompanyCalendarUrl, japanFiscalYear, type CompanyCalendar } from "../api/companyCalendar";
 import { passkeyApi } from "../api/passkey";
 import {
   disableHomeScreenPush,
@@ -17,7 +18,7 @@ import { useLanguage } from "../i18n/LanguageContext";
 
 export default function SettingsPage() {
   const navigate = useNavigate();
-  const { user, family, logout, token, updateMe } = useAuth();
+  const { user, family, logout, token, updateMe, refresh } = useAuth();
   const { lang, toggleLang, t } = useLanguage();
   const [copied, setCopied] = useState(false);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
@@ -25,10 +26,18 @@ export default function SettingsPage() {
   const [passkeyMsg, setPasskeyMsg] = useState<string | null>(null);
   const [linkingPasskey, setLinkingPasskey] = useState(false);
   const [savingHolidayPref, setSavingHolidayPref] = useState(false);
+  const [savingCompanyHoliday, setSavingCompanyHoliday] = useState(false);
+  const [companyCal, setCompanyCal] = useState<CompanyCalendar | null>(null);
+  const [companyCalUrl, setCompanyCalUrl] = useState(() => defaultCompanyCalendarUrl(japanFiscalYear()));
+  const [companyCalYear, setCompanyCalYear] = useState(() => japanFiscalYear());
+  const [companyCalBusy, setCompanyCalBusy] = useState(false);
+  const [companyCalMsg, setCompanyCalMsg] = useState<string | null>(null);
+  const companyPdfRef = useRef<HTMLInputElement>(null);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushMsg, setPushMsg] = useState<string | null>(null);
   const holidayPref = parseHolidayPref(user?.countryPref);
+  const companyHolidayOn = user?.companyHolidayPref === "KHI_AKASHI";
   const ios = isIosDevice();
   const standalone = isStandaloneDisplay();
 
@@ -43,6 +52,25 @@ export default function SettingsPage() {
       .then((s) => setPushSubscribed(s.subscribed))
       .catch(() => setPushSubscribed(false));
   }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    void companyCalendarApi
+      .get(token)
+      .then((cal) => {
+        setCompanyCal(cal);
+        setCompanyCalUrl(cal.sourceUrl || cal.defaultUrl || defaultCompanyCalendarUrl(cal.fiscalYear ?? japanFiscalYear()));
+        if (cal.fiscalYear) setCompanyCalYear(cal.fiscalYear);
+      })
+      .catch(() => {
+        setCompanyCalUrl((prev) => prev || defaultCompanyCalendarUrl(japanFiscalYear()));
+      });
+  }, [token]);
+
+  useEffect(() => {
+    if (window.location.hash !== "#company-calendar") return;
+    document.getElementById("company-calendar")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   async function togglePush() {
     if (!token) return;
@@ -92,6 +120,64 @@ export default function SettingsPage() {
       await updateMe({ countryPref: pref });
     } finally {
       setSavingHolidayPref(false);
+    }
+  }
+
+  async function changeCompanyHolidayPref(on: boolean) {
+    if (on === companyHolidayOn) return;
+    setSavingCompanyHoliday(true);
+    try {
+      await updateMe({ companyHolidayPref: on ? "KHI_AKASHI" : "NONE" });
+    } finally {
+      setSavingCompanyHoliday(false);
+    }
+  }
+
+  function applyCompanyCal(cal: CompanyCalendar) {
+    setCompanyCal(cal);
+    setCompanyCalUrl(cal.sourceUrl || cal.defaultUrl);
+    if (cal.fiscalYear) setCompanyCalYear(cal.fiscalYear);
+  }
+
+  async function refreshCompanyCalFromUrl() {
+    if (!token) return;
+    setCompanyCalBusy(true);
+    setCompanyCalMsg(null);
+    try {
+      const cal = await companyCalendarApi.importUrl(token, { url: companyCalUrl, year: companyCalYear });
+      applyCompanyCal(cal);
+      await refresh();
+      setCompanyCalMsg(null);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "NEEDS_UPLOAD") {
+        setCompanyCalMsg(t("settings.companyCalNeedsUpload"));
+      } else if (err instanceof ApiError && err.code === "PARSE_FAILED") {
+        setCompanyCalMsg(t("settings.companyCalParseFailed"));
+      } else {
+        setCompanyCalMsg(err instanceof ApiError ? err.message : t("settings.companyCalError"));
+      }
+    } finally {
+      setCompanyCalBusy(false);
+    }
+  }
+
+  async function uploadCompanyCalPdf(file: File) {
+    if (!token) return;
+    setCompanyCalBusy(true);
+    setCompanyCalMsg(null);
+    try {
+      const cal = await companyCalendarApi.importPdf(token, file, { url: companyCalUrl, year: companyCalYear });
+      applyCompanyCal(cal);
+      await refresh();
+      setCompanyCalMsg(null);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "PARSE_FAILED") {
+        setCompanyCalMsg(t("settings.companyCalParseFailed"));
+      } else {
+        setCompanyCalMsg(err instanceof ApiError ? err.message : t("settings.companyCalError"));
+      }
+    } finally {
+      setCompanyCalBusy(false);
     }
   }
 
@@ -252,6 +338,106 @@ export default function SettingsPage() {
                 onChange={(v) => void changeHolidayPref(v)}
                 disabled={savingHolidayPref}
               />
+            </div>
+          </div>
+
+          <div id="company-calendar" className="px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Factory size={18} className="text-neutral-400" />
+                <div>
+                  <p className="text-sm font-medium text-neutral-800">{t("settings.companyHolidays")}</p>
+                  <p className="text-[11px] text-neutral-400">{t("settings.companyHolidaysHint")}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={savingCompanyHoliday}
+                onClick={() => void changeCompanyHolidayPref(!companyHolidayOn)}
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
+                  companyHolidayOn ? "bg-indigo-600 text-white" : "bg-neutral-100 text-neutral-500"
+                }`}
+              >
+                {companyHolidayOn ? t("settings.companyHolidaysOn") : t("settings.companyHolidaysOff")}
+              </button>
+            </div>
+            <div className="mt-3 space-y-2">
+                <p className="text-[11px] text-neutral-400">{t("settings.companyCalHint")}</p>
+                <label className="block text-[11px] font-semibold text-neutral-500">
+                  {t("settings.companyCalYear")}
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={2024}
+                    max={2040}
+                    value={companyCalYear}
+                    onChange={(e) => {
+                      const year = Number(e.target.value) || companyCalYear;
+                      setCompanyCalYear(year);
+                      setCompanyCalUrl((prev) => {
+                        const prevDefault = defaultCompanyCalendarUrl(companyCalYear);
+                        if (!prev.trim() || prev === prevDefault) return defaultCompanyCalendarUrl(year);
+                        return prev.replace(/20\d{2}/g, String(year));
+                      });
+                    }}
+                    className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm text-neutral-800"
+                  />
+                </label>
+                <label className="block text-[11px] font-semibold text-neutral-500">
+                  {t("settings.companyCalUrl")}
+                  <input
+                    type="url"
+                    value={companyCalUrl}
+                    onChange={(e) => setCompanyCalUrl(e.target.value)}
+                    placeholder={defaultCompanyCalendarUrl(companyCalYear)}
+                    className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm text-neutral-800"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={companyCalBusy}
+                    onClick={() => void refreshCompanyCalFromUrl()}
+                    className="rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-600 disabled:opacity-60"
+                  >
+                    {companyCalBusy ? t("settings.companyCalWorking") : t("settings.companyCalRefresh")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={companyCalBusy}
+                    onClick={() => companyPdfRef.current?.click()}
+                    className="rounded-full bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-700 disabled:opacity-60"
+                  >
+                    {t("settings.companyCalUpload")}
+                  </button>
+                  <input
+                    ref={companyPdfRef}
+                    type="file"
+                    accept="application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (file) void uploadCompanyCalPdf(file);
+                    }}
+                  />
+                </div>
+                {companyCal?.parsedAt ? (
+                  <p className="text-[11px] text-neutral-500">
+                    {t("settings.companyCalSynced", {
+                      year: companyCal.fiscalYear ?? companyCalYear,
+                      n: companyCal.weekdayOffCount,
+                      when: companyCal.parsedAt.slice(0, 10),
+                    })}
+                  </p>
+                ) : companyCal?.usingBakedFallback ? (
+                  <p className="text-[11px] text-neutral-400">{t("settings.companyCalFallback")}</p>
+                ) : (
+                  <p className="text-[11px] text-neutral-400">{t("settings.companyCalEmpty")}</p>
+                )}
+                {companyCalMsg ? <p className="text-[11px] text-rose-600">{companyCalMsg}</p> : null}
             </div>
           </div>
 

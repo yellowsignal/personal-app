@@ -50,6 +50,9 @@ import { PrismaFamilyActivityRepository } from "./domain/prismaFamilyActivityRep
 import { MemoryVaultItemRepository } from "./domain/memoryVaultItemRepository.js";
 import { PrismaVaultItemRepository } from "./domain/prismaVaultItemRepository.js";
 import type { VaultItemRepository } from "./domain/vaultTypes.js";
+import { MemoryCompanyCalendarRepository } from "./domain/memoryCompanyCalendarRepository.js";
+import { PrismaCompanyCalendarRepository } from "./domain/prismaCompanyCalendarRepository.js";
+import type { CompanyCalendarRepository } from "./domain/companyCalendarRepository.js";
 import { loadOrCreateVapidKeys, PushService, WebPushSender } from "./services/pushService.js";
 import { ReminderDispatcher, startReminderScheduler } from "./services/reminderDispatcher.js";
 
@@ -108,6 +111,9 @@ const icloudAlbumRepo: FamilyIcloudAlbumRepository = useMemoryAuth
 const vaultRepo: VaultItemRepository = useMemoryAuth
   ? new MemoryVaultItemRepository()
   : new PrismaVaultItemRepository(prisma);
+const companyCalendarRepo: CompanyCalendarRepository = useMemoryAuth
+  ? new MemoryCompanyCalendarRepository()
+  : new PrismaCompanyCalendarRepository(prisma);
 let reminderDispatcher!: ReminderDispatcher;
 const pushService = new PushService(pushRepo, vapidKeys, new WebPushSender(vapidKeys), () =>
   reminderDispatcher.tick(),
@@ -132,6 +138,7 @@ const app = createApp(store, {
   albumCoverStore,
   icloudAlbumRepo,
   vaultRepo,
+  companyCalendarRepo,
   subscriptionRepo,
   checklistRepo,
   documentRepo,

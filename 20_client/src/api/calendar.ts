@@ -5,6 +5,7 @@ export type CalendarCategory =
   | "personal"
   | "family"
   | "holiday"
+  | "company"
   | "document_expiry"
   | "subscription_billing"
   | "recurring_deposit";
@@ -60,6 +61,7 @@ export const categoryColor: Record<CalendarCategory, string> = {
   personal: "#5B5BF6",
   family: "#34C759",
   holiday: "#EF4444",
+  company: "#F59E0B",
   document_expiry: "#FF3B30",
   subscription_billing: "#AF52DE",
   recurring_deposit: "#0A84FF",

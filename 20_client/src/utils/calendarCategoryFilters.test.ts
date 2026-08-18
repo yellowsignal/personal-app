@@ -65,6 +65,7 @@ test("missing keys default to on so new tags are visible", () => {
   });
   const active = readActiveCalendarCategories(store);
   assert.equal(active.has("holiday"), false);
+  assert.equal(active.has("company"), true);
   assert.equal(active.has("family"), true);
   assert.equal(active.has("recurring_deposit"), true);
 });

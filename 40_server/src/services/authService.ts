@@ -5,6 +5,7 @@ import type { AuthRepository } from "../domain/authRepository.js";
 import type { FamilySummary, PublicUser } from "../domain/types.js";
 import { toPublicUser } from "../domain/types.js";
 import { parseHolidayPref } from "../domain/holidays.js";
+import { parseCompanyHolidayPref } from "../domain/companyHolidays.js";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CURRENCIES = new Set(["KRW", "JPY", "USD"]);
@@ -198,12 +199,16 @@ export class AuthService {
     const patch: {
       languagePref?: string;
       countryPref?: string;
+      companyHolidayPref?: string;
       currencyPref?: string;
       name?: string;
     } = {};
     if (body.languagePref !== undefined) patch.languagePref = pickPref(body.languagePref, LANGS, "ko");
     if (body.currencyPref !== undefined) patch.currencyPref = pickPref(body.currencyPref, CURRENCIES, "JPY");
     if (body.countryPref !== undefined) patch.countryPref = parseHolidayPref(body.countryPref, "JP");
+    if (body.companyHolidayPref !== undefined) {
+      patch.companyHolidayPref = parseCompanyHolidayPref(body.companyHolidayPref, "NONE");
+    }
     if (typeof body.name === "string" && body.name.trim()) patch.name = body.name.trim();
     const user = await this.repo.updateUser(userId, patch);
     return { user: toPublicUser(user) };

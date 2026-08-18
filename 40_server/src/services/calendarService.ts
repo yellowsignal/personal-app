@@ -19,6 +19,13 @@ import {
   listPublicHolidays,
   parseHolidayPref,
 } from "../domain/holidays.js";
+import type { CompanyCalendarRepository } from "../domain/companyCalendarRepository.js";
+import { overlayCompanyCalendar } from "../domain/companyCalendarOverlay.js";
+import {
+  bakedOffDatesForCal,
+  companyEventTitle,
+  parseCompanyHolidayPref,
+} from "../domain/companyHolidays.js";
 import { listDueDates, utcDateOnly } from "../domain/recurringDepositTypes.js";
 import {
   expandRecurrence,
@@ -116,6 +123,7 @@ export class CalendarService {
     private readonly assetRepo: AssetRepository | null = null,
     private readonly activityService: FamilyActivityService | null = null,
     private readonly onReminderMaybeDue: (() => Promise<unknown>) | null = null,
+    private readonly companyCalendarRepo: CompanyCalendarRepository | null = null,
   ) {}
 
   private async kickReminders(): Promise<void> {
@@ -279,7 +287,22 @@ export class CalendarService {
     const pref = parseHolidayPref(user.countryPref);
     const holidays = listPublicHolidays(toDateKey(from), toDateKey(to), holidayCountries(pref));
     const lang = user.languagePref === "ja" ? "ja" : "ko";
-    for (const h of holidays) {
+    const companyCal = parseCompanyHolidayPref(user.companyHolidayPref);
+    const companyStored = this.companyCalendarRepo ? await this.companyCalendarRepo.findByUserId(user.id) : null;
+    const offDates =
+      companyCal === "NONE"
+        ? null
+        : companyStored && companyStored.offDates.length > 0
+          ? new Set(companyStored.offDates)
+          : bakedOffDatesForCal(companyCal);
+    const overlay = overlayCompanyCalendar({
+      national: holidays,
+      offDates,
+      cal: companyCal,
+      fromKey: toDateKey(from),
+      toKey: toDateKey(to),
+    });
+    for (const h of overlay.national) {
       scoped.push({
         id: `holiday-${h.country}-${h.date}-${h.code}`,
         userId: user.id,
@@ -296,6 +319,27 @@ export class CalendarService {
         ownerName:
           h.country === "KR" ? (lang === "ja" ? "韓国" : "한국") : lang === "ja" ? "日本" : "일본",
         seriesId: `holiday-${h.country}-${h.date}-${h.code}`,
+        recurrence: null,
+        reminderMinutesBefore: null,
+      });
+    }
+
+    for (const h of overlay.company) {
+      scoped.push({
+        id: `company-${h.cal}-${h.kind}-${h.date}-${h.code}`,
+        userId: user.id,
+        title: companyEventTitle(h, lang),
+        description: h.kind,
+        date: h.date,
+        time: null,
+        endDate: h.date,
+        isAllDay: true,
+        category: "company",
+        isShared: false,
+        editable: false,
+        sourceDocumentId: null,
+        ownerName: lang === "ja" ? "川重" : "川重",
+        seriesId: `company-${h.cal}-${h.kind}-${h.date}-${h.code}`,
         recurrence: null,
         reminderMinutesBefore: null,
       });
