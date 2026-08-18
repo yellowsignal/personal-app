@@ -1,4 +1,5 @@
 import { getDocument, OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { offDatesFromCircledGrid, type CircleMark } from "./companyCalendarUnionCircles.js";
 
 export interface ParsedCompanyCalendar {
   fiscalYear: number;
@@ -148,28 +149,83 @@ function akashiOff(name: FillName | null): boolean {
   return name === "gray" || name === "yellow";
 }
 
+function mulCtm(m: number[], n: number[]): number[] {
+  return [
+    m[0]! * n[0]! + m[2]! * n[1]!,
+    m[1]! * n[0]! + m[3]! * n[1]!,
+    m[0]! * n[2]! + m[2]! * n[3]!,
+    m[1]! * n[2]! + m[3]! * n[3]!,
+    m[0]! * n[4]! + m[2]! * n[5]! + m[4]!,
+    m[1]! * n[4]! + m[3]! * n[5]! + m[5]!,
+  ];
+}
+
+function applyCtm(m: number[], x: number, y: number): [number, number] {
+  return [m[0]! * x + m[2]! * y + m[4]!, m[1]! * x + m[3]! * y + m[5]!];
+}
+
+function pathCoordCount(op: number): number {
+  if (op === OPS.moveTo || op === OPS.lineTo) return 2;
+  if (op === OPS.curveTo) return 6;
+  if (op === OPS.curveTo2 || op === OPS.curveTo3) return 4;
+  if (op === OPS.rectangle) return 4;
+  if (op === OPS.closePath) return 0;
+  return 2;
+}
+
+function isHolidayRed(r: number, g: number, b: number): boolean {
+  const rn = r > 1 ? r / 255 : r;
+  const gn = g > 1 ? g / 255 : g;
+  const bn = b > 1 ? b / 255 : b;
+  return rn > 0.7 && gn < 0.4 && bn < 0.4;
+}
+
+function rgbFromArgs(args: unknown): [number, number, number] | null {
+  if (!args || typeof args !== "object" || !("length" in args)) return null;
+  const a = args as ArrayLike<number>;
+  if (a.length < 3) return null;
+  return [Number(a[0]), Number(a[1]), Number(a[2])];
+}
+
 async function extractPage(page: {
   getViewport: (opts: { scale: number }) => { width: number; height: number };
   getOperatorList: () => Promise<{ fnArray: number[]; argsArray: unknown[] }>;
   getTextContent: () => Promise<{ items: Array<Record<string, unknown>> }>;
-}): Promise<{ fills: FillRect[]; texts: TextItem[] }> {
+}): Promise<{ fills: FillRect[]; texts: TextItem[]; circles: CircleMark[]; height: number }> {
   const viewport = page.getViewport({ scale: 1 });
   const height = viewport.height;
   const ops = await page.getOperatorList();
   let fillRgb: [number, number, number] | null = null;
+  let strokeRgb: [number, number, number] | null = null;
   const fills: FillRect[] = [];
+  const circles: CircleMark[] = [];
+  let ctm = [1, 0, 0, 1, 0, 0];
+  const stack: number[][] = [];
 
   for (let i = 0; i < ops.fnArray.length; i++) {
     const name = OPS_NAME.get(ops.fnArray[i]!) ?? "";
     const args = ops.argsArray[i];
-    if (name === "setFillRGBColor" && args && typeof args === "object" && "length" in (args as object)) {
-      const a = args as ArrayLike<number>;
-      if (a.length >= 3) fillRgb = [Number(a[0]), Number(a[1]), Number(a[2])];
+    if (name === "save") stack.push(ctm.slice());
+    else if (name === "restore") ctm = stack.pop() ?? [1, 0, 0, 1, 0, 0];
+    else if (name === "transform") {
+      const a = args && typeof args === "object" && "length" in args ? (args as ArrayLike<number>) : null;
+      if (a && a.length >= 6) {
+        ctm = mulCtm(ctm, [Number(a[0]), Number(a[1]), Number(a[2]), Number(a[3]), Number(a[4]), Number(a[5])]);
+      }
+    } else if (name === "setFillRGBColor") {
+      fillRgb = rgbFromArgs(args) ?? fillRgb;
+    } else if (name === "setStrokeRGBColor") {
+      strokeRgb = rgbFromArgs(args) ?? strokeRgb;
     } else if (name === "constructPath" && Array.isArray(args)) {
       const pathOps = args[0] as number[] | undefined;
       const coords = args[1] as number[] | undefined;
       if (!pathOps || !coords) continue;
       let ci = 0;
+      let minx = Infinity;
+      let miny = Infinity;
+      let maxx = -Infinity;
+      let maxy = -Infinity;
+      let nCurve = 0;
       for (const op of pathOps) {
         if (op === OPS.rectangle && coords.length >= ci + 4) {
           const x = coords[ci]!;
@@ -180,14 +236,39 @@ async function extractPage(page: {
           if (!fillRgb) continue;
           const kind = classifyFill(fillRgb[0], fillRgb[1], fillRgb[2]);
           if (kind === "skip") continue;
-          const x0 = x;
-          const x1 = x + w;
-          const y0Top = height - (y + h);
-          const y1Top = height - y;
-          fills.push({ name: kind, x0, y0: y0Top, x1, y1: y1Top });
-        } else {
-          ci += 2;
+          fills.push({
+            name: kind,
+            x0: x,
+            x1: x + w,
+            y0: height - (y + h),
+            y1: height - y,
+          });
+          continue;
         }
+        const n = pathCoordCount(op);
+        if (op === OPS.curveTo) nCurve += 1;
+        for (let k = 0; k + 1 < n; k += 2) {
+          const x = coords[ci + k];
+          const y = coords[ci + k + 1];
+          if (typeof x !== "number" || typeof y !== "number") continue;
+          const [tx, ty] = applyCtm(ctm, x, y);
+          minx = Math.min(minx, tx);
+          maxx = Math.max(maxx, tx);
+          miny = Math.min(miny, ty);
+          maxy = Math.max(maxy, ty);
+        }
+        ci += n;
+      }
+      const w = maxx - minx;
+      const h = maxy - miny;
+      const red =
+        (strokeRgb && isHolidayRed(strokeRgb[0], strokeRgb[1], strokeRgb[2])) ||
+        (fillRgb && isHolidayRed(fillRgb[0], fillRgb[1], fillRgb[2]));
+      if (red && nCurve >= 4 && w > 10 && w < 20 && h > 10 && h < 20) {
+        circles.push({
+          cx: (minx + maxx) / 2,
+          cy: height - (miny + maxy) / 2,
+        });
       }
     }
   }
@@ -213,7 +294,7 @@ async function extractPage(page: {
       fontH,
     });
   }
-  return { fills, texts };
+  return { fills, texts, circles, height };
 }
 
 export async function parseCompanyCalendarPdf(
@@ -230,17 +311,21 @@ export async function parseCompanyCalendarPdf(
   try {
     const yearHint = opts.yearHint ?? japanFiscalYearHint();
     const off = new Set<string>();
+    const circles: CircleMark[] = [];
     let detectedYear = yearHint;
+    let pageHeight = 842;
 
     for (let p = 1; p <= doc.numPages; p++) {
       const page = await doc.getPage(p);
-      const { fills, texts } = await extractPage(page);
-      detectedYear = detectYearHint(texts, detectedYear);
-      const dayTexts = texts.filter((t) => /^(3[01]|[12]?\d)$/.test(t.str) && Number(t.str) >= 1);
+      const extracted = await extractPage(page);
+      pageHeight = extracted.height;
+      circles.push(...extracted.circles);
+      detectedYear = detectYearHint(extracted.texts, detectedYear);
+      const dayTexts = extracted.texts.filter((t) => /^(3[01]|[12]?\d)$/.test(t.str) && Number(t.str) >= 1);
       const headers = detectMonthHeaders(dayTexts);
       if (headers.length === 0) continue;
 
-      const calendarFills = fills.filter((f) => f.y0 > headers[0]!.y - 20);
+      const calendarFills = extracted.fills.filter((f) => f.y0 > headers[0]!.y - 20);
       for (const t of dayTexts) {
         const day = Number(t.str);
         if (day < 1 || day > 31) continue;
@@ -253,6 +338,11 @@ export async function parseCompanyCalendarPdf(
         const key = ymd(calendarYear, header.month, day);
         if (key) off.add(key);
       }
+    }
+
+    if (off.size < 20) {
+      const circled = offDatesFromCircledGrid(circles, detectedYear, pageHeight);
+      for (const key of circled) off.add(key);
     }
 
     if (off.size < 20) {

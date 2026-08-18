@@ -115,6 +115,22 @@ test("import-url returns NEEDS_UPLOAD when the site returns a homepage HTML inst
   }
 });
 
+test("union calendar PDF with unreadable fonts is parsed from red holiday circles", async () => {
+  const pdfPath = "/tmp/khi-cal/union-real.pdf";
+  let bytes: Uint8Array;
+  try {
+    bytes = new Uint8Array(readFileSync(pdfPath));
+  } catch {
+    return;
+  }
+  const parsed = await parseCompanyCalendarPdf(bytes, { yearHint: 2026 });
+  assert.equal(parsed.fiscalYear, 2026);
+  assert.deepEqual(parsed.offDates, [...KHI_AKASHI_FY2026_OFF_DATES]);
+  assert.equal(parsed.offDates.includes("2026-11-03"), false, "Culture Day is a company workday");
+  assert.ok(parsed.offDates.includes("2026-07-21"));
+  assert.ok(parsed.offDates.includes("2026-12-29"));
+});
+
 test("import-pdf stores parsed off dates and uses them on the calendar", async () => {
   const pdfPath = "/tmp/khi-cal/bk117.pdf";
   let bytes: Uint8Array;
