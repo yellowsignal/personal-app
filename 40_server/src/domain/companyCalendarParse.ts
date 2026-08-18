@@ -223,7 +223,6 @@ export async function parseCompanyCalendarPdf(
   const doc = await getDocument({
     data: bytes.slice(),
     useSystemFonts: true,
-    useSystemFonts: true,
     isEvalSupported: false,
     disableFontFace: true,
   }).promise;
