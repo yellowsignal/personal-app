@@ -127,6 +127,17 @@ export const assetsApi = {
     });
   },
 
+  quote(token: string, market: StockMarket, code: string) {
+    const params = new URLSearchParams({ market, code });
+    return apiFetch<{
+      price: number;
+      currency: string;
+      symbol: string;
+      shortName: string | null;
+      label: string;
+    }>(`/api/assets/quote?${params}`, { token });
+  },
+
   async revealCredentials(token: string, id: number) {
     const options = await apiFetch<PublicKeyCredentialRequestOptionsJSON>(
       `/api/assets/${id}/credentials/reveal/options`,

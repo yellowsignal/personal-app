@@ -50,6 +50,15 @@ export function createAssetRouter(
     }
   });
 
+  router.get("/quote", auth, async (req: AuthedRequest, res) => {
+    try {
+      const quote = await service.lookupQuote(req.userId!, req.query.market, req.query.code);
+      res.json(quote);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
   router.post("/refresh-prices", auth, async (req: AuthedRequest, res) => {
     try {
       const items = await service.refreshAllPrices(req.userId!);
