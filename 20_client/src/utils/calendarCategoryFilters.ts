@@ -72,6 +72,20 @@ export function writeActiveCalendarCategories(
   }
 }
 
+export function filterEventsForCalendarTags<
+  T extends { category: CalendarCategory; date: string; description?: string | null },
+>(events: T[], active: ReadonlySet<CalendarCategory>): T[] {
+  const companyOn = active.has("company");
+  const workDates = new Set(
+    events.filter((e) => e.category === "company" && e.description === "work").map((e) => e.date),
+  );
+  return events.filter((e) => {
+    if (!active.has(e.category)) return false;
+    if (companyOn && e.category === "holiday" && workDates.has(e.date)) return false;
+    return true;
+  });
+}
+
 export function toggleCalendarCategory(
   current: ReadonlySet<CalendarCategory>,
   cat: CalendarCategory,

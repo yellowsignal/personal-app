@@ -4,7 +4,7 @@ import { ChevronRight, Copy, Bell, Fingerprint, Globe, LogOut, UserPlus, Users, 
 import TopBar from "../components/TopBar";
 import HolidayPrefPicker, { parseHolidayPref, type HolidayPref } from "../components/HolidayPrefPicker";
 import { ApiError } from "../api/http";
-import { companyCalendarApi, defaultCompanyCalendarUrl, japanFiscalYear, type CompanyCalendar } from "../api/companyCalendar";
+import { companyCalendarApi, defaultCompanyCalendarUrl, fiscalYearRange, japanFiscalYear, type CompanyCalendar } from "../api/companyCalendar";
 import { passkeyApi } from "../api/passkey";
 import {
   disableHomeScreenPush,
@@ -383,6 +383,9 @@ export default function SettingsPage() {
                     className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm text-neutral-800"
                   />
                 </label>
+                <p className="text-[11px] text-neutral-400">
+                  {t("settings.companyCalRange", fiscalYearRange(companyCalYear))}
+                </p>
                 <label className="block text-[11px] font-semibold text-neutral-500">
                   {t("settings.companyCalUrl")}
                   <input
@@ -424,7 +427,14 @@ export default function SettingsPage() {
                     }}
                   />
                 </div>
-                {companyCal?.parsedAt ? (
+                {companyCal?.expired ? (
+                  <p className="text-[11px] text-amber-600">
+                    {t("settings.companyCalExpired", {
+                      year: companyCal.fiscalYear ?? companyCalYear,
+                      current: japanFiscalYear(),
+                    })}
+                  </p>
+                ) : companyCal?.parsedAt ? (
                   <p className="text-[11px] text-neutral-500">
                     {t("settings.companyCalSynced", {
                       year: companyCal.fiscalYear ?? companyCalYear,
