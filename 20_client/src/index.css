@@ -41,6 +41,14 @@
   opacity: 1;
 }
 
+.photos-page .album-card,
+.photos-page .photos-hit {
+  isolation: auto;
+  transform: none;
+  -webkit-transform: none;
+  z-index: 0;
+}
+
 button,
 a,
 [role="button"],
@@ -76,8 +84,28 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-#app-overlay-root:empty {
+/*
+ * Overlay host lives on document.body and stays unpositioned until a sheet
+ * mounts. An always-on `fixed inset-0 isolate` layer is what iOS paints gray
+ * after a pause, with the last album card sitting above it.
+ */
+#app-overlay-root {
   display: none;
+  pointer-events: none;
+}
+
+#app-overlay-root.is-active {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  z-index: 50;
+  pointer-events: none;
+  isolation: auto;
+  transform: none;
 }
 
 /* iOS Safari zooms focused fields when font-size < 16px. Keep ≥16px instead of locking zoom. */

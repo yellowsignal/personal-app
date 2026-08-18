@@ -6,7 +6,7 @@ import { useBodyScrollLock, useResetWindowScroll } from "../hooks/useBodyScrollL
 import { useOnAppResume } from "../hooks/useOnAppResume";
 import { useAuth } from "../context/AuthContext";
 import { familyActivityApi, syncAppBadge } from "../api/familyActivity";
-import { OVERLAY_ROOT_ID, OVERLAY_ROOT_CLASS, removeLegacyBodyOverlays } from "../utils/overlayRoot";
+import { removeLegacyBodyOverlays } from "../utils/overlayRoot";
 
 export default function AppLayout() {
   const { pathname } = useLocation();
@@ -45,7 +45,6 @@ export default function AppLayout() {
           isHome ? "h-[100dvh] max-h-[100dvh] overflow-hidden overscroll-none" : "min-h-screen"
         }`}
       >
-        <div id={OVERLAY_ROOT_ID} className={OVERLAY_ROOT_CLASS} />
         <div
           className={
             hideBottomNav

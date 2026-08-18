@@ -490,7 +490,7 @@ export default function PhotosPage() {
                 {albumSummaries.map((album) => (
                   <div
                     key={album.id}
-                    className="relative overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
+                    className="album-card relative z-0 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
                   >
                     <button
                       type="button"

@@ -14,7 +14,7 @@ export default function BottomNav() {
   const { t } = useLanguage();
 
   return (
-    <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-black/5 bg-white/90 backdrop-blur">
+    <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-black/5 bg-white">
       <ul className="mx-auto flex max-w-md items-stretch justify-between px-2">
         {NAV_ITEMS.map(({ to, key, icon: Icon, end }) => (
           <li key={to} className="flex-1">

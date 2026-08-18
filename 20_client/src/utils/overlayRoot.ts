@@ -1,11 +1,66 @@
 export const OVERLAY_ROOT_ID = "app-overlay-root";
+export const OVERLAY_ROOT_ACTIVE_CLASS = "is-active";
 export const LEGACY_BACKDROP_ATTR = "data-app-overlay-backdrop";
-/** Viewport-sized, not page-sized — sheets/lightbox must sit on the screen, not at the bottom of a long album. */
-export const OVERLAY_ROOT_CLASS = "pointer-events-none fixed inset-0 z-50 isolate max-h-[100dvh]";
+
+/**
+ * Active overlay host — CSS class applied only while a sheet/lightbox is mounted.
+ * Do not leave `position:fixed` + `isolation:isolate` on an empty host.
+ * iOS promotes that idle GPU layer after a pause, paints it gray, and the
+ * last tapped album card (えいと) stays bright above it.
+ */
+
+let retainCount = 0;
 
 export function getOverlayRoot(): HTMLElement | null {
   if (typeof document === "undefined") return null;
   return document.getElementById(OVERLAY_ROOT_ID);
+}
+
+export function ensureOverlayRoot(): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  let el = document.getElementById(OVERLAY_ROOT_ID);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = OVERLAY_ROOT_ID;
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function applyOverlayHostState(el: HTMLElement, active: boolean): void {
+  if (active) {
+    el.classList.add(OVERLAY_ROOT_ACTIVE_CLASS);
+    el.setAttribute("data-overlay-active", "true");
+  } else {
+    el.classList.remove(OVERLAY_ROOT_ACTIVE_CLASS);
+    el.removeAttribute("data-overlay-active");
+  }
+}
+
+/** Show the viewport host. Pair with `releaseOverlayRoot` on unmount. */
+export function retainOverlayRoot(): HTMLElement | null {
+  const el = ensureOverlayRoot();
+  if (!el) return null;
+  retainCount += 1;
+  applyOverlayHostState(el, true);
+  return el;
+}
+
+export function releaseOverlayRoot(): void {
+  retainCount = Math.max(0, retainCount - 1);
+  const el = getOverlayRoot();
+  if (!el) return;
+  if (retainCount === 0) applyOverlayHostState(el, false);
+}
+
+export function overlayRootRetainCount(): number {
+  return retainCount;
+}
+
+export function resetOverlayRetainForTests(): void {
+  retainCount = 0;
+  const el = getOverlayRoot();
+  if (el) applyOverlayHostState(el, false);
 }
 
 /**
@@ -15,7 +70,7 @@ export function getOverlayRoot(): HTMLElement | null {
  */
 export function removeLegacyBodyOverlays(): void {
   if (typeof document === "undefined") return;
-  document.querySelectorAll(`[${LEGACY_BACKDROP_ATTR}]`).forEach((el) => el.remove());
+  document.querySelectorAll(`[${LEGACY_BACKDROP_ATTR}]`).forEach((node) => node.remove());
   for (const node of Array.from(document.body.children)) {
     const el = node as HTMLElement;
     if (el.id === "root" || el.id === OVERLAY_ROOT_ID) continue;
@@ -23,5 +78,9 @@ export function removeLegacyBodyOverlays(): void {
       (typeof el.hasAttribute === "function" && el.hasAttribute("data-keyboard-inset")) ||
       (typeof el.getAttribute === "function" && el.getAttribute("role") === "dialog");
     if (leftoverScrim) el.remove();
+  }
+  if (retainCount === 0) {
+    const host = getOverlayRoot();
+    if (host) applyOverlayHostState(host, false);
   }
 }

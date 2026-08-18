@@ -1,12 +1,17 @@
 import { useLayoutEffect, useState } from "react";
-import { getOverlayRoot, removeLegacyBodyOverlays } from "../utils/overlayRoot";
+import { releaseOverlayRoot, removeLegacyBodyOverlays, retainOverlayRoot } from "../utils/overlayRoot";
 
-/** Portal target inside the app shell, created after AppLayout commits. */
+/** Portal target on document.body. Sized only while this overlay is mounted. */
 export function useOverlayRoot(): HTMLElement | null {
   const [root, setRoot] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
     removeLegacyBodyOverlays();
-    setRoot(getOverlayRoot());
+    const el = retainOverlayRoot();
+    setRoot(el);
+    return () => {
+      releaseOverlayRoot();
+      setRoot(null);
+    };
   }, []);
   return root;
 }
