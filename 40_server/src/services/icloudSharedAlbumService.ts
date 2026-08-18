@@ -41,6 +41,18 @@ export interface IcloudAlbumsResponse {
   albums: IcloudAlbumSummary[];
 }
 
+/** Cover bytes live at a stable path; `v` changes when the chosen photo changes so clients skip stale cache. */
+export function albumCoverFileUrl(
+  albumId: number,
+  coverMime: string | null,
+  coverPhotoId: string | null,
+): string | null {
+  if (!coverMime) return null;
+  const path = `/api/photos/icloud-albums/${albumId}/cover`;
+  if (!coverPhotoId) return path;
+  return `${path}?v=${encodeURIComponent(coverPhotoId)}`;
+}
+
 export class IcloudSharedAlbumService {
   private readonly cache = new Map<number, { url: string; at: number; album: IcloudAlbum }>();
 
@@ -72,7 +84,7 @@ export class IcloudSharedAlbumService {
       nameLocked: row.nameLocked,
       photoCount: row.photoCount,
       coverPhotoId: row.coverPhotoId,
-      coverUrl: row.coverMime ? `/api/photos/icloud-albums/${row.id}/cover` : null,
+      coverUrl: albumCoverFileUrl(row.id, row.coverMime, row.coverPhotoId),
       syncedAt: row.syncedAt ? row.syncedAt.toISOString() : null,
     };
   }

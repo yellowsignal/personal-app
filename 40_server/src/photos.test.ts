@@ -9,6 +9,7 @@ import { MemoryFamilyActivityRepository } from "./domain/memoryFamilyActivityRep
 import { MemoryPhotoRepository } from "./domain/memoryPhotoRepository.js";
 import { TaskStore } from "./store.js";
 import { PhotoStore, sniffPhotoMime } from "./storage/photoStore.js";
+import { albumCoverFileUrl } from "./services/icloudSharedAlbumService.js";
 
 const PNG_1X1 = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -70,6 +71,19 @@ test("sniffPhotoMime reads jpeg/png when content-type is missing", () => {
   assert.equal(sniffPhotoMime(JPEG_1X1, "application/octet-stream"), "image/jpeg");
   assert.equal(sniffPhotoMime(PNG_1X1, "image/png"), "image/png");
   assert.equal(sniffPhotoMime(Buffer.from("not-an-image")), null);
+});
+
+test("albumCoverFileUrl changes when the chosen cover photo changes", () => {
+  assert.equal(albumCoverFileUrl(3, null, "guid-1"), null);
+  assert.equal(albumCoverFileUrl(3, "image/jpeg", null), "/api/photos/icloud-albums/3/cover");
+  assert.equal(
+    albumCoverFileUrl(3, "image/jpeg", "guid-old"),
+    "/api/photos/icloud-albums/3/cover?v=guid-old",
+  );
+  assert.notEqual(
+    albumCoverFileUrl(3, "image/jpeg", "guid-old"),
+    albumCoverFileUrl(3, "image/jpeg", "guid-1"),
+  );
 });
 
 test("photos create is always family-shared; members can view, only owner deletes", async () => {
@@ -315,6 +329,7 @@ test("icloud albums can link several URLs, download without storing, and unlink 
     assert.equal(firstBody.photos[0].id, "guid-old");
     assert.equal(firstBody.photos[1].id, "guid-1");
     assert.equal(firstBody.coverPhotoId, "guid-old");
+    assert.equal(firstBody.coverUrl, `/api/photos/icloud-albums/${firstBody.id}/cover?v=guid-old`);
     assert.ok(firstBody.coverUrl);
 
     const coverRes = await fetch(`${base}${firstBody.coverUrl}`, {
@@ -382,8 +397,15 @@ test("icloud albums can link several URLs, download without storing, and unlink 
       body: JSON.stringify({ coverPhotoId: "guid-1" }),
     });
     assert.equal(coverChanged.status, 200);
-    const coverChangedBody = (await coverChanged.json()) as { coverPhotoId: string };
+    const coverChangedBody = (await coverChanged.json()) as { coverPhotoId: string; coverUrl: string };
     assert.equal(coverChangedBody.coverPhotoId, "guid-1");
+    assert.equal(coverChangedBody.coverUrl, `/api/photos/icloud-albums/${firstBody.id}/cover?v=guid-1`);
+    assert.notEqual(coverChangedBody.coverUrl, firstBody.coverUrl);
+    const newCoverRes = await fetch(`${base}${coverChangedBody.coverUrl}`, {
+      headers: { authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(newCoverRes.status, 200);
+    assert.equal(newCoverRes.headers.get("content-type"), "image/jpeg");
 
     const clash = await fetch(`${base}/api/photos/icloud-albums/${firstBody.id}`, {
       method: "PATCH",
