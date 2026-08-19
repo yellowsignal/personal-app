@@ -50,7 +50,7 @@ export function useResetWindowScroll(key: unknown): void {
 function lockBody(options?: { restoreScroll?: boolean; pinBody?: boolean }) {
   if (typeof document === "undefined") return;
   lockCount += 1;
-  const pinBody = options?.pinBody !== false;
+  const pinBody = options?.pinBody === true;
   if (lockCount !== 1) {
     if (pinBody && savedStyles && document.body.style.position !== "fixed") {
       applyBodyPin(options?.restoreScroll !== false);
@@ -134,17 +134,23 @@ export type BodyScrollLockOptions = {
   /** When false, unlock always returns to the top (used for the home fixed viewport). Default true. */
   restoreScroll?: boolean;
   /**
-   * When false, only freeze overflow (used by sheets/lightbox). Pinning `body` with
-   * `position:fixed` makes iOS treat overlays as document-absolute and leaves a
-   * dark band on the page. Default true for the home viewport lock.
+   * When true, pin `body` with `position:fixed`. Default false — pinning makes iOS
+   * treat overlays as document-absolute, so the album list stays gray except the
+   * last tapped card (えいと) after tapping Home.
    */
   pinBody?: boolean;
+};
+
+/** Home already uses a 100dvh overflow-hidden shell. Do not pin `body`. */
+export const HOME_SCROLL_LOCK_OPTIONS: BodyScrollLockOptions = {
+  restoreScroll: false,
+  pinBody: false,
 };
 
 /** Lock page scroll while a modal/sheet is open (ref-counted for stacked overlays). */
 export function useBodyScrollLock(active = true, options: BodyScrollLockOptions = {}) {
   const restoreScroll = options.restoreScroll !== false;
-  const pinBody = options.pinBody !== false;
+  const pinBody = options.pinBody === true;
   useLayoutEffect(() => {
     if (!active) return;
     lockBody({ restoreScroll, pinBody });

@@ -1,6 +1,8 @@
+import { createPortal } from "react-dom";
 import { NavLink } from "react-router-dom";
 import { Home, Wallet, ListChecks, CreditCard, CalendarDays } from "lucide-react";
 import { useLanguage } from "../i18n/LanguageContext";
+import { flattenIdleOverlayHost } from "../utils/overlayRoot";
 
 const NAV_ITEMS = [
   { to: "/", key: "nav.home", icon: Home, end: true },
@@ -13,14 +15,20 @@ const NAV_ITEMS = [
 export default function BottomNav() {
   const { t } = useLanguage();
 
-  return (
-    <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-black/5 bg-white">
+  const nav = (
+    <nav className="safe-bottom fixed inset-x-0 bottom-0 z-[60] border-t border-black/5 bg-white">
       <ul className="mx-auto flex max-w-md items-stretch justify-between px-2">
         {NAV_ITEMS.map(({ to, key, icon: Icon, end }) => (
           <li key={to} className="flex-1">
             <NavLink
               to={to}
               end={end}
+              onClick={() => {
+                if (typeof HTMLElement !== "undefined" && document.activeElement instanceof HTMLElement) {
+                  document.activeElement.blur();
+                }
+                flattenIdleOverlayHost();
+              }}
               className={({ isActive }) =>
                 `flex flex-col items-center gap-1 py-2 text-[11px] font-medium transition-colors ${
                   isActive ? "text-indigo-600" : "text-neutral-400"
@@ -35,4 +43,7 @@ export default function BottomNav() {
       </ul>
     </nav>
   );
+
+  if (typeof document === "undefined") return nav;
+  return createPortal(nav, document.body);
 }

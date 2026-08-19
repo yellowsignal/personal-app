@@ -65,3 +65,9 @@ test("scheduleResetWindowScroll resets immediately and cancels pending work", as
   assert.equal(timeouts.length, 0);
   assert.equal(rafs.length, 0);
 });
+
+test("home scroll lock does not pin body position", async () => {
+  const { HOME_SCROLL_LOCK_OPTIONS } = await import("./useBodyScrollLock.ts");
+  assert.equal(HOME_SCROLL_LOCK_OPTIONS.pinBody, false);
+  assert.equal(HOME_SCROLL_LOCK_OPTIONS.restoreScroll, false);
+});

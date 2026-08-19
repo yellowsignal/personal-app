@@ -14,6 +14,7 @@ import {
 function mockOverlayEl() {
   const classes = new Set<string>();
   const attrs = new Map<string, string>();
+  const children: unknown[] = [];
   return {
     id: OVERLAY_ROOT_ID,
     classList: {
@@ -44,6 +45,13 @@ function mockOverlayEl() {
     },
     classes,
     attrs,
+    children,
+    get firstChild() {
+      return children[0] ?? null;
+    },
+    removeChild() {
+      children.shift();
+    },
   };
 }
 
@@ -127,4 +135,22 @@ test("idle overlay host must not use isolate or an always-on fixed box", async (
   assert.doesNotMatch(host, /position:\s*fixed/);
   assert.match(css, /#app-overlay-root\.is-active/);
   assert.doesNotMatch(css, /#app-overlay-root\.is-active[\s\S]*\bisolate\b/);
+});
+
+test("flattenIdleOverlayHost clears leftover children when nothing is retained", async () => {
+  const { flattenIdleOverlayHost } = await import("./overlayRoot.ts");
+  resetOverlayRetainForTests();
+  const overlayRoot = mockOverlayEl();
+  overlayRoot.children.push({ id: "stuck-scrim" });
+  overlayRoot.classList.add(OVERLAY_ROOT_ACTIVE_CLASS);
+  (globalThis as { document?: unknown }).document = {
+    activeElement: null,
+    getElementById: (id: string) => (id === OVERLAY_ROOT_ID ? overlayRoot : null),
+    querySelectorAll: () => [],
+    body: { children: [overlayRoot] },
+  };
+  flattenIdleOverlayHost();
+  assert.equal(overlayRoot.children.length, 0);
+  assert.equal(overlayRoot.classList.contains(OVERLAY_ROOT_ACTIVE_CLASS), false);
+  resetOverlayRetainForTests();
 });

@@ -2,11 +2,11 @@ import { useCallback, useLayoutEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import BottomNav from "../components/BottomNav";
 import PushOnboardingSheet from "../components/PushOnboardingSheet";
-import { useBodyScrollLock, useResetWindowScroll } from "../hooks/useBodyScrollLock";
+import { HOME_SCROLL_LOCK_OPTIONS, useBodyScrollLock, useResetWindowScroll } from "../hooks/useBodyScrollLock";
 import { useOnAppResume } from "../hooks/useOnAppResume";
 import { useAuth } from "../context/AuthContext";
 import { familyActivityApi, syncAppBadge } from "../api/familyActivity";
-import { removeLegacyBodyOverlays } from "../utils/overlayRoot";
+import { flattenIdleOverlayHost } from "../utils/overlayRoot";
 
 export default function AppLayout() {
   const { pathname } = useLocation();
@@ -18,11 +18,14 @@ export default function AppLayout() {
   useResetWindowScroll(pathname);
 
   useLayoutEffect(() => {
-    removeLegacyBodyOverlays();
+    if (typeof HTMLElement !== "undefined" && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    flattenIdleOverlayHost();
   }, [pathname]);
 
-  // Home uses a fixed viewport; do not restore the previous page's scrollY when leaving home.
-  useBodyScrollLock(isHome, { restoreScroll: false });
+  // Home uses a 100dvh shell; do not pin body (that re-paints the album dim on iOS).
+  useBodyScrollLock(isHome, HOME_SCROLL_LOCK_OPTIONS);
 
   const refreshAppBadge = useCallback(() => {
     if (!token) return;

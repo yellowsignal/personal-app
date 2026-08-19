@@ -63,6 +63,20 @@ export function resetOverlayRetainForTests(): void {
   if (el) applyOverlayHostState(el, false);
 }
 
+/** Drop compositor leftovers when leaving a page. Safe if a real overlay is still open. */
+export function flattenIdleOverlayHost(): void {
+  if (typeof document === "undefined") return;
+  if (typeof HTMLElement !== "undefined" && document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+  removeLegacyBodyOverlays();
+  if (retainCount !== 0) return;
+  const host = getOverlayRoot();
+  if (!host) return;
+  applyOverlayHostState(host, false);
+  while (host.firstChild) host.removeChild(host.firstChild);
+}
+
 /**
  * Previous builds left a `position:fixed` dim layer on `document.body`.
  * iOS kept it after close, covering ~100vh from the top of the document so
