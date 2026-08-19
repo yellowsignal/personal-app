@@ -1,8 +1,17 @@
+import { useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { NavLink } from "react-router-dom";
 import { Home, Wallet, ListChecks, CreditCard, CalendarDays } from "lucide-react";
 import { useLanguage } from "../i18n/LanguageContext";
-import { flattenIdleOverlayHost } from "../utils/overlayRoot";
+import {
+  flattenIdleOverlayHost,
+  overlayRootRetainCount,
+  subscribeOverlayActive,
+} from "../utils/overlayRoot";
+
+function useOverlayActive(): boolean {
+  return useSyncExternalStore(subscribeOverlayActive, () => overlayRootRetainCount() > 0);
+}
 
 const NAV_ITEMS = [
   { to: "/", key: "nav.home", icon: Home, end: true },
@@ -14,9 +23,10 @@ const NAV_ITEMS = [
 
 export default function BottomNav() {
   const { t } = useLanguage();
+  const overlayActive = useOverlayActive();
 
   const nav = (
-    <nav className="safe-bottom fixed inset-x-0 bottom-0 z-[60] border-t border-black/5 bg-white">
+    <nav className={`safe-bottom fixed inset-x-0 bottom-0 border-t border-black/5 bg-white ${overlayActive ? "z-[40]" : "z-[60]"}`}>
       <ul className="mx-auto flex max-w-md items-stretch justify-between px-2">
         {NAV_ITEMS.map(({ to, key, icon: Icon, end }) => (
           <li key={to} className="flex-1">

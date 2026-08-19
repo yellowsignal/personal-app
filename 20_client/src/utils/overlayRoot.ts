@@ -43,6 +43,7 @@ export function retainOverlayRoot(): HTMLElement | null {
   if (!el) return null;
   retainCount += 1;
   applyOverlayHostState(el, true);
+  notifyListeners();
   return el;
 }
 
@@ -51,11 +52,28 @@ export function releaseOverlayRoot(): void {
   const el = getOverlayRoot();
   if (!el) return;
   if (retainCount === 0) applyOverlayHostState(el, false);
+  notifyListeners();
 }
 
 export function overlayRootRetainCount(): number {
   return retainCount;
 }
+
+type Listener = () => void;
+const listeners = new Set<Listener>();
+
+function notifyListeners(): void {
+  for (const fn of listeners) fn();
+}
+
+/** Subscribe to retain count changes. Returns unsubscribe function. */
+export function subscribeOverlayActive(fn: Listener): () => void {
+  listeners.add(fn);
+  return () => { listeners.delete(fn); };
+}
+
+// useOverlayActive hook lives in the component that needs it (BottomNav) to
+// avoid importing React from a utility module.
 
 export function resetOverlayRetainForTests(): void {
   retainCount = 0;
