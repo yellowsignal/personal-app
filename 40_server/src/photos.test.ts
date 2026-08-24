@@ -10,6 +10,7 @@ import { MemoryPhotoRepository } from "./domain/memoryPhotoRepository.js";
 import { TaskStore } from "./store.js";
 import { PhotoStore, sniffPhotoMime } from "./storage/photoStore.js";
 import { albumCoverFileUrl } from "./services/icloudSharedAlbumService.js";
+import { loginForToken, seedFamilyMember } from "./testSupport/familyMembers.js";
 
 const PNG_1X1 = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -53,17 +54,23 @@ async function registerOwner(base: string) {
     }),
   });
   assert.equal(res.status, 201);
-  return (await res.json()) as { token: string; user: { id: number } };
+  return (await res.json()) as {
+    token: string;
+    user: { id: number };
+    family: { id: number };
+  };
 }
 
 function photoApp() {
-  return createApp(tmpStore(), {
-    authRepo: new MemoryAuthRepository(),
+  const authRepo = new MemoryAuthRepository();
+  const app = createApp(tmpStore(), {
+    authRepo,
     photoRepo: new MemoryPhotoRepository(),
     photoStore: tmpPhotoStore(),
     activityRepo: new MemoryFamilyActivityRepository(),
     jwtSecret: "test-secret",
   });
+  return { app, authRepo };
 }
 
 test("sniffPhotoMime reads jpeg/png when content-type is missing", () => {
@@ -87,13 +94,10 @@ test("albumCoverFileUrl changes when the chosen cover photo changes", () => {
 });
 
 test("photos create is always family-shared; members can view, only owner deletes", async () => {
-  const app = photoApp();
+  const { app, authRepo } = photoApp();
   const { server, base } = await listen(app);
   try {
     const owner = await registerOwner(base);
-    const ownerFamily = (await fetch(`${base}/api/family`, {
-      headers: { authorization: `Bearer ${owner.token}` },
-    }).then((r) => r.json())) as { inviteCode: string };
 
     const created = await fetch(`${base}/api/photos?caption=${encodeURIComponent("가족")}`, {
       method: "POST",
@@ -132,21 +136,14 @@ test("photos create is always family-shared; members can view, only owner delete
     const fileBytes = Buffer.from(await fileRes.arrayBuffer());
     assert.deepEqual(fileBytes, PNG_1X1);
 
-    const memberReg = await fetch(`${base}/api/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        email: "member@example.com",
-        password: "password123",
-        name: "Member",
-        inviteCode: ownerFamily.inviteCode,
-      }),
+    await seedFamilyMember(authRepo, {
+      familyId: owner.family.id,
+      email: "member@example.com",
     });
-    assert.equal(memberReg.status, 201);
-    const member = (await memberReg.json()) as { token: string };
+    const memberToken = await loginForToken(base, "member@example.com");
 
     const memberList = await fetch(`${base}/api/photos`, {
-      headers: { authorization: `Bearer ${member.token}` },
+      headers: { authorization: `Bearer ${memberToken}` },
     });
     assert.equal(memberList.status, 200);
     const memberItems = (await memberList.json()) as Array<{
@@ -159,13 +156,13 @@ test("photos create is always family-shared; members can view, only owner delete
     assert.equal(memberItems[0].editable, false);
 
     const memberFile = await fetch(`${base}/api/photos/${photo.id}/file`, {
-      headers: { authorization: `Bearer ${member.token}` },
+      headers: { authorization: `Bearer ${memberToken}` },
     });
     assert.equal(memberFile.status, 200);
 
     const memberDelete = await fetch(`${base}/api/photos/${photo.id}`, {
       method: "DELETE",
-      headers: { authorization: `Bearer ${member.token}` },
+      headers: { authorization: `Bearer ${memberToken}` },
     });
     assert.equal(memberDelete.status, 403);
 

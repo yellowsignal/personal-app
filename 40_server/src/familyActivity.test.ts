@@ -14,6 +14,7 @@ import { ChallengeStore } from "./auth/challengeStore.js";
 import { MemoryPasskeyRepository } from "./domain/memoryPasskeyRepository.js";
 import { MemoryInviteTokenRepository } from "./domain/memoryInviteTokenRepository.js";
 import { PushService, type PushPayload } from "./services/pushService.js";
+import { loginForToken, seedFamilyMember } from "./testSupport/familyMembers.js";
 
 function tmpStore(): TaskStore {
   const dir = mkdtempSync(join(tmpdir(), "personal-app-"));
@@ -69,31 +70,24 @@ test("shared calendar create notifies family activity feed and push", async () =
       }),
     });
     assert.equal(ownerRes.status, 201);
-    const owner = (await ownerRes.json()) as { token: string; user: { id: number; familyId: number } };
+    const owner = (await ownerRes.json()) as {
+      token: string;
+      user: { id: number; familyId: number };
+      family: { id: number };
+    };
 
-    const family = await fetch(`${base}/api/family`, {
-      headers: { authorization: `Bearer ${owner.token}` },
+    await seedFamilyMember(authRepo, {
+      familyId: owner.family.id,
+      email: "activity-member@example.com",
+      name: "아내",
     });
-    const familyBody = (await family.json()) as { inviteCode: string };
-
-    const memberRes = await fetch(`${base}/api/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        email: "activity-member@example.com",
-        password: "password123",
-        name: "아내",
-        inviteCode: familyBody.inviteCode,
-      }),
-    });
-    assert.equal(memberRes.status, 201);
-    const member = (await memberRes.json()) as { token: string; user: { id: number } };
+    const memberToken = await loginForToken(base, "activity-member@example.com");
 
     await fetch(`${base}/api/push/subscribe`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${member.token}`,
+        authorization: `Bearer ${memberToken}`,
       },
       body: JSON.stringify({
         endpoint: "https://push.example/member-1",
@@ -118,7 +112,7 @@ test("shared calendar create notifies family activity feed and push", async () =
     assert.equal(created.status, 201);
 
     const summary = await fetch(`${base}/api/family/activity/summary`, {
-      headers: { authorization: `Bearer ${member.token}` },
+      headers: { authorization: `Bearer ${memberToken}` },
     });
     assert.equal(summary.status, 200);
     const summaryBody = (await summary.json()) as {
@@ -162,7 +156,7 @@ test("shared calendar create notifies family activity feed and push", async () =
     assert.equal(updated.status, 200);
 
     const listAfter = await fetch(`${base}/api/family/activity?limit=10`, {
-      headers: { authorization: `Bearer ${member.token}` },
+      headers: { authorization: `Bearer ${memberToken}` },
     });
     assert.equal(listAfter.status, 200);
     const activities = (await listAfter.json()) as Array<{
@@ -183,7 +177,7 @@ test("shared calendar create notifies family activity feed and push", async () =
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${member.token}`,
+        authorization: `Bearer ${memberToken}`,
       },
       body: JSON.stringify({ all: true }),
     });
