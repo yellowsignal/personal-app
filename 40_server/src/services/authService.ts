@@ -86,14 +86,16 @@ export class AuthService {
     const languagePref = pickPref(body.languagePref, LANGS, "ko");
     const countryPref = parseHolidayPref(body.countryPref, "JP");
     const currencyPref = pickPref(body.currencyPref, CURRENCIES, "JPY");
-    const inviteCode =
-      typeof body.inviteCode === "string" && body.inviteCode.trim()
-        ? body.inviteCode.trim().toUpperCase()
-        : null;
 
     const userCount = await this.repo.countUsers();
-    if (userCount > 0 && !inviteCode) {
-      throw new HttpError(403, "registration requires an invite", "CLOSED_REGISTRATION");
+    // After the first account exists, password signup is closed — even with a permanent FAM code.
+    // New members join with a one-time Passkey invite only. Password login stays available.
+    if (userCount > 0) {
+      throw new HttpError(
+        403,
+        "registration is closed; use a Passkey invite",
+        "CLOSED_REGISTRATION",
+      );
     }
 
     const familyName =
@@ -105,31 +107,6 @@ export class AuthService {
     if (existing) throw new HttpError(409, "email already registered", "EMAIL_TAKEN");
 
     const passwordHash = await hashPassword(password);
-
-    if (inviteCode) {
-      const family = await this.repo.findFamilyByInviteCode(inviteCode);
-      if (!family) throw new HttpError(404, "invite code not found", "INVITE_NOT_FOUND");
-      const members = await this.repo.listFamilyMembers(family.id);
-      if (members.length >= 5) {
-        throw new HttpError(400, "family is full", "FAMILY_FULL");
-      }
-      const user = await this.repo.createUser({
-        email,
-        passwordHash,
-        name,
-        familyId: family.id,
-        role: "MEMBER",
-        languagePref,
-        countryPref,
-        currencyPref,
-      });
-      const token = signAuthToken({ userId: user.id, email: user.email }, this.jwtSecret);
-      return {
-        token,
-        user: toPublicUser(user),
-        family: await this.familySummary(family.id),
-      };
-    }
 
     const invite = await this.uniqueInviteCode();
     try {
