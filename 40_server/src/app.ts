@@ -1,6 +1,9 @@
 import cors from "cors";
 import express, { raw, type Express } from "express";
+import rateLimit from "express-rate-limit";
+import helmet from "helmet";
 import { TaskStore } from "./store.js";
+import { isAllowedCorsOrigin } from "./security/corsOrigins.js";
 import type { AuthRepository } from "./domain/authRepository.js";
 import type { AssetRepository } from "./domain/assetRepository.js";
 import type { SubscriptionRepository } from "./domain/subscriptionRepository.js";
@@ -81,8 +84,28 @@ export interface AppDeps {
 }
 
 export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
+  // Starter TaskStore is kept for DATA_FILE / deploy wiring; HTTP routes are disabled.
+  void store;
+
   const app = express();
-  app.use(cors());
+  // nginx terminates TLS and forwards; needed for correct rate-limit IPs.
+  app.set("trust proxy", 1);
+
+  app.use(
+    helmet({
+      // API is JSON behind same-origin nginx; avoid blocking the SPA.
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
+  app.use(
+    cors({
+      origin(origin, callback) {
+        callback(null, isAllowedCorsOrigin(origin));
+      },
+      credentials: true,
+    }),
+  );
   app.use(
     "/api/company-calendar/import-pdf",
     raw({ type: () => true, limit: "8mb" }),
@@ -96,41 +119,25 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
       time: now.toISOString(),
       tz: process.env.TZ ?? null,
       resolvedTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      gitCommit: process.env.GIT_COMMIT ?? null,
     });
   });
 
-  app.get("/api/tasks", (_req, res) => {
-    res.json(store.list());
+  // Legacy starter CRUD — never expose without auth on dig/prod.
+  app.use("/api/tasks", (_req, res) => {
+    res.status(410).json({
+      error: "starter tasks API is disabled",
+      code: "TASKS_DISABLED",
+    });
   });
 
-  app.post("/api/tasks", (req, res) => {
-    const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
-    if (!title) {
-      res.status(400).json({ error: "title is required" });
-      return;
-    }
-    res.status(201).json(store.create(title));
+  const authRateLimit = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "too many auth attempts", code: "RATE_LIMITED" },
   });
-
-  app.patch("/api/tasks/:id", (req, res) => {
-    const task = store.toggle(req.params.id);
-    if (!task) {
-      res.status(404).json({ error: "task not found" });
-      return;
-    }
-    res.json(task);
-  });
-
-  app.delete("/api/tasks/:id", (req, res) => {
-    const removed = store.remove(req.params.id);
-    if (!removed) {
-      res.status(404).json({ error: "task not found" });
-      return;
-    }
-    res.status(204).end();
-  });
-
+  app.use("/api/auth", authRateLimit);
   if (deps.authRepo) {
     const jwtSecret = deps.jwtSecret ?? process.env.JWT_SECRET ?? "dev-secret-change-me";
     const authService = new AuthService(deps.authRepo, jwtSecret);

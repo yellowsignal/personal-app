@@ -41,46 +41,46 @@ test("health endpoint responds ok", async () => {
   }
 });
 
-test("create, list, toggle and delete a task end-to-end", async () => {
+test("starter /api/tasks is disabled without auth", async () => {
   const { server, base } = await listen(createApp(tmpStore()));
   try {
+    const listed = await fetch(`${base}/api/tasks`);
+    assert.equal(listed.status, 410);
+    const body = (await listed.json()) as { code?: string };
+    assert.equal(body.code, "TASKS_DISABLED");
+
     const created = await fetch(`${base}/api/tasks`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title: "Write tests" }),
+      body: JSON.stringify({ title: "should not work" }),
     });
-    assert.equal(created.status, 201);
-    const task = (await created.json()) as { id: string; title: string; done: boolean };
-    assert.equal(task.title, "Write tests");
-    assert.equal(task.done, false);
-
-    const listed = await (await fetch(`${base}/api/tasks`)).json();
-    assert.equal((listed as unknown[]).length, 1);
-
-    const toggled = await (
-      await fetch(`${base}/api/tasks/${task.id}`, { method: "PATCH" })
-    ).json();
-    assert.equal((toggled as { done: boolean }).done, true);
-
-    const del = await fetch(`${base}/api/tasks/${task.id}`, { method: "DELETE" });
-    assert.equal(del.status, 204);
-
-    const finalList = await (await fetch(`${base}/api/tasks`)).json();
-    assert.equal((finalList as unknown[]).length, 0);
+    assert.equal(created.status, 410);
   } finally {
     server.close();
   }
 });
 
-test("rejects empty task titles", async () => {
+test("CORS rejects unknown browser origins", async () => {
   const { server, base } = await listen(createApp(tmpStore()));
   try {
-    const res = await fetch(`${base}/api/tasks`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title: "   " }),
+    const res = await fetch(`${base}/api/health`, {
+      headers: { origin: "https://evil.example" },
     });
-    assert.equal(res.status, 400);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("access-control-allow-origin"), null);
+  } finally {
+    server.close();
+  }
+});
+
+test("CORS allows prod DuckDNS origin", async () => {
+  const { server, base } = await listen(createApp(tmpStore()));
+  try {
+    const res = await fetch(`${base}/api/health`, {
+      headers: { origin: "https://sumicchogurashi.duckdns.org" },
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("access-control-allow-origin"), "https://sumicchogurashi.duckdns.org");
   } finally {
     server.close();
   }
