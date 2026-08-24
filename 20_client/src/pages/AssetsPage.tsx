@@ -100,7 +100,9 @@ function toForm(item: PublicAsset, lastMarket: StockMarket, lastBank: DepositBan
     currency: item.currency,
     amount: item.amount,
     bankCode,
-    accountNumber: item.accountNumber ?? "",
+    // List API returns a masked accountNumber — never put it in the edit form
+    // or a save would overwrite the real number with ****1234.
+    accountNumber: "",
     loginPassword: "",
     institutionCode: item.institutionCode ?? defaults.institutionCode ?? "",
     institutionName: item.institutionName ?? defaults.institutionName ?? "",
@@ -113,6 +115,11 @@ function toForm(item: PublicAsset, lastMarket: StockMarket, lastBank: DepositBan
     isShared: item.isShared,
   };
 }
+
+type RevealedCredentials = {
+  password: string;
+  accountNumber: string | null;
+};
 
 export default function AssetsPage() {
   const { t } = useLanguage();
@@ -138,10 +145,11 @@ export default function AssetsPage() {
   const [formQuoteName, setFormQuoteName] = useState<string | null>(null);
   const [detailQuoteName, setDetailQuoteName] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<PublicAsset | null>(null);
-  const [revealed, setRevealed] = useState<Record<number, string>>({});
+  const [revealed, setRevealed] = useState<Record<number, RevealedCredentials>>({});
   const [revealBusyId, setRevealBusyId] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [copiedField, setCopiedField] = useState<"account" | "pw" | null>(null);
+  const [accountNumberDirty, setAccountNumberDirty] = useState(false);
   const formScrollRef = useRef<HTMLFormElement>(null);
   useKeepFocusedInScrollParent(showForm, formScrollRef);
 
@@ -243,6 +251,7 @@ export default function AssetsPage() {
   function openCreate() {
     setEditing(null);
     setForm(emptyForm(currency, lastMarket, lastBank));
+    setAccountNumberDirty(false);
     setLabelManual(false);
     setFormQuoteName(null);
     setSwipeId(null);
@@ -253,6 +262,7 @@ export default function AssetsPage() {
   function openCreateDeposit() {
     setEditing(null);
     setForm({ ...emptyForm(currency, lastMarket, lastBank), type: "deposit" });
+    setAccountNumberDirty(false);
     setLabelManual(false);
     setFormQuoteName(null);
     setSwipeId(null);
@@ -268,6 +278,7 @@ export default function AssetsPage() {
   function openEdit(item: PublicAsset) {
     setEditing(item);
     setForm(toForm(item, lastMarket, lastBank));
+    setAccountNumberDirty(false);
     setLabelManual(true);
     setFormQuoteName(null);
     setSwipeId(null);
@@ -280,6 +291,7 @@ export default function AssetsPage() {
     setEditing(null);
     setLabelManual(false);
     setFormQuoteName(null);
+    setAccountNumberDirty(false);
     setForm(emptyForm(currency, lastMarket, lastBank));
   }
 
@@ -308,7 +320,6 @@ export default function AssetsPage() {
         label: form.label.trim(),
         bankCode: form.bankCode,
         amount: form.amount,
-        accountNumber: form.accountNumber.trim() || undefined,
         institutionCode: form.institutionCode.trim() || undefined,
         institutionName: form.institutionName.trim() || undefined,
         branchCode: form.branchCode.trim() || undefined,
@@ -317,13 +328,20 @@ export default function AssetsPage() {
       };
       if (editing) {
         if (form.loginPassword) payload.loginPassword = form.loginPassword;
-        payload.accountNumber = form.accountNumber.trim();
+        // Only send accountNumber when the user typed a new value — otherwise
+        // omitting keeps the server value (list API only returns a mask).
+        if (accountNumberDirty) {
+          payload.accountNumber = form.accountNumber.trim();
+        }
         payload.institutionCode = form.institutionCode.trim();
         payload.institutionName = form.institutionName.trim();
         payload.branchCode = form.branchCode.trim();
         payload.branchName = form.branchName.trim();
-      } else if (form.loginPassword) {
-        payload.loginPassword = form.loginPassword;
+      } else {
+        if (form.accountNumber.trim()) {
+          payload.accountNumber = form.accountNumber.trim();
+        }
+        if (form.loginPassword) payload.loginPassword = form.loginPassword;
       }
       setLastBank(form.bankCode);
       window.localStorage.setItem(LAST_BANK_STORAGE_KEY, form.bankCode);
@@ -431,7 +449,13 @@ export default function AssetsPage() {
     setError(null);
     try {
       const result = await assetsApi.revealCredentials(token, item.id);
-      setRevealed((prev) => ({ ...prev, [item.id]: result.password ?? "" }));
+      setRevealed((prev) => ({
+        ...prev,
+        [item.id]: {
+          password: result.password ?? "",
+          accountNumber: result.accountNumber,
+        },
+      }));
     } catch (err) {
       const code = err instanceof ApiError ? err.code : null;
       if (code === "PASSKEY_REQUIRED") {
@@ -558,7 +582,7 @@ export default function AssetsPage() {
                           {a.stockMarket ? ` · ${t(`stockMarket.${a.stockMarket}`)}` : ""}
                         </p>
                         <p className="mt-0.5 truncate text-sm font-bold text-neutral-900">{a.label}</p>
-                        {(a.accountNumber || a.hasPassword) && (
+                        {(a.hasAccountNumber || a.hasPassword) && (
                           <p className="mt-1 text-[11px] text-neutral-400">
                             {t("assets.hasCredentials")}
                           </p>
@@ -697,71 +721,77 @@ export default function AssetsPage() {
             {detail.isShared ? t("scope.family") : t("scope.personal")}
             {` · ${detail.ownerName}`}
           </DetailRow>
-          {detail.type === "deposit" && (detail.accountNumber || detail.hasPassword) && (
+          {detail.type === "deposit" && (detail.hasAccountNumber || detail.hasPassword) && (
             <div className="mt-4 rounded-xl bg-neutral-50 px-3 py-3">
               <p className="text-[11px] font-semibold text-neutral-500">
                 {t("assets.credentialsSection")}
               </p>
               <p className="mt-1 text-[11px] text-neutral-400">{t("assets.credentialsHint")}</p>
-              <div className="mt-3 flex items-start justify-between gap-3">
-                <p className="text-xs font-semibold text-neutral-400">{t("assets.fieldAccountNumber")}</p>
-                <div className="flex min-w-0 items-start gap-2">
-                  <p className="min-w-0 break-all text-right font-mono text-sm text-neutral-900">
-                    {detail.accountNumber || t("common.none")}
-                  </p>
-                  {detail.accountNumber ? (
+              {detail.hasAccountNumber ? (
+                <div className="mt-3 flex items-start justify-between gap-3">
+                  <p className="text-xs font-semibold text-neutral-400">{t("assets.fieldAccountNumber")}</p>
+                  <div className="flex min-w-0 items-start gap-2">
+                    <p className="min-w-0 break-all text-right font-mono text-sm text-neutral-900">
+                      {revealed[detail.id]?.accountNumber ??
+                        detail.accountNumber ??
+                        t("assets.accountMasked")}
+                    </p>
+                    {revealed[detail.id]?.accountNumber ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleCopy(detail.id, revealed[detail.id].accountNumber!, "account")
+                        }
+                        className="flex h-8 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-semibold text-neutral-500 hover:bg-white"
+                      >
+                        <Copy size={14} />
+                        {copiedId === detail.id && copiedField === "account"
+                          ? t("assets.copied")
+                          : t("assets.copyValue")}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-neutral-400">
+                  {detail.hasPassword ? t("assets.fieldLoginPassword") : t("assets.revealCredentials")}
+                </p>
+                <div className="flex min-w-0 items-center gap-2">
+                  {detail.hasPassword ? (
+                    <p className="min-w-0 break-all font-mono text-sm text-neutral-800">
+                      {revealed[detail.id] !== undefined
+                        ? revealed[detail.id].password || "—"
+                        : t("assets.passwordHidden")}
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={revealBusyId === detail.id}
+                    onClick={() => void handleReveal(detail)}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-white disabled:opacity-50"
+                    aria-label={
+                      revealed[detail.id] !== undefined
+                        ? t("assets.hidePassword")
+                        : t("assets.revealPassword")
+                    }
+                  >
+                    {revealed[detail.id] !== undefined ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                  {revealed[detail.id]?.password ? (
                     <button
                       type="button"
-                      onClick={() => void handleCopy(detail.id, detail.accountNumber!, "account")}
-                      className="flex h-8 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-semibold text-neutral-500 hover:bg-white"
+                      onClick={() => void handleCopy(detail.id, revealed[detail.id].password, "pw")}
+                      className="flex h-8 items-center gap-1 rounded-full px-2 text-[11px] font-semibold text-neutral-500 hover:bg-white"
                     >
                       <Copy size={14} />
-                      {copiedId === detail.id && copiedField === "account"
+                      {copiedId === detail.id && copiedField === "pw"
                         ? t("assets.copied")
                         : t("assets.copyValue")}
                     </button>
                   ) : null}
                 </div>
               </div>
-              {detail.hasPassword && (
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold text-neutral-400">
-                    {t("assets.fieldLoginPassword")}
-                  </p>
-                  <div className="flex min-w-0 items-center gap-2">
-                    <p className="min-w-0 break-all font-mono text-sm text-neutral-800">
-                      {revealed[detail.id] !== undefined
-                        ? revealed[detail.id] || "—"
-                        : t("assets.passwordHidden")}
-                    </p>
-                    <button
-                      type="button"
-                      disabled={revealBusyId === detail.id}
-                      onClick={() => void handleReveal(detail)}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-white disabled:opacity-50"
-                      aria-label={
-                        revealed[detail.id] !== undefined
-                          ? t("assets.hidePassword")
-                          : t("assets.revealPassword")
-                      }
-                    >
-                      {revealed[detail.id] !== undefined ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                    {revealed[detail.id] !== undefined && revealed[detail.id] && (
-                      <button
-                        type="button"
-                        onClick={() => void handleCopy(detail.id, revealed[detail.id]!, "pw")}
-                        className="flex h-8 items-center gap-1 rounded-full px-2 text-[11px] font-semibold text-neutral-500 hover:bg-white"
-                      >
-                        <Copy size={14} />
-                        {copiedId === detail.id && copiedField === "pw"
-                          ? t("assets.copied")
-                          : t("assets.copyValue")}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           )}
           {detail.type === "deposit" && (
@@ -1038,10 +1068,23 @@ export default function AssetsPage() {
                   {t("assets.fieldAccountNumber")}
                   <input
                     value={form.accountNumber}
-                    onChange={(e) => setForm((f) => ({ ...f, accountNumber: e.target.value }))}
+                    onChange={(e) => {
+                      setAccountNumberDirty(true);
+                      setForm((f) => ({ ...f, accountNumber: e.target.value }));
+                    }}
+                    placeholder={
+                      editing?.hasAccountNumber
+                        ? editing.accountNumber ?? t("assets.accountKeepPlaceholder")
+                        : undefined
+                    }
                     autoComplete="off"
                     className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
                   />
+                  {editing?.hasAccountNumber ? (
+                    <span className="mt-1 block text-[11px] font-normal text-neutral-400">
+                      {t("assets.accountEditHint")}
+                    </span>
+                  ) : null}
                 </label>
                 <label className="mt-3 block text-xs font-semibold text-neutral-500">
                   {editing ? t("assets.fieldLoginPasswordEdit") : t("assets.fieldLoginPassword")}

@@ -262,18 +262,23 @@ export default function SettingsPage() {
             </div>
           </div>
           {family && (
-            <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3">
-              <div>
-                <p className="text-[11px] text-neutral-400">{t("settings.inviteCode")}</p>
-                <p className="font-mono text-sm font-bold text-indigo-600">{family.inviteCode}</p>
+            <div className="border-t border-neutral-100 px-4 py-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[11px] text-neutral-400">{t("settings.inviteCode")}</p>
+                  <p className="font-mono text-sm font-bold text-neutral-500">{family.inviteCode}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void copyInvite()}
+                  className="flex items-center gap-1 rounded-full bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-500"
+                >
+                  <Copy size={12} /> {copied ? t("settings.copied") : t("settings.copy")}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => void copyInvite()}
-                className="flex items-center gap-1 rounded-full bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-500"
-              >
-                <Copy size={12} /> {copied ? t("settings.copied") : t("settings.copy")}
-              </button>
+              <p className="mt-2 text-[11px] leading-relaxed text-neutral-400">
+                {t("settings.inviteCodeHint")}
+              </p>
             </div>
           )}
           {family && isOwner && (

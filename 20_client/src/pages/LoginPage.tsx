@@ -24,13 +24,12 @@ function passkeyErrorMessage(err: unknown, fallback: string): string {
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { token, login, register, passkeyLogin, passkeyRegister } = useAuth();
+  const { token, login, passkeyLogin, passkeyRegister } = useAuth();
   const [mode, setMode] = useState<Mode>("login");
   const { lang, toggleLang, t } = useLanguage();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
   const [inviteToken, setInviteToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -42,20 +41,11 @@ export default function LoginPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (mode !== "login") return;
     setError(null);
     setSubmitting(true);
     try {
-      if (mode === "login") {
-        await login(email.trim(), password);
-      } else {
-        const code = inviteCode.trim().toUpperCase();
-        await register({
-          email: email.trim(),
-          password,
-          name: name.trim(),
-          inviteCode: code ? (code.startsWith("FAM-") ? code : `FAM-${code}`) : undefined,
-        });
-      }
+      await login(email.trim(), password);
       navigate("/", { replace: true });
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
@@ -162,8 +152,8 @@ export default function LoginPage() {
 
         <p className="mt-3 text-center text-[11px] text-neutral-400">{t("login.passkeyHint")}</p>
 
-        <form className="mt-6 flex flex-col gap-3" onSubmit={onSubmit}>
-          {mode === "signup" && (
+        {mode === "signup" ? (
+          <div className="mt-6 flex flex-col gap-3">
             <label className="flex items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3">
               <UserPlus size={18} className="text-neutral-400" />
               <input
@@ -171,12 +161,9 @@ export default function LoginPage() {
                 placeholder={t("login.placeholder.name")}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                required
                 autoComplete="name"
               />
             </label>
-          )}
-          {mode === "signup" && (
             <label className="flex items-center gap-3 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 px-4 py-3">
               <span className="text-xs font-semibold text-indigo-500">OTP</span>
               <input
@@ -187,7 +174,15 @@ export default function LoginPage() {
                 autoComplete="off"
               />
             </label>
-          )}
+            {error && (
+              <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-600">{error}</p>
+            )}
+            <p className="text-center text-[11px] leading-relaxed text-neutral-400">
+              {t("login.passwordSignupClosed")}
+            </p>
+          </div>
+        ) : (
+        <form className="mt-6 flex flex-col gap-3" onSubmit={onSubmit}>
           <label className="flex items-center gap-3 rounded-xl border border-neutral-200 px-4 py-3">
             <Mail size={18} className="text-neutral-400" />
             <input
@@ -196,7 +191,7 @@ export default function LoginPage() {
               placeholder={t("login.placeholder.email")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required={mode === "login" || Boolean(inviteCode.trim())}
+              required
               autoComplete="email"
             />
           </label>
@@ -208,23 +203,11 @@ export default function LoginPage() {
               placeholder={t("login.placeholder.password")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required={mode === "login" || Boolean(email.trim())}
+              required
               minLength={8}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              autoComplete="current-password"
             />
           </label>
-          {mode === "signup" && (
-            <label className="flex items-center gap-3 rounded-xl border border-dashed border-neutral-200 px-4 py-3">
-              <span className="text-sm font-semibold text-neutral-400">FAM-</span>
-              <input
-                className="w-full text-base uppercase outline-none placeholder:text-neutral-300"
-                placeholder={t("login.placeholder.inviteLegacy")}
-                value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value)}
-                autoComplete="off"
-              />
-            </label>
-          )}
 
           {error && (
             <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium text-rose-600">{error}</p>
@@ -235,13 +218,10 @@ export default function LoginPage() {
             disabled={submitting}
             className="mt-2 rounded-xl border border-indigo-200 py-3 text-sm font-semibold text-indigo-600 disabled:opacity-60"
           >
-            {submitting
-              ? t("login.button.working")
-              : mode === "login"
-                ? t("login.button.loginPassword")
-                : t("login.button.signupPassword")}
+            {submitting ? t("login.button.working") : t("login.button.loginPassword")}
           </button>
         </form>
+        )}
 
         <p className="mt-auto pb-8 pt-6 text-center text-[11px] leading-relaxed text-neutral-300">
           {t("login.apiNotice")}

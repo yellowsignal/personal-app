@@ -45,6 +45,7 @@ export interface PublicAsset {
   amount: number;
   bankCode: DepositBank | null;
   accountNumber: string | null;
+  hasAccountNumber: boolean;
   hasPassword: boolean;
   institutionCode: string | null;
   institutionName: string | null;
