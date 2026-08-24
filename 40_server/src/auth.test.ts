@@ -83,7 +83,7 @@ test("register owner creates family + invite code, then login works", async () =
   }
 });
 
-test("member can join via invite code at register", async () => {
+test("password register is closed after the first user (FAM invite ignored)", async () => {
   const repo = new MemoryAuthRepository();
   const app = createApp(tmpStore(), { authRepo: repo, jwtSecret: "test-secret" });
   const { server, base } = await listen(app);
@@ -98,6 +98,7 @@ test("member can join via invite code at register", async () => {
         familyName: "Test Family",
       }),
     });
+    assert.equal(ownerRes.status, 201);
     const owner = (await ownerRes.json()) as { family: { inviteCode: string; id: number } };
 
     const memberRes = await fetch(`${base}/api/auth/register`, {
@@ -110,15 +111,9 @@ test("member can join via invite code at register", async () => {
         inviteCode: owner.family.inviteCode,
       }),
     });
-    assert.equal(memberRes.status, 201);
-    const member = (await memberRes.json()) as {
-      user: { role: string; familyId: number };
-      family: { members: unknown[]; inviteCode: string };
-    };
-    assert.equal(member.user.role, "MEMBER");
-    assert.equal(member.user.familyId, owner.family.id);
-    assert.equal(member.family.members.length, 2);
-    assert.equal(member.family.inviteCode, owner.family.inviteCode);
+    assert.equal(memberRes.status, 403);
+    const body = (await memberRes.json()) as { code?: string };
+    assert.equal(body.code, "CLOSED_REGISTRATION");
   } finally {
     server.close();
   }
@@ -172,13 +167,14 @@ test("duplicate email is rejected", async () => {
       body: JSON.stringify(payload),
     });
     assert.equal(first.status, 201);
-    const owner = (await first.json()) as { family: { inviteCode: string } };
     const second = await fetch(`${base}/api/auth/register`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...payload, inviteCode: owner.family.inviteCode }),
+      body: JSON.stringify(payload),
     });
-    assert.equal(second.status, 409);
+    assert.equal(second.status, 403);
+    const body = (await second.json()) as { code?: string };
+    assert.equal(body.code, "CLOSED_REGISTRATION");
   } finally {
     server.close();
   }

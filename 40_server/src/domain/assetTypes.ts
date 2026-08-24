@@ -63,7 +63,9 @@ export interface PublicAsset {
   currency: string;
   amount: number;
   bankCode: DepositBank | null;
+  /** Masked for list/detail (`****1234`). Full value only via credentials reveal. */
   accountNumber: string | null;
+  hasAccountNumber: boolean;
   hasPassword: boolean;
   institutionCode: string | null;
   institutionName: string | null;
@@ -81,6 +83,15 @@ export interface PublicAsset {
   updatedAt: string;
   createdAt: string;
   ownerName: string;
+}
+
+/** Show only the last 4 characters of a deposit account number. */
+export function maskAccountNumber(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = value.replace(/\s+/g, "");
+  if (!trimmed) return null;
+  if (trimmed.length <= 4) return "****";
+  return `****${trimmed.slice(-4)}`;
 }
 
 export function toPublicAsset(record: AssetRecord, ownerName: string): PublicAsset {
@@ -102,7 +113,8 @@ export function toPublicAsset(record: AssetRecord, ownerName: string): PublicAss
     currency: record.currency,
     amount: record.amount,
     bankCode: record.bankCode,
-    accountNumber: record.accountNumber,
+    accountNumber: maskAccountNumber(record.accountNumber),
+    hasAccountNumber: Boolean(record.accountNumber && record.accountNumber.trim()),
     hasPassword: Boolean(record.loginPasswordCipher),
     institutionCode: record.institutionCode,
     institutionName: record.institutionName,

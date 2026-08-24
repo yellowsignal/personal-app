@@ -11,6 +11,7 @@ import { MemoryInviteTokenRepository } from "./domain/memoryInviteTokenRepositor
 import { MemoryPasskeyRepository } from "./domain/memoryPasskeyRepository.js";
 import { ChallengeStore } from "./auth/challengeStore.js";
 import { TaskStore } from "./store.js";
+import { loginForToken, seedFamilyMember } from "./testSupport/familyMembers.js";
 
 function tmpStore(): TaskStore {
   const dir = mkdtempSync(join(tmpdir(), "personal-app-"));
@@ -28,8 +29,9 @@ async function listen(app: ReturnType<typeof createApp>) {
 }
 
 function appWithAssets() {
-  return createApp(tmpStore(), {
-    authRepo: new MemoryAuthRepository(),
+  const authRepo = new MemoryAuthRepository();
+  const app = createApp(tmpStore(), {
+    authRepo,
     subscriptionRepo: new MemorySubscriptionRepository(),
     assetRepo: new MemoryAssetRepository(),
     passkeyRepo: new MemoryPasskeyRepository(),
@@ -37,6 +39,7 @@ function appWithAssets() {
     challengeStore: new ChallengeStore(),
     jwtSecret: "test-secret",
   });
+  return { app, authRepo };
 }
 
 async function registerOwner(base: string) {
@@ -51,11 +54,15 @@ async function registerOwner(base: string) {
     }),
   });
   assert.equal(res.status, 201);
-  return (await res.json()) as { token: string; user: { id: number } };
+  return (await res.json()) as {
+    token: string;
+    user: { id: number };
+    family: { id: number };
+  };
 }
 
 test("asset CRUD and scope filtering", async () => {
-  const { server, base } = await listen(appWithAssets());
+  const { server, base } = await listen(appWithAssets().app);
   try {
     const owner = await registerOwner(base);
 
@@ -152,12 +159,10 @@ test("asset CRUD and scope filtering", async () => {
 });
 
 test("family member sees shared assets from owner", async () => {
-  const { server, base } = await listen(appWithAssets());
+  const { app, authRepo } = appWithAssets();
+  const { server, base } = await listen(app);
   try {
     const owner = await registerOwner(base);
-    const ownerFamily = (await fetch(`${base}/api/family`, {
-      headers: { authorization: `Bearer ${owner.token}` },
-    }).then((r) => r.json())) as { inviteCode: string };
 
     await fetch(`${base}/api/assets`, {
       method: "POST",
@@ -189,20 +194,14 @@ test("family member sees shared assets from owner", async () => {
       }),
     });
 
-    const memberReg = await fetch(`${base}/api/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        email: "member-asset@example.com",
-        password: "password123",
-        name: "Member",
-        inviteCode: ownerFamily.inviteCode,
-      }),
+    await seedFamilyMember(authRepo, {
+      familyId: owner.family.id,
+      email: "member-asset@example.com",
     });
-    const member = (await memberReg.json()) as { token: string };
+    const memberToken = await loginForToken(base, "member-asset@example.com");
 
     const list = await fetch(`${base}/api/assets`, {
-      headers: { authorization: `Bearer ${member.token}` },
+      headers: { authorization: `Bearer ${memberToken}` },
     });
     const items = (await list.json()) as Array<{ label: string }>;
     assert.equal(items.length, 1);
@@ -213,12 +212,10 @@ test("family member sees shared assets from owner", async () => {
 });
 
 test("only owner can update or delete an asset", async () => {
-  const { server, base } = await listen(appWithAssets());
+  const { app, authRepo } = appWithAssets();
+  const { server, base } = await listen(app);
   try {
     const owner = await registerOwner(base);
-    const ownerFamily = (await fetch(`${base}/api/family`, {
-      headers: { authorization: `Bearer ${owner.token}` },
-    }).then((r) => r.json())) as { inviteCode: string };
 
     const created = await fetch(`${base}/api/assets`, {
       method: "POST",
@@ -236,23 +233,18 @@ test("only owner can update or delete an asset", async () => {
     });
     const asset = (await created.json()) as { id: number };
 
-    const memberReg = await fetch(`${base}/api/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        email: "member-asset2@example.com",
-        password: "password123",
-        name: "Member2",
-        inviteCode: ownerFamily.inviteCode,
-      }),
+    await seedFamilyMember(authRepo, {
+      familyId: owner.family.id,
+      email: "member-asset2@example.com",
+      name: "Member2",
     });
-    const member = (await memberReg.json()) as { token: string };
+    const memberToken = await loginForToken(base, "member-asset2@example.com");
 
     const patch = await fetch(`${base}/api/assets/${asset.id}`, {
       method: "PATCH",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${member.token}`,
+        authorization: `Bearer ${memberToken}`,
       },
       body: JSON.stringify({ amount: 9999 }),
     });
@@ -260,7 +252,7 @@ test("only owner can update or delete an asset", async () => {
 
     const del = await fetch(`${base}/api/assets/${asset.id}`, {
       method: "DELETE",
-      headers: { authorization: `Bearer ${member.token}` },
+      headers: { authorization: `Bearer ${memberToken}` },
     });
     assert.equal(del.status, 403);
   } finally {
@@ -269,7 +261,7 @@ test("only owner can update or delete an asset", async () => {
 });
 
 test("asset routes require auth", async () => {
-  const { server, base } = await listen(appWithAssets());
+  const { server, base } = await listen(appWithAssets().app);
   try {
     const res = await fetch(`${base}/api/assets`);
     assert.equal(res.status, 401);
@@ -281,12 +273,10 @@ test("asset routes require auth", async () => {
 test("deposit credentials encrypt password and reveal via passkey step-up", async () => {
   process.env.PASSKEY_REVEAL_TEST_BYPASS = "1";
   process.env.JWT_SECRET = "test-secret";
-  const { server, base } = await listen(appWithAssets());
+  const { app, authRepo } = appWithAssets();
+  const { server, base } = await listen(app);
   try {
     const owner = await registerOwner(base);
-    const ownerFamily = (await fetch(`${base}/api/family`, {
-      headers: { authorization: `Bearer ${owner.token}` },
-    }).then((r) => r.json())) as { inviteCode: string };
 
     const created = await fetch(`${base}/api/assets`, {
       method: "POST",
@@ -312,6 +302,7 @@ test("deposit credentials encrypt password and reveal via passkey step-up", asyn
     const body = (await created.json()) as {
       id: number;
       accountNumber: string | null;
+      hasAccountNumber: boolean;
       hasPassword: boolean;
       institutionCode: string | null;
       institutionName: string | null;
@@ -320,7 +311,8 @@ test("deposit credentials encrypt password and reveal via passkey step-up", asyn
       loginPassword?: string;
       loginPasswordCipher?: string;
     };
-    assert.equal(body.accountNumber, "1234567");
+    assert.equal(body.accountNumber, "****4567");
+    assert.equal(body.hasAccountNumber, true);
     assert.equal(body.hasPassword, true);
     assert.equal(body.institutionCode, "9900");
     assert.equal(body.institutionName, "ゆうちょ銀行");
@@ -329,29 +321,60 @@ test("deposit credentials encrypt password and reveal via passkey step-up", asyn
     assert.equal(body.loginPassword, undefined);
     assert.equal(body.loginPasswordCipher, undefined);
 
-    const memberReg = await fetch(`${base}/api/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        email: "member-asset-cred@example.com",
-        password: "password123",
-        name: "MemberAssetCred",
-        inviteCode: ownerFamily.inviteCode,
-      }),
+    const rejectMask = await fetch(`${base}/api/assets/${body.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ accountNumber: "****4567" }),
     });
-    const member = (await memberReg.json()) as { token: string };
+    assert.equal(rejectMask.status, 400);
+    const rejectBody = (await rejectMask.json()) as { code?: string };
+    assert.equal(rejectBody.code, "MASKED_ACCOUNT_NUMBER");
+
+    const keepOnOmit = await fetch(`${base}/api/assets/${body.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ label: "아이 통장 유지" }),
+    });
+    assert.equal(keepOnOmit.status, 200);
+    const kept = (await keepOnOmit.json()) as {
+      type: string;
+      label: string;
+      accountNumber: string | null;
+      hasAccountNumber: boolean;
+      bankCode: string | null;
+    };
+    assert.equal(kept.type, "deposit");
+    assert.equal(kept.label, "아이 통장 유지");
+    assert.equal(kept.accountNumber, "****4567");
+    assert.equal(kept.hasAccountNumber, true);
+    assert.equal(kept.bankCode, "YUCHO");
+
+    await seedFamilyMember(authRepo, {
+      familyId: owner.family.id,
+      email: "member-asset-cred@example.com",
+      name: "MemberAssetCred",
+    });
+    const memberToken = await loginForToken(base, "member-asset-cred@example.com");
 
     const list = await fetch(`${base}/api/assets?scope=family`, {
-      headers: { authorization: `Bearer ${member.token}` },
+      headers: { authorization: `Bearer ${memberToken}` },
     });
     const items = (await list.json()) as Array<{
       id: number;
       accountNumber: string | null;
+      hasAccountNumber: boolean;
       hasPassword: boolean;
       loginPassword?: string;
     }>;
     assert.equal(items.length, 1);
-    assert.equal(items[0].accountNumber, "1234567");
+    assert.equal(items[0].accountNumber, "****4567");
+    assert.equal(items[0].hasAccountNumber, true);
     assert.equal(items[0].hasPassword, true);
     assert.equal(items[0].loginPassword, undefined);
 
@@ -360,7 +383,7 @@ test("deposit credentials encrypt password and reveal via passkey step-up", asyn
       {
         method: "POST",
         headers: {
-          authorization: `Bearer ${member.token}`,
+          authorization: `Bearer ${memberToken}`,
           "content-type": "application/json",
         },
         body: "{}",
@@ -374,7 +397,7 @@ test("deposit credentials encrypt password and reveal via passkey step-up", asyn
       {
         method: "POST",
         headers: {
-          authorization: `Bearer ${member.token}`,
+          authorization: `Bearer ${memberToken}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({ challenge: options.challenge, bypass: true }),
@@ -396,12 +419,10 @@ test("deposit credentials encrypt password and reveal via passkey step-up", asyn
 test("family member cannot reveal credentials on private (unshared) deposit", async () => {
   process.env.PASSKEY_REVEAL_TEST_BYPASS = "1";
   process.env.JWT_SECRET = "test-secret";
-  const { server, base } = await listen(appWithAssets());
+  const { app, authRepo } = appWithAssets();
+  const { server, base } = await listen(app);
   try {
     const owner = await registerOwner(base);
-    const fam = (await fetch(`${base}/api/family`, {
-      headers: { authorization: `Bearer ${owner.token}` },
-    }).then((r) => r.json())) as { inviteCode: string };
 
     const created = await fetch(`${base}/api/assets`, {
       method: "POST",
@@ -420,26 +441,27 @@ test("family member cannot reveal credentials on private (unshared) deposit", as
       }),
     });
     assert.equal(created.status, 201);
-    const body = (await created.json()) as { id: number };
+    const body = (await created.json()) as {
+      id: number;
+      accountNumber: string | null;
+      hasAccountNumber: boolean;
+    };
+    assert.equal(body.accountNumber, "****");
+    assert.equal(body.hasAccountNumber, true);
 
-    const memberReg = await fetch(`${base}/api/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        email: "member-asset-private@example.com",
-        password: "password123",
-        name: "MemberPrivate",
-        inviteCode: fam.inviteCode,
-      }),
+    await seedFamilyMember(authRepo, {
+      familyId: owner.family.id,
+      email: "member-asset-private@example.com",
+      name: "MemberPrivate",
     });
-    const member = (await memberReg.json()) as { token: string };
+    const memberToken = await loginForToken(base, "member-asset-private@example.com");
 
     const optionsRes = await fetch(
       `${base}/api/assets/${body.id}/credentials/reveal/options`,
       {
         method: "POST",
         headers: {
-          authorization: `Bearer ${member.token}`,
+          authorization: `Bearer ${memberToken}`,
           "content-type": "application/json",
         },
         body: "{}",
@@ -490,7 +512,7 @@ test("stock title follows Yahoo company name when ticker changes or price refres
     return originalFetch(input, init);
   }) as typeof fetch;
 
-  const { server, base } = await listen(appWithAssets());
+  const { server, base } = await listen(appWithAssets().app);
   try {
     const owner = await registerOwner(base);
     const auth = { "content-type": "application/json", authorization: `Bearer ${owner.token}` };

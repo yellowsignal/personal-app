@@ -12,6 +12,7 @@ import { MemoryCalendarRepository } from "./domain/memoryCalendarRepository.js";
 import { ChallengeStore } from "./auth/challengeStore.js";
 import { TaskStore } from "./store.js";
 import { DocumentScanStore } from "./storage/documentScanStore.js";
+import { loginForToken, seedFamilyMember } from "./testSupport/familyMembers.js";
 
 function tmpStore(): TaskStore {
   const dir = mkdtempSync(join(tmpdir(), "personal-app-"));
@@ -45,12 +46,17 @@ async function registerOwner(base: string) {
     }),
   });
   assert.equal(res.status, 201);
-  return (await res.json()) as { token: string; user: { id: number } };
+  return (await res.json()) as {
+    token: string;
+    user: { id: number };
+    family: { id: number };
+  };
 }
 
 test("documents personal shows only private; family shows only shared", async () => {
+  const authRepo = new MemoryAuthRepository();
   const app = createApp(tmpStore(), {
-    authRepo: new MemoryAuthRepository(),
+    authRepo,
     documentRepo: new MemoryDocumentRepository(),
     calendarRepo: new MemoryCalendarRepository(),
     documentScanStore: tmpScanStore(),
@@ -63,9 +69,6 @@ test("documents personal shows only private; family shows only shared", async ()
   const { server, base } = await listen(app);
   try {
     const owner = await registerOwner(base);
-    const ownerFamily = (await fetch(`${base}/api/family`, {
-      headers: { authorization: `Bearer ${owner.token}` },
-    }).then((r) => r.json())) as { inviteCode: string };
 
     const privateRes = await fetch(`${base}/api/documents`, {
       method: "POST",
@@ -119,20 +122,14 @@ test("documents personal shows only private; family shows only shared", async ()
     assert.equal(familyItems.length, 1);
     assert.equal(familyItems[0].typeLabel, "여권");
 
-    const memberReg = await fetch(`${base}/api/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        email: "member@example.com",
-        password: "password123",
-        name: "Member",
-        inviteCode: ownerFamily.inviteCode,
-      }),
+    await seedFamilyMember(authRepo, {
+      familyId: owner.family.id,
+      email: "member@example.com",
     });
-    const member = (await memberReg.json()) as { token: string };
+    const memberToken = await loginForToken(base, "member@example.com");
 
     const memberFamilyList = await fetch(`${base}/api/documents?scope=family`, {
-      headers: { authorization: `Bearer ${member.token}` },
+      headers: { authorization: `Bearer ${memberToken}` },
     });
     assert.equal(memberFamilyList.status, 200);
     const memberFamilyItems = await memberFamilyList.json();
@@ -140,7 +137,7 @@ test("documents personal shows only private; family shows only shared", async ()
     assert.equal(memberFamilyItems[0].typeLabel, "여권");
 
     const memberPersonalList = await fetch(`${base}/api/documents?scope=personal`, {
-      headers: { authorization: `Bearer ${member.token}` },
+      headers: { authorization: `Bearer ${memberToken}` },
     });
     assert.equal(memberPersonalList.status, 200);
     const memberPersonalItems = await memberPersonalList.json();
@@ -219,8 +216,9 @@ test("document multi-field (保険証) stores secrets masked and reveals via pas
 });
 
 test("document update memo and delete owner-only", async () => {
+  const authRepo = new MemoryAuthRepository();
   const app = createApp(tmpStore(), {
-    authRepo: new MemoryAuthRepository(),
+    authRepo,
     documentRepo: new MemoryDocumentRepository(),
     calendarRepo: new MemoryCalendarRepository(),
     documentScanStore: tmpScanStore(),
@@ -233,9 +231,6 @@ test("document update memo and delete owner-only", async () => {
   const { server, base } = await listen(app);
   try {
     const owner = await registerOwner(base);
-    const ownerFamily = (await fetch(`${base}/api/family`, {
-      headers: { authorization: `Bearer ${owner.token}` },
-    }).then((r) => r.json())) as { inviteCode: string };
 
     const createRes = await fetch(`${base}/api/documents`, {
       method: "POST",
@@ -268,23 +263,17 @@ test("document update memo and delete owner-only", async () => {
     assert.equal(updatedBody.memo, "보관함 A-2");
     assert.equal(updatedBody.typeLabel, "여권 (갱신)");
 
-    const memberReg = await fetch(`${base}/api/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        email: "member2@example.com",
-        password: "password123",
-        name: "Member",
-        inviteCode: ownerFamily.inviteCode,
-      }),
+    await seedFamilyMember(authRepo, {
+      familyId: owner.family.id,
+      email: "member2@example.com",
     });
-    const member = (await memberReg.json()) as { token: string };
+    const memberToken = await loginForToken(base, "member2@example.com");
 
     const memberPatch = await fetch(`${base}/api/documents/${created.id}`, {
       method: "PATCH",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${member.token}`,
+        authorization: `Bearer ${memberToken}`,
       },
       body: JSON.stringify({ memo: "해킹" }),
     });

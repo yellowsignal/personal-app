@@ -58,27 +58,14 @@ export class MemoryAssetRepository implements AssetRepository {
   async update(id: number, input: UpdateAssetInput): Promise<AssetRecord> {
     const existing = this.items.get(id);
     if (!existing) throw Object.assign(new Error("asset not found"), { code: "NOT_FOUND" });
+    // Skip undefined fields so partial updates do not wipe type/label/etc.
+    // (Prisma ignores undefined; memory store must match that behavior.)
+    const patch = Object.fromEntries(
+      Object.entries(input).filter(([, value]) => value !== undefined),
+    ) as Partial<AssetRecord>;
     const updated: AssetRecord = {
       ...existing,
-      ...input,
-      bankCode: input.bankCode === undefined ? existing.bankCode : input.bankCode,
-      accountNumber:
-        input.accountNumber === undefined ? existing.accountNumber : input.accountNumber,
-      loginPasswordCipher:
-        input.loginPasswordCipher === undefined
-          ? existing.loginPasswordCipher
-          : input.loginPasswordCipher,
-      institutionCode:
-        input.institutionCode === undefined ? existing.institutionCode : input.institutionCode,
-      institutionName:
-        input.institutionName === undefined ? existing.institutionName : input.institutionName,
-      branchCode: input.branchCode === undefined ? existing.branchCode : input.branchCode,
-      branchName: input.branchName === undefined ? existing.branchName : input.branchName,
-      stockMarket: input.stockMarket === undefined ? existing.stockMarket : input.stockMarket,
-      stockCode: input.stockCode === undefined ? existing.stockCode : input.stockCode,
-      quantity: input.quantity === undefined ? existing.quantity : input.quantity,
-      buyPrice: input.buyPrice === undefined ? existing.buyPrice : input.buyPrice,
-      currentPrice: input.currentPrice === undefined ? existing.currentPrice : input.currentPrice,
+      ...patch,
       updatedAt: new Date(),
     };
     this.items.set(id, updated);

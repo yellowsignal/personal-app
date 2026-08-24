@@ -10,6 +10,7 @@ import { MemoryInviteTokenRepository } from "./domain/memoryInviteTokenRepositor
 import { MemoryPasskeyRepository } from "./domain/memoryPasskeyRepository.js";
 import { ChallengeStore } from "./auth/challengeStore.js";
 import { TaskStore } from "./store.js";
+import { loginForToken, seedFamilyMember } from "./testSupport/familyMembers.js";
 
 function tmpStore(): TaskStore {
   const dir = mkdtempSync(join(tmpdir(), "personal-app-"));
@@ -27,14 +28,16 @@ async function listen(app: ReturnType<typeof createApp>) {
 }
 
 function appWithSubs() {
-  return createApp(tmpStore(), {
-    authRepo: new MemoryAuthRepository(),
+  const authRepo = new MemoryAuthRepository();
+  const app = createApp(tmpStore(), {
+    authRepo,
     subscriptionRepo: new MemorySubscriptionRepository(),
     passkeyRepo: new MemoryPasskeyRepository(),
     inviteTokenRepo: new MemoryInviteTokenRepository(),
     challengeStore: new ChallengeStore(),
     jwtSecret: "test-secret",
   });
+  return { app, authRepo };
 }
 
 async function registerOwner(base: string) {
@@ -49,11 +52,15 @@ async function registerOwner(base: string) {
     }),
   });
   assert.equal(res.status, 201);
-  return (await res.json()) as { token: string; user: { id: number } };
+  return (await res.json()) as {
+    token: string;
+    user: { id: number };
+    family: { id: number };
+  };
 }
 
 test("subscription CRUD and scope filtering", async () => {
-  const { server, base } = await listen(appWithSubs());
+  const { server, base } = await listen(appWithSubs().app);
   try {
     const owner = await registerOwner(base);
 
@@ -159,22 +166,10 @@ test("subscription CRUD and scope filtering", async () => {
 });
 
 test("family member sees shared subscriptions from owner", async () => {
-  const repo = new MemoryAuthRepository();
-  const { server, base } = await listen(
-    createApp(tmpStore(), {
-      authRepo: repo,
-      subscriptionRepo: new MemorySubscriptionRepository(),
-      passkeyRepo: new MemoryPasskeyRepository(),
-      inviteTokenRepo: new MemoryInviteTokenRepository(),
-      challengeStore: new ChallengeStore(),
-      jwtSecret: "test-secret",
-    }),
-  );
+  const { app, authRepo } = appWithSubs();
+  const { server, base } = await listen(app);
   try {
     const owner = await registerOwner(base);
-    const ownerFamily = (await fetch(`${base}/api/family`, {
-      headers: { authorization: `Bearer ${owner.token}` },
-    }).then((r) => r.json())) as { inviteCode: string };
 
     const yearlyRes = await fetch(`${base}/api/subscriptions`, {
       method: "POST",
@@ -218,20 +213,14 @@ test("family member sees shared subscriptions from owner", async () => {
       }),
     });
 
-    const memberReg = await fetch(`${base}/api/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        email: "member@example.com",
-        password: "password123",
-        name: "Member",
-        inviteCode: ownerFamily.inviteCode,
-      }),
+    await seedFamilyMember(authRepo, {
+      familyId: owner.family.id,
+      email: "member@example.com",
     });
-    const member = (await memberReg.json()) as { token: string };
+    const memberToken = await loginForToken(base, "member@example.com");
 
     const list = await fetch(`${base}/api/subscriptions`, {
-      headers: { authorization: `Bearer ${member.token}` },
+      headers: { authorization: `Bearer ${memberToken}` },
     });
     const items = (await list.json()) as Array<{ serviceName: string }>;
     assert.equal(items.length, 1);
@@ -242,12 +231,10 @@ test("family member sees shared subscriptions from owner", async () => {
 });
 
 test("only owner can update or delete a subscription", async () => {
-  const { server, base } = await listen(appWithSubs());
+  const { app, authRepo } = appWithSubs();
+  const { server, base } = await listen(app);
   try {
     const owner = await registerOwner(base);
-    const ownerFamily = (await fetch(`${base}/api/family`, {
-      headers: { authorization: `Bearer ${owner.token}` },
-    }).then((r) => r.json())) as { inviteCode: string };
 
     const created = await fetch(`${base}/api/subscriptions`, {
       method: "POST",
@@ -267,23 +254,18 @@ test("only owner can update or delete a subscription", async () => {
     });
     const sub = (await created.json()) as { id: number };
 
-    const memberReg = await fetch(`${base}/api/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        email: "member2@example.com",
-        password: "password123",
-        name: "Member2",
-        inviteCode: ownerFamily.inviteCode,
-      }),
+    await seedFamilyMember(authRepo, {
+      familyId: owner.family.id,
+      email: "member2@example.com",
+      name: "Member2",
     });
-    const member = (await memberReg.json()) as { token: string };
+    const memberToken = await loginForToken(base, "member2@example.com");
 
     const patch = await fetch(`${base}/api/subscriptions/${sub.id}`, {
       method: "PATCH",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${member.token}`,
+        authorization: `Bearer ${memberToken}`,
       },
       body: JSON.stringify({ cost: 9999 }),
     });
@@ -291,7 +273,7 @@ test("only owner can update or delete a subscription", async () => {
 
     const del = await fetch(`${base}/api/subscriptions/${sub.id}`, {
       method: "DELETE",
-      headers: { authorization: `Bearer ${member.token}` },
+      headers: { authorization: `Bearer ${memberToken}` },
     });
     assert.equal(del.status, 403);
   } finally {
@@ -300,7 +282,7 @@ test("only owner can update or delete a subscription", async () => {
 });
 
 test("subscription routes require auth", async () => {
-  const { server, base } = await listen(appWithSubs());
+  const { server, base } = await listen(appWithSubs().app);
   try {
     const res = await fetch(`${base}/api/subscriptions`);
     assert.equal(res.status, 401);
@@ -312,12 +294,10 @@ test("subscription routes require auth", async () => {
 test("subscription credentials encrypt password and reveal via passkey step-up", async () => {
   process.env.PASSKEY_REVEAL_TEST_BYPASS = "1";
   process.env.JWT_SECRET = "test-secret";
-  const { server, base } = await listen(appWithSubs());
+  const { app, authRepo } = appWithSubs();
+  const { server, base } = await listen(app);
   try {
     const owner = await registerOwner(base);
-    const ownerFamily = (await fetch(`${base}/api/family`, {
-      headers: { authorization: `Bearer ${owner.token}` },
-    }).then((r) => r.json())) as { inviteCode: string };
 
     const created = await fetch(`${base}/api/subscriptions`, {
       method: "POST",
@@ -349,20 +329,15 @@ test("subscription credentials encrypt password and reveal via passkey step-up",
     assert.equal(body.loginPassword, undefined);
     assert.equal(body.loginPasswordCipher, undefined);
 
-    const memberReg = await fetch(`${base}/api/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        email: "member-cred@example.com",
-        password: "password123",
-        name: "MemberCred",
-        inviteCode: ownerFamily.inviteCode,
-      }),
+    await seedFamilyMember(authRepo, {
+      familyId: owner.family.id,
+      email: "member-cred@example.com",
+      name: "MemberCred",
     });
-    const member = (await memberReg.json()) as { token: string };
+    const memberToken = await loginForToken(base, "member-cred@example.com");
 
     const list = await fetch(`${base}/api/subscriptions`, {
-      headers: { authorization: `Bearer ${member.token}` },
+      headers: { authorization: `Bearer ${memberToken}` },
     });
     const items = (await list.json()) as Array<{
       id: number;
@@ -380,7 +355,7 @@ test("subscription credentials encrypt password and reveal via passkey step-up",
       {
         method: "POST",
         headers: {
-          authorization: `Bearer ${member.token}`,
+          authorization: `Bearer ${memberToken}`,
           "content-type": "application/json",
         },
         body: "{}",
@@ -394,7 +369,7 @@ test("subscription credentials encrypt password and reveal via passkey step-up",
       {
         method: "POST",
         headers: {
-          authorization: `Bearer ${member.token}`,
+          authorization: `Bearer ${memberToken}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({ challenge: options.challenge, bypass: true }),
@@ -413,12 +388,10 @@ test("subscription credentials encrypt password and reveal via passkey step-up",
 test("family member cannot reveal credentials on private (unshared) subscription", async () => {
   process.env.PASSKEY_REVEAL_TEST_BYPASS = "1";
   process.env.JWT_SECRET = "test-secret";
-  const { server, base } = await listen(appWithSubs());
+  const { app, authRepo } = appWithSubs();
+  const { server, base } = await listen(app);
   try {
     const owner = await registerOwner(base);
-    const fam = (await fetch(`${base}/api/family`, {
-      headers: { authorization: `Bearer ${owner.token}` },
-    }).then((r) => r.json())) as { inviteCode: string };
 
     const created = await fetch(`${base}/api/subscriptions`, {
       method: "POST",
@@ -439,24 +412,19 @@ test("family member cannot reveal credentials on private (unshared) subscription
     });
     const sub = (await created.json()) as { id: number };
 
-    const memberReg = await fetch(`${base}/api/auth/register`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        email: "member-private@example.com",
-        password: "password123",
-        name: "MemberPrivate",
-        inviteCode: fam.inviteCode,
-      }),
+    await seedFamilyMember(authRepo, {
+      familyId: owner.family.id,
+      email: "member-private@example.com",
+      name: "MemberPrivate",
     });
-    const member = (await memberReg.json()) as { token: string };
+    const memberToken = await loginForToken(base, "member-private@example.com");
 
     const optionsRes = await fetch(
       `${base}/api/subscriptions/${sub.id}/credentials/reveal/options`,
       {
         method: "POST",
         headers: {
-          authorization: `Bearer ${member.token}`,
+          authorization: `Bearer ${memberToken}`,
           "content-type": "application/json",
         },
         body: "{}",
