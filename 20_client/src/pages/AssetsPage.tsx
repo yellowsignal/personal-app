@@ -1073,9 +1073,7 @@ export default function AssetsPage() {
                       setForm((f) => ({ ...f, accountNumber: e.target.value }));
                     }}
                     placeholder={
-                      editing?.hasAccountNumber
-                        ? editing.accountNumber ?? t("assets.accountKeepPlaceholder")
-                        : undefined
+                      editing?.hasAccountNumber ? t("assets.accountKeepPlaceholder") : undefined
                     }
                     autoComplete="off"
                     className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-base"
@@ -1083,6 +1081,7 @@ export default function AssetsPage() {
                   {editing?.hasAccountNumber ? (
                     <span className="mt-1 block text-[11px] font-normal text-neutral-400">
                       {t("assets.accountEditHint")}
+                      {editing.accountNumber ? ` (${editing.accountNumber})` : ""}
                     </span>
                   ) : null}
                 </label>
