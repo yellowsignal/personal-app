@@ -321,6 +321,40 @@ test("deposit credentials encrypt password and reveal via passkey step-up", asyn
     assert.equal(body.loginPassword, undefined);
     assert.equal(body.loginPasswordCipher, undefined);
 
+    const rejectMask = await fetch(`${base}/api/assets/${body.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ accountNumber: "****4567" }),
+    });
+    assert.equal(rejectMask.status, 400);
+    const rejectBody = (await rejectMask.json()) as { code?: string };
+    assert.equal(rejectBody.code, "MASKED_ACCOUNT_NUMBER");
+
+    const keepOnOmit = await fetch(`${base}/api/assets/${body.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${owner.token}`,
+      },
+      body: JSON.stringify({ label: "아이 통장 유지" }),
+    });
+    assert.equal(keepOnOmit.status, 200);
+    const kept = (await keepOnOmit.json()) as {
+      type: string;
+      label: string;
+      accountNumber: string | null;
+      hasAccountNumber: boolean;
+      bankCode: string | null;
+    };
+    assert.equal(kept.type, "deposit");
+    assert.equal(kept.label, "아이 통장 유지");
+    assert.equal(kept.accountNumber, "****4567");
+    assert.equal(kept.hasAccountNumber, true);
+    assert.equal(kept.bankCode, "YUCHO");
+
     await seedFamilyMember(authRepo, {
       familyId: owner.family.id,
       email: "member-asset-cred@example.com",

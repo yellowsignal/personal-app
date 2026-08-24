@@ -82,7 +82,12 @@ function parseAccountNumber(value: unknown): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") throw new HttpError(400, "accountNumber must be a string");
   const trimmed = value.trim();
-  return trimmed ? trimmed.slice(0, 64) : null;
+  if (!trimmed) return null;
+  // List API returns masked values like ****7890 — never accept those as writes.
+  if (trimmed.includes("*")) {
+    throw new HttpError(400, "accountNumber must not be a masked value", "MASKED_ACCOUNT_NUMBER");
+  }
+  return trimmed.slice(0, 64);
 }
 
 function parseOptionalText(
