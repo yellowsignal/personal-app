@@ -53,10 +53,11 @@ export async function deriveKek(passphrase: string, saltB64: string, iterations 
 async function aesEncryptRaw(key: CryptoKey, plain: Uint8Array): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain as BufferSource);
-  const out = new Uint8Array(12 + 16 + new Uint8Array(ct).length);
-  // WebCrypto GCM appends tag to ciphertext; we store iv || ciphertext+tag
+  const ctBytes = new Uint8Array(ct);
+  // WebCrypto GCM appends the 16-byte tag to ciphertext; store iv || ciphertext+tag
+  const out = new Uint8Array(12 + ctBytes.length);
   out.set(iv, 0);
-  out.set(new Uint8Array(ct), 12);
+  out.set(ctBytes, 12);
   return b64urlFromBuf(out);
 }
 
