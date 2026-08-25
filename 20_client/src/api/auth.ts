@@ -63,12 +63,16 @@ export const authApi = {
     });
   },
 
-  me(token: string) {
+  logout() {
+    return apiFetch<void>("/api/auth/logout", { method: "POST" });
+  },
+
+  me(token?: string | null) {
     return apiFetch<MeResponse>("/api/auth/me", { token });
   },
 
   updateMe(
-    token: string,
+    token: string | null | undefined,
     body: Partial<{
       languagePref: string;
       currencyPref: string;

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { AuthService, HttpError } from "../services/authService.js";
+import { clearSessionCookie, setSessionCookie } from "../auth/sessionCookie.js";
 import { requireAuth, type AuthedRequest } from "../middleware/requireAuth.js";
 
 function sendError(res: import("express").Response, err: unknown): void {
@@ -11,6 +12,15 @@ function sendError(res: import("express").Response, err: unknown): void {
   res.status(500).json({ error: "internal server error" });
 }
 
+function sendSession(
+  res: import("express").Response,
+  result: { token: string; user: unknown; family: unknown },
+  status = 200,
+): void {
+  setSessionCookie(res, result.token);
+  res.status(status).json(result);
+}
+
 export function createAuthRouter(service: AuthService, jwtSecret: string): Router {
   const router = Router();
   const auth = requireAuth(jwtSecret);
@@ -18,7 +28,7 @@ export function createAuthRouter(service: AuthService, jwtSecret: string): Route
   router.post("/register", async (req, res) => {
     try {
       const result = await service.register(req.body ?? {});
-      res.status(201).json(result);
+      sendSession(res, result, 201);
     } catch (err) {
       sendError(res, err);
     }
@@ -27,10 +37,15 @@ export function createAuthRouter(service: AuthService, jwtSecret: string): Route
   router.post("/login", async (req, res) => {
     try {
       const result = await service.login(req.body ?? {});
-      res.json(result);
+      sendSession(res, result);
     } catch (err) {
       sendError(res, err);
     }
+  });
+
+  router.post("/logout", (_req, res) => {
+    clearSessionCookie(res);
+    res.status(204).end();
   });
 
   router.get("/me", auth, async (req: AuthedRequest, res) => {

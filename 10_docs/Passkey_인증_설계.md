@@ -76,7 +76,7 @@ Passkey 전용 사용자는 내부 이메일 `{id}@passkey.myfamily` 형식 (표
 ## 보안 메모
 
 - 초대 토큰: 서버에는 해시만 저장, 기본 48시간 만료
-- JWT: 기존과 동일 Bearer, 추후 httpOnly cookie 전환 검토
+- JWT: HttpOnly 쿠키 `myfamilyhub_session` (+ 선택적 Bearer). JSON `token`은 호환·테스트용
 - `/api/tasks` 등 스타터 엔드포인트: 프로덕션 배포 전 비활성화 예정
 - 영구 `FAM-XXXXX` 코드: 설정 화면 참고용 유지, **신규 가입은 1회 토큰 권장**
 
@@ -84,4 +84,4 @@ Passkey 전용 사용자는 내부 이메일 `{id}@passkey.myfamily` 형식 (표
 
 - [x] 1단계: Passkey API + 1회 초대 + 가입 폐쇄 + 로그인 UI
 - [ ] 2단계: HTTPS 배포 + RP ID 프로덕션 설정
-- [ ] 3단계: 비밀번호 가입 제거, httpOnly 세션
+- [x] 3단계(부분): httpOnly 세션 쿠키. 비밀번호 가입 폐쇄는 PR #33

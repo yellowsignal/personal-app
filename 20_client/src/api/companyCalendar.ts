@@ -1,4 +1,4 @@
-import { apiFetch, ApiError } from "./http";
+import { apiFetch, authedFetch, ApiError } from "./http";
 
 export interface CompanyCalendar {
   pref: string;
@@ -51,10 +51,10 @@ export const companyCalendarApi = {
     if (opts.url) qs.set("url", opts.url);
     if (opts.year) qs.set("year", String(opts.year));
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    const res = await fetch(`/api/company-calendar/import-pdf${suffix}`, {
+    const res = await authedFetch(`/api/company-calendar/import-pdf${suffix}`, {
       method: "POST",
+      token,
       headers: {
-        authorization: `Bearer ${token}`,
         "content-type": "application/pdf",
       },
       body: file,
