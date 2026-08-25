@@ -3,7 +3,7 @@ import type {
   AuthenticationResponseJSON,
   PublicKeyCredentialRequestOptionsJSON,
 } from "@simplewebauthn/browser";
-import { apiFetch, ApiError } from "./http";
+import { apiFetch, authedFetch, ApiError } from "./http";
 import type { ViewScope } from "../components/ScopeToggle";
 import type { DocumentCategory } from "@personal-app/document-categories";
 
@@ -117,10 +117,10 @@ export const documentsApi = {
   },
 
   async uploadScanSide(token: string, id: number, side: ScanSide, pdf: Blob): Promise<PublicDocument> {
-    const res = await fetch(`/api/documents/${id}/scan/${side}`, {
+    const res = await authedFetch(`/api/documents/${id}/scan/${side}`, {
       method: "PUT",
+      token,
       headers: {
-        authorization: `Bearer ${token}`,
         "content-type": "application/pdf",
       },
       body: pdf,
@@ -137,9 +137,7 @@ export const documentsApi = {
   },
 
   async downloadScanSide(token: string, id: number, side: ScanSide): Promise<Blob> {
-    const res = await fetch(`/api/documents/${id}/scan/${side}`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
+    const res = await authedFetch(`/api/documents/${id}/scan/${side}`, { token });
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
       throw new ApiError(data.error ?? `request failed (${res.status})`, res.status, data.code);

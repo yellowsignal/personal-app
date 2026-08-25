@@ -15,9 +15,17 @@ import { useLanguage } from "../i18n/LanguageContext";
 import type { Lang } from "../i18n/translations";
 import type { Currency } from "../mocks/data";
 
-const TOKEN_KEY = "myfamilyhub_token";
+/** Legacy localStorage key — cleared on boot so XSS cannot read a persisted JWT. */
+const LEGACY_TOKEN_KEY = "myfamilyhub_token";
+
+/**
+ * In-memory stand-in after reload when only the httpOnly cookie is present.
+ * Not a JWT (no "."), so apiFetch will not send Authorization.
+ */
+export const COOKIE_SESSION_TOKEN = "cookie";
 
 interface AuthContextValue {
+  /** JWT just after login, or {@link COOKIE_SESSION_TOKEN} after cookie restore; null if logged out. */
   token: string | null;
   user: PublicUser | null;
   family: FamilySummary | null;
@@ -61,16 +69,13 @@ function syncPrefs(
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { setLang, lang } = useLanguage();
   const { setCurrency, currency } = useCurrency();
-  const [token, setToken] = useState<string | null>(() =>
-    typeof window === "undefined" ? null : window.localStorage.getItem(TOKEN_KEY),
-  );
+  const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<PublicUser | null>(null);
   const [family, setFamily] = useState<FamilySummary | null>(null);
-  const [loading, setLoading] = useState(Boolean(token));
+  const [loading, setLoading] = useState(true);
 
   const applySession = useCallback(
     (session: AuthResponse) => {
-      window.localStorage.setItem(TOKEN_KEY, session.token);
       setToken(session.token);
       setUser(session.user);
       setFamily(session.family);
@@ -80,36 +85,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
-    window.localStorage.removeItem(TOKEN_KEY);
+    void authApi.logout().catch(() => {
+      /* cookie clear best-effort */
+    });
     setToken(null);
     setUser(null);
     setFamily(null);
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!token) {
-      setUser(null);
-      setFamily(null);
-      setLoading(false);
-      return;
-    }
     try {
       const me = await authApi.me(token);
       setUser(me.user);
       setFamily(me.family);
+      setToken((prev) => (prev && prev.includes(".") ? prev : COOKIE_SESSION_TOKEN));
       syncPrefs(me.user, setLang, setCurrency);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) logout();
+      if (err instanceof ApiError && err.status === 401) {
+        setToken(null);
+        setUser(null);
+        setFamily(null);
+      }
     } finally {
       setLoading(false);
     }
-  }, [logout, setCurrency, setLang, token]);
+  }, [setCurrency, setLang, token]);
 
   useEffect(() => {
+    try {
+      window.localStorage.removeItem(LEGACY_TOKEN_KEY);
+    } catch {
+      /* ignore */
+    }
     void refresh();
-  }, [refresh]);
+    // Mount-only: restore session from httpOnly cookie.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+  }, []);
 
-  // Persist language/currency changes back to server when logged in
   useEffect(() => {
     if (!token || !user) return;
     if (user.languagePref === lang && user.currencyPref === currency) return;
@@ -118,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .updateMe(token, { languagePref: lang, currencyPref: currency })
         .then((res) => setUser(res.user))
         .catch(() => {
-          /* ignore offline/pref sync errors in mock phase */
+          /* ignore */
         });
     }, 400);
     return () => window.clearTimeout(timer);

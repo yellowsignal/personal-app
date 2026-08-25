@@ -183,3 +183,49 @@ test("duplicate email is rejected", async () => {
     server.close();
   }
 });
+
+test("login sets HttpOnly session cookie; /me works without Bearer", async () => {
+  const { server, base } = await listen(authApp());
+  try {
+    const reg = await fetch(`${base}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: "cookie@example.com",
+        password: "password123",
+        name: "Cookie",
+        familyName: "Cookie Family",
+      }),
+    });
+    assert.equal(reg.status, 201);
+    const setCookies =
+      typeof reg.headers.getSetCookie === "function"
+        ? reg.headers.getSetCookie()
+        : [reg.headers.get("set-cookie")].filter((v): v is string => Boolean(v));
+    const sessionLine = setCookies.find((c) => c.startsWith("myfamilyhub_session="));
+    assert.ok(sessionLine, "expected Set-Cookie myfamilyhub_session");
+    assert.match(sessionLine, /HttpOnly/i);
+    assert.match(sessionLine, /SameSite=Lax/i);
+    const cookiePair = sessionLine.split(";")[0]!;
+
+    const me = await fetch(`${base}/api/auth/me`, {
+      headers: { cookie: cookiePair },
+    });
+    assert.equal(me.status, 200);
+    const meBody = (await me.json()) as { user: { email: string } };
+    assert.equal(meBody.user.email, "cookie@example.com");
+
+    const logout = await fetch(`${base}/api/auth/logout`, {
+      method: "POST",
+      headers: { cookie: cookiePair },
+    });
+    assert.equal(logout.status, 204);
+    const clearCookies =
+      typeof logout.headers.getSetCookie === "function"
+        ? logout.headers.getSetCookie()
+        : [logout.headers.get("set-cookie")].filter((v): v is string => Boolean(v));
+    assert.ok(clearCookies.some((c) => /myfamilyhub_session=.*Max-Age=0/i.test(c)));
+  } finally {
+    server.close();
+  }
+});

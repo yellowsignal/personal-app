@@ -1,4 +1,4 @@
-import { apiFetch, ApiError } from "./http";
+import { apiFetch, authedFetch, ApiError } from "./http";
 
 export interface PublicPhoto {
   id: number;
@@ -54,10 +54,10 @@ export const photosApi = {
     const params = new URLSearchParams();
     if (opts.caption) params.set("caption", opts.caption);
     const qs = params.toString();
-    const res = await fetch(`/api/photos${qs ? `?${qs}` : ""}`, {
+    const res = await authedFetch(`/api/photos${qs ? `?${qs}` : ""}`, {
       method: "POST",
+      token,
       headers: {
-        authorization: `Bearer ${token}`,
         "content-type": file.type || "application/octet-stream",
       },
       body: file,
@@ -85,9 +85,7 @@ export const photosApi = {
   },
 
   async downloadFile(token: string, id: number): Promise<Blob> {
-    const res = await fetch(`/api/photos/${id}/file`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
+    const res = await authedFetch(`/api/photos/${id}/file`, { token });
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
       throw new ApiError(data.error ?? `request failed (${res.status})`, res.status, data.code);
@@ -131,9 +129,9 @@ export const photosApi = {
   },
 
   async downloadIcloudPhoto(token: string, albumId: number, photoId: string): Promise<Blob> {
-    const res = await fetch(
+    const res = await authedFetch(
       `/api/photos/icloud-albums/${albumId}/file?photo=${encodeURIComponent(photoId)}`,
-      { headers: { authorization: `Bearer ${token}` } },
+      { token },
     );
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
@@ -143,7 +141,7 @@ export const photosApi = {
   },
 
   async fetchIcloudCover(token: string, coverUrl: string): Promise<Blob> {
-    const res = await fetch(coverUrl, { headers: { authorization: `Bearer ${token}` } });
+    const res = await authedFetch(coverUrl, { token });
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
       throw new ApiError(data.error ?? `request failed (${res.status})`, res.status, data.code);

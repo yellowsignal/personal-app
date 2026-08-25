@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { setSessionCookie } from "../auth/sessionCookie.js";
 import { requireAuth, type AuthedRequest } from "../middleware/requireAuth.js";
 import { HttpError } from "../services/authService.js";
 import { PasskeyService } from "../services/passkeyService.js";
@@ -10,6 +11,15 @@ function sendError(res: import("express").Response, err: unknown): void {
   }
   console.error(err);
   res.status(500).json({ error: "internal server error" });
+}
+
+function sendSession(
+  res: import("express").Response,
+  session: { token: string; user: unknown; family: unknown },
+  status = 200,
+): void {
+  setSessionCookie(res, session.token);
+  res.status(status).json(session);
 }
 
 export function createPasskeyRouter(service: PasskeyService, jwtSecret: string): Router {
@@ -28,7 +38,7 @@ export function createPasskeyRouter(service: PasskeyService, jwtSecret: string):
   router.post("/register/verify", async (req, res) => {
     try {
       const session = await service.registrationVerify(req.body ?? {});
-      res.status(201).json(session);
+      sendSession(res, session, 201);
     } catch (err) {
       sendError(res, err);
     }
@@ -46,7 +56,7 @@ export function createPasskeyRouter(service: PasskeyService, jwtSecret: string):
   router.post("/login/verify", async (req, res) => {
     try {
       const session = await service.loginVerify(req.body ?? {});
-      res.json(session);
+      sendSession(res, session);
     } catch (err) {
       sendError(res, err);
     }
@@ -67,7 +77,7 @@ export function createPasskeyRouter(service: PasskeyService, jwtSecret: string):
   router.post("/link/verify", auth, async (req: AuthedRequest, res) => {
     try {
       const session = await service.registrationVerify(req.body ?? {}, req.userId!);
-      res.json(session);
+      sendSession(res, session);
     } catch (err) {
       sendError(res, err);
     }
