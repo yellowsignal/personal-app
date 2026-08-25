@@ -38,6 +38,8 @@ model Family {
   recurringDeposits RecurringDeposit[]
   activities       FamilyActivity[]
   icloudAlbums     FamilyIcloudAlbum[]
+  vaultKeyPackages VaultKeyPackage[]
+  familyDekDeliveries FamilyDekDelivery[]
 
   @@map("families")
 }
@@ -94,6 +96,9 @@ model User {
   activityReads     FamilyActivityRead[]
   vaultItems        VaultItem[]
   companyCalendar   CompanyCalendar?
+  vaultKeyPackage   VaultKeyPackage?
+  familyDekDeliveriesTo   FamilyDekDelivery[] @relation("FamilyDekDeliveryTo")
+  familyDekDeliveriesFrom FamilyDekDelivery[] @relation("FamilyDekDeliveryFrom")
 
   @@index([familyId])
   @@map("users")
@@ -485,6 +490,7 @@ model VaultItem {
   /// Username / employee no. — never returned until Passkey reveal.
   loginId      String?       @map("login_id") @db.VarChar(255)
   /// Password or product key (AES-GCM). Null if only loginId stored.
+  /// May be server-AES (legacy) or client E2E (`e2e1.p.…`).
   secretCipher String?       @map("secret_cipher") @db.Text
   memo         String?       @db.VarChar(2000)
   createdAt    DateTime      @default(now()) @map("created_at")
@@ -494,4 +500,42 @@ model VaultItem {
 
   @@index([userId, updatedAt])
   @@map("vault_items")
+}
+
+/// Per-user E2E vault key package (wrapped DEKs + RSA wrap key). Passphrase never stored.
+model VaultKeyPackage {
+  userId             Int      @id @map("user_id")
+  familyId           Int?     @map("family_id")
+  kdfSalt            String   @map("kdf_salt") @db.VarChar(64)
+  kdfIterations      Int      @map("kdf_iterations")
+  personalDekWrapped String   @map("personal_dek_wrapped") @db.Text
+  privateKeyWrapped  String   @map("private_key_wrapped") @db.Text
+  publicKeyJwk       String   @map("public_key_jwk") @db.Text
+  familyDekWrapped   String?  @map("family_dek_wrapped") @db.Text
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family Family? @relation(fields: [familyId], references: [id], onDelete: SetNull)
+
+  @@index([familyId])
+  @@map("vault_key_packages")
+}
+
+/// Pending Family DEK delivery (RSA-OAEP ciphertext) until recipient accepts.
+model FamilyDekDelivery {
+  id         Int      @id @default(autoincrement())
+  familyId   Int      @map("family_id")
+  toUserId   Int      @map("to_user_id")
+  fromUserId Int      @map("from_user_id")
+  ciphertext String   @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  toUser User   @relation("FamilyDekDeliveryTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  fromUser User @relation("FamilyDekDeliveryFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+
+  @@unique([toUserId])
+  @@index([familyId])
+  @@map("family_dek_deliveries")
 }

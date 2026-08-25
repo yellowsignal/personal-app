@@ -50,6 +50,9 @@ import { PrismaFamilyActivityRepository } from "./domain/prismaFamilyActivityRep
 import { MemoryVaultItemRepository } from "./domain/memoryVaultItemRepository.js";
 import { PrismaVaultItemRepository } from "./domain/prismaVaultItemRepository.js";
 import type { VaultItemRepository } from "./domain/vaultTypes.js";
+import { MemoryVaultKeyRepository } from "./domain/memoryVaultKeyRepository.js";
+import { PrismaVaultKeyRepository } from "./domain/prismaVaultKeyRepository.js";
+import type { VaultKeyRepository } from "./domain/vaultKeyRepository.js";
 import { MemoryCompanyCalendarRepository } from "./domain/memoryCompanyCalendarRepository.js";
 import { PrismaCompanyCalendarRepository } from "./domain/prismaCompanyCalendarRepository.js";
 import type { CompanyCalendarRepository } from "./domain/companyCalendarRepository.js";
@@ -111,6 +114,9 @@ const icloudAlbumRepo: FamilyIcloudAlbumRepository = useMemoryAuth
 const vaultRepo: VaultItemRepository = useMemoryAuth
   ? new MemoryVaultItemRepository()
   : new PrismaVaultItemRepository(prisma);
+const vaultKeyRepo: VaultKeyRepository = useMemoryAuth
+  ? new MemoryVaultKeyRepository()
+  : new PrismaVaultKeyRepository(prisma);
 const companyCalendarRepo: CompanyCalendarRepository = useMemoryAuth
   ? new MemoryCompanyCalendarRepository()
   : new PrismaCompanyCalendarRepository(prisma);
@@ -138,6 +144,7 @@ const app = createApp(store, {
   albumCoverStore,
   icloudAlbumRepo,
   vaultRepo,
+  vaultKeyRepo,
   companyCalendarRepo,
   subscriptionRepo,
   checklistRepo,

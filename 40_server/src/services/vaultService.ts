@@ -1,4 +1,5 @@
-import { encryptSecret, decryptSecret } from "../auth/secretCrypto.js";
+import { decryptSecret } from "../auth/secretCrypto.js";
+import { isClientE2eCipher } from "../auth/e2eCipher.js";
 import type { AuthRepository } from "../domain/authRepository.js";
 import type { VaultItemRepository } from "../domain/vaultTypes.js";
 import {
@@ -7,6 +8,7 @@ import {
   type VaultCategory,
 } from "../domain/vaultTypes.js";
 import { HttpError } from "./authService.js";
+import { parseSecretCipherField } from "./credentialCipherParse.js";
 import type { PasskeyService } from "./passkeyService.js";
 
 const CATEGORIES = new Set<VaultCategory>(["LOGIN", "PRODUCT_KEY", "OTHER"]);
@@ -65,10 +67,12 @@ export class VaultService {
     }
     const category = parseCategory(body.category);
     const loginId = parseOptionalTrimmed(body.loginId, "loginId", 255) ?? null;
-    let secretCipher: string | null = null;
-    if (typeof body.secret === "string" && body.secret.length > 0) {
-      secretCipher = encryptSecret(body.secret.slice(0, 4000));
-    }
+    const secretCipher =
+      parseSecretCipherField(body, "create", {
+        cipherKey: "secretCipher",
+        plainKey: "secret",
+        maxPlainLen: 4000,
+      }) ?? null;
     const url = parseOptionalTrimmed(body.url, "url", 500) ?? null;
     const memo = parseOptionalTrimmed(body.memo, "memo", 2000) ?? null;
     if (!loginId && !secretCipher) {
@@ -100,14 +104,13 @@ export class VaultService {
     if ("url" in body) patch.url = parseOptionalTrimmed(body.url, "url", 500) ?? null;
     if ("loginId" in body) patch.loginId = parseOptionalTrimmed(body.loginId, "loginId", 255) ?? null;
     if ("memo" in body) patch.memo = parseOptionalTrimmed(body.memo, "memo", 2000) ?? null;
-    if ("secret" in body) {
-      if (body.secret === null || body.secret === "") {
-        patch.secretCipher = null;
-      } else if (typeof body.secret === "string") {
-        patch.secretCipher = encryptSecret(body.secret.slice(0, 4000));
-      } else {
-        throw new HttpError(400, "secret must be a string");
-      }
+    if ("secret" in body || "secretCipher" in body) {
+      const parsed = parseSecretCipherField(body, "update", {
+        cipherKey: "secretCipher",
+        plainKey: "secret",
+        maxPlainLen: 4000,
+      });
+      if (parsed !== undefined) patch.secretCipher = parsed;
     }
     const nextLoginId = patch.loginId === undefined ? existing.loginId : patch.loginId;
     const nextSecret =
@@ -141,7 +144,12 @@ export class VaultService {
     userId: number,
     id: number,
     body: Record<string, unknown>,
-  ): Promise<{ loginId: string | null; secret: string | null }> {
+  ): Promise<{
+    loginId: string | null;
+    secret: string | null;
+    secretCipher: string | null;
+    encryption: "e2e" | "legacy" | "none";
+  }> {
     if (!this.passkeyService) {
       throw new HttpError(503, "passkey not configured", "PASSKEY_UNAVAILABLE");
     }
@@ -151,14 +159,31 @@ export class VaultService {
       throw new HttpError(404, "no credentials stored", "NO_CREDENTIALS");
     }
     await this.passkeyService.credentialRevealVerify(userId, "vault", id, body);
-    let secret: string | null = null;
-    if (existing.secretCipher) {
-      try {
-        secret = decryptSecret(existing.secretCipher);
-      } catch {
-        throw new HttpError(500, "failed to decrypt secret", "DECRYPT_FAILED");
-      }
+    if (!existing.secretCipher) {
+      return {
+        loginId: existing.loginId,
+        secret: null,
+        secretCipher: null,
+        encryption: "none",
+      };
     }
-    return { loginId: existing.loginId, secret };
+    if (isClientE2eCipher(existing.secretCipher)) {
+      return {
+        loginId: existing.loginId,
+        secret: null,
+        secretCipher: existing.secretCipher,
+        encryption: "e2e",
+      };
+    }
+    try {
+      return {
+        loginId: existing.loginId,
+        secret: decryptSecret(existing.secretCipher),
+        secretCipher: null,
+        encryption: "legacy",
+      };
+    } catch {
+      throw new HttpError(500, "failed to decrypt secret", "DECRYPT_FAILED");
+    }
   }
 }

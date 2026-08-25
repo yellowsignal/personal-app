@@ -1,4 +1,5 @@
-import { decryptSecret, encryptSecret } from "../auth/secretCrypto.js";
+import { decryptSecret } from "../auth/secretCrypto.js";
+import { isClientE2eCipher } from "../auth/e2eCipher.js";
 import type { AuthRepository } from "../domain/authRepository.js";
 import type { SubscriptionRepository } from "../domain/subscriptionRepository.js";
 import {
@@ -9,6 +10,7 @@ import {
   type ViewScope,
 } from "../domain/subscriptionTypes.js";
 import { HttpError } from "./authService.js";
+import { parseSecretCipherField } from "./credentialCipherParse.js";
 import type { FamilyActivityService } from "./familyActivityService.js";
 import { collectChanges } from "../domain/familyActivityFormat.js";
 import type { PasskeyService } from "./passkeyService.js";
@@ -104,14 +106,10 @@ function parseLoginPasswordCipher(
   body: Record<string, unknown>,
   mode: "create" | "update",
 ): string | null | undefined {
-  if (!("loginPassword" in body)) {
-    return mode === "create" ? null : undefined;
-  }
-  const value = body.loginPassword;
-  if (value === null || value === "") return null;
-  if (typeof value !== "string") throw new HttpError(400, "loginPassword must be a string");
-  if (value.length > 512) throw new HttpError(400, "loginPassword is too long");
-  return encryptSecret(value);
+  return parseSecretCipherField(body, mode, {
+    cipherKey: "loginPasswordCipher",
+    plainKey: "loginPassword",
+  });
 }
 
 export class SubscriptionService {
@@ -321,7 +319,12 @@ export class SubscriptionService {
     userId: number,
     id: number,
     body: Record<string, unknown>,
-  ): Promise<{ loginId: string | null; password: string | null }> {
+  ): Promise<{
+    loginId: string | null;
+    password: string | null;
+    passwordCipher: string | null;
+    encryption: "e2e" | "legacy" | "none";
+  }> {
     if (!this.passkeyService) {
       throw new HttpError(503, "passkey not configured", "PASSKEY_UNAVAILABLE");
     }
@@ -337,14 +340,31 @@ export class SubscriptionService {
 
     await this.passkeyService.credentialRevealVerify(user.id, "subscription", id, body);
 
-    let password: string | null = null;
-    if (existing.loginPasswordCipher) {
-      try {
-        password = decryptSecret(existing.loginPasswordCipher);
-      } catch {
-        throw new HttpError(500, "failed to decrypt password", "DECRYPT_FAILED");
-      }
+    if (!existing.loginPasswordCipher) {
+      return {
+        loginId: existing.loginId,
+        password: null,
+        passwordCipher: null,
+        encryption: "none",
+      };
     }
-    return { loginId: existing.loginId, password };
+    if (isClientE2eCipher(existing.loginPasswordCipher)) {
+      return {
+        loginId: existing.loginId,
+        password: null,
+        passwordCipher: existing.loginPasswordCipher,
+        encryption: "e2e",
+      };
+    }
+    try {
+      return {
+        loginId: existing.loginId,
+        password: decryptSecret(existing.loginPasswordCipher),
+        passwordCipher: null,
+        encryption: "legacy",
+      };
+    } catch {
+      throw new HttpError(500, "failed to decrypt password", "DECRYPT_FAILED");
+    }
   }
 }

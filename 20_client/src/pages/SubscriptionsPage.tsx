@@ -10,6 +10,7 @@ import { exchangeRates } from "../mocks/data";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../context/CurrencyContext";
 import { useAuth } from "../context/AuthContext";
+import { useVault } from "../context/VaultContext";
 import {
   subscriptionsApi,
   type BillingInterval,
@@ -80,6 +81,7 @@ export default function SubscriptionsPage() {
   const { t } = useLanguage();
   const { currency } = useCurrency();
   const { token, user, family } = useAuth();
+  const vault = useVault();
   const [scope, setScope] = useState<ViewScope>("all");
   const [items, setItems] = useState<PublicSubscription[]>([]);
   const [loading, setLoading] = useState(true);
@@ -176,14 +178,21 @@ export default function SubscriptionsPage() {
       cancelUrl: form.cancelUrl?.trim() || undefined,
       loginId: form.loginId?.trim() || undefined,
     };
-    if (editing) {
-      if (!form.loginPassword) {
+    try {
+      if (form.loginPassword) {
+        if (!vault.ensureUnlocked()) {
+          setError(t("vault.unlockRequired"));
+          setSubmitting(false);
+          return;
+        }
+        const scope = form.isShared ? "family" : "personal";
+        payload.loginPasswordCipher = await vault.encryptSecret(form.loginPassword, scope);
+        delete payload.loginPassword;
+      } else if (editing) {
+        delete payload.loginPassword;
+      } else {
         delete payload.loginPassword;
       }
-    } else if (!form.loginPassword) {
-      delete payload.loginPassword;
-    }
-    try {
       if (editing) {
         await subscriptionsApi.update(token, editing.id, payload);
       } else {
@@ -216,7 +225,15 @@ export default function SubscriptionsPage() {
     setError(null);
     try {
       const result = await subscriptionsApi.revealCredentials(token, item.id);
-      setRevealed((prev) => ({ ...prev, [item.id]: result.password ?? "" }));
+      let password = result.password ?? "";
+      if (result.encryption === "e2e" && result.passwordCipher) {
+        if (!vault.ensureUnlocked()) {
+          setError(t("vault.unlockRequired"));
+          return;
+        }
+        password = await vault.decryptSecret(result.passwordCipher);
+      }
+      setRevealed((prev) => ({ ...prev, [item.id]: password }));
     } catch (err) {
       const code = err instanceof ApiError ? err.code : null;
       if (code === "PASSKEY_REQUIRED") {

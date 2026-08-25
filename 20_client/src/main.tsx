@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { AuthProvider } from "./context/AuthContext";
+import { VaultProvider } from "./context/VaultContext";
 import { LanguageProvider } from "./i18n/LanguageContext";
 import { CurrencyProvider } from "./context/CurrencyContext";
 import { registerPushWorker } from "./api/push";
@@ -18,7 +19,9 @@ createRoot(document.getElementById("root")!).render(
       <LanguageProvider>
         <CurrencyProvider>
           <AuthProvider>
-            <App />
+            <VaultProvider>
+              <App />
+            </VaultProvider>
           </AuthProvider>
         </CurrencyProvider>
       </LanguageProvider>

@@ -72,6 +72,8 @@ export interface CreateAssetInput {
   accountNumber?: string;
   /** Omit on edit to keep existing; empty string clears */
   loginPassword?: string;
+  /** Client E2E cipher (`e2e1.…`) */
+  loginPasswordCipher?: string;
   institutionCode?: string;
   institutionName?: string;
   branchCode?: string;
@@ -144,7 +146,12 @@ export const assetsApi = {
       { method: "POST", token, body: "{}" },
     );
     const response: AuthenticationResponseJSON = await startAuthentication({ optionsJSON: options });
-    return apiFetch<{ accountNumber: string | null; password: string | null }>(
+    return apiFetch<{
+      accountNumber: string | null;
+      password: string | null;
+      passwordCipher?: string | null;
+      encryption?: "e2e" | "legacy" | "none";
+    }>(
       `/api/assets/${id}/credentials/reveal/verify`,
       {
         method: "POST",

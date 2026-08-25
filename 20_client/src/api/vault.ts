@@ -26,6 +26,8 @@ export interface VaultItemInput {
   loginId?: string;
   /** Omit on edit to keep; empty string clears */
   secret?: string;
+  /** Client E2E cipher */
+  secretCipher?: string;
   memo?: string;
 }
 
@@ -63,7 +65,12 @@ export const vaultApi = {
       { method: "POST", token, body: "{}" },
     );
     const response: AuthenticationResponseJSON = await startAuthentication({ optionsJSON: options });
-    return apiFetch<{ loginId: string | null; secret: string | null }>(
+    return apiFetch<{
+      loginId: string | null;
+      secret: string | null;
+      secretCipher?: string | null;
+      encryption?: "e2e" | "legacy" | "none";
+    }>(
       `/api/vault/${id}/credentials/reveal/verify`,
       {
         method: "POST",
