@@ -19,11 +19,13 @@ function bufFromB64url(s: string): Uint8Array {
   return out;
 }
 
+/** Copy into a standalone ArrayBuffer so WebCrypto BufferSource typing accepts it. */
+function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
 async function importAesRaw(raw: ArrayBuffer | Uint8Array, extractable = true): Promise<CryptoKey> {
-  const keyData =
-    raw instanceof Uint8Array
-      ? (raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer)
-      : raw;
+  const keyData = raw instanceof Uint8Array ? asArrayBuffer(raw) : raw;
   return crypto.subtle.importKey("raw", keyData, "AES-GCM", extractable, [
     "encrypt",
     "decrypt",
@@ -39,7 +41,7 @@ export async function deriveKek(passphrase: string, saltB64: string, iterations 
   return crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
-      salt: bufFromB64url(saltB64) as BufferSource,
+      salt: asArrayBuffer(bufFromB64url(saltB64)),
       iterations,
       hash: "SHA-256",
     },
@@ -52,7 +54,7 @@ export async function deriveKek(passphrase: string, saltB64: string, iterations 
 
 async function aesEncryptRaw(key: CryptoKey, plain: Uint8Array): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain as BufferSource);
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, asArrayBuffer(plain));
   const ctBytes = new Uint8Array(ct);
   // WebCrypto GCM appends the 16-byte tag to ciphertext; store iv || ciphertext+tag
   const out = new Uint8Array(12 + ctBytes.length);
@@ -64,8 +66,8 @@ async function aesEncryptRaw(key: CryptoKey, plain: Uint8Array): Promise<string>
 async function aesDecryptRaw(key: CryptoKey, payloadB64: string): Promise<Uint8Array> {
   const buf = bufFromB64url(payloadB64);
   if (buf.length < 12 + 16 + 1) throw new Error("invalid cipher");
-  const iv = buf.subarray(0, 12);
-  const data = buf.subarray(12);
+  const iv = asArrayBuffer(buf.subarray(0, 12));
+  const data = asArrayBuffer(buf.subarray(12));
   const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, data);
   return new Uint8Array(plain);
 }
@@ -130,10 +132,9 @@ export async function wrapPrivateKey(kek: CryptoKey, privateKey: CryptoKey): Pro
 
 export async function unwrapPrivateKey(kek: CryptoKey, wrappedB64: string): Promise<CryptoKey> {
   const pkcs8 = await aesDecryptRaw(kek, wrappedB64);
-  const keyData = pkcs8.buffer.slice(pkcs8.byteOffset, pkcs8.byteOffset + pkcs8.byteLength) as ArrayBuffer;
   return crypto.subtle.importKey(
     "pkcs8",
-    keyData,
+    asArrayBuffer(pkcs8),
     { name: "RSA-OAEP", hash: "SHA-256" },
     false,
     ["decrypt"],
@@ -145,7 +146,7 @@ export async function rsaEncryptToPublicJwk(publicKeyJwk: string, raw: Uint8Arra
   const pub = await crypto.subtle.importKey("jwk", jwk, { name: "RSA-OAEP", hash: "SHA-256" }, false, [
     "encrypt",
   ]);
-  const ct = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, pub, raw as BufferSource);
+  const ct = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, pub, asArrayBuffer(raw));
   return b64urlFromBuf(ct);
 }
 
@@ -153,7 +154,7 @@ export async function rsaDecrypt(privateKey: CryptoKey, ciphertextB64: string): 
   const plain = await crypto.subtle.decrypt(
     { name: "RSA-OAEP" },
     privateKey,
-    bufFromB64url(ciphertextB64) as BufferSource,
+    asArrayBuffer(bufFromB64url(ciphertextB64)),
   );
   return new Uint8Array(plain);
 }
