@@ -10,6 +10,7 @@ import ItemDetailSheet, { DetailRow } from "../components/ItemDetailSheet";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useCurrency } from "../context/CurrencyContext";
 import { useAuth } from "../context/AuthContext";
+import { useVault } from "../context/VaultContext";
 import {
   assetsApi,
   DEPOSIT_BANKS,
@@ -118,6 +119,7 @@ export default function AssetsPage() {
   const { t } = useLanguage();
   const { currency } = useCurrency();
   const { token, user, family } = useAuth();
+  const vault = useVault();
   const navigate = useNavigate();
   const [scope, setScope] = useState<ViewScope>("all");
   const [items, setItems] = useState<PublicAsset[]>([]);
@@ -316,14 +318,28 @@ export default function AssetsPage() {
         isShared: form.isShared,
       };
       if (editing) {
-        if (form.loginPassword) payload.loginPassword = form.loginPassword;
+        if (form.loginPassword) {
+          if (!vault.ensureUnlocked()) {
+            setError(t("vault.unlockRequired"));
+            setSubmitting(false);
+            return;
+          }
+          const scope = form.isShared ? "family" : "personal";
+          payload.loginPasswordCipher = await vault.encryptSecret(form.loginPassword, scope);
+        }
         payload.accountNumber = form.accountNumber.trim();
         payload.institutionCode = form.institutionCode.trim();
         payload.institutionName = form.institutionName.trim();
         payload.branchCode = form.branchCode.trim();
         payload.branchName = form.branchName.trim();
       } else if (form.loginPassword) {
-        payload.loginPassword = form.loginPassword;
+        if (!vault.ensureUnlocked()) {
+          setError(t("vault.unlockRequired"));
+          setSubmitting(false);
+          return;
+        }
+        const scope = form.isShared ? "family" : "personal";
+        payload.loginPasswordCipher = await vault.encryptSecret(form.loginPassword, scope);
       }
       setLastBank(form.bankCode);
       window.localStorage.setItem(LAST_BANK_STORAGE_KEY, form.bankCode);
@@ -431,7 +447,15 @@ export default function AssetsPage() {
     setError(null);
     try {
       const result = await assetsApi.revealCredentials(token, item.id);
-      setRevealed((prev) => ({ ...prev, [item.id]: result.password ?? "" }));
+      let password = result.password ?? "";
+      if (result.encryption === "e2e" && result.passwordCipher) {
+        if (!vault.ensureUnlocked()) {
+          setError(t("vault.unlockRequired"));
+          return;
+        }
+        password = await vault.decryptSecret(result.passwordCipher);
+      }
+      setRevealed((prev) => ({ ...prev, [item.id]: password }));
     } catch (err) {
       const code = err instanceof ApiError ? err.code : null;
       if (code === "PASSKEY_REQUIRED") {

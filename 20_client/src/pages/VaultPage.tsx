@@ -5,6 +5,7 @@ import OverlayScrim from "../components/OverlayScrim";
 import ItemDetailSheet, { DetailRow } from "../components/ItemDetailSheet";
 import { useLanguage } from "../i18n/LanguageContext";
 import { useAuth } from "../context/AuthContext";
+import { useVault } from "../context/VaultContext";
 import { useResetWindowScroll } from "../hooks/useBodyScrollLock";
 import { useKeepFocusedInScrollParent } from "../hooks/useKeepFocusedInScrollParent";
 import { ApiError } from "../api/http";
@@ -20,6 +21,7 @@ const CATEGORIES: VaultCategory[] = ["LOGIN", "PRODUCT_KEY", "OTHER"];
 export default function VaultPage() {
   const { t } = useLanguage();
   const { token } = useAuth();
+  const vault = useVault();
   useResetWindowScroll("vault");
 
   const [items, setItems] = useState<PublicVaultItem[]>([]);
@@ -111,11 +113,29 @@ export default function VaultPage() {
       };
       if (editing) {
         if (loginId.trim()) body.loginId = loginId.trim();
-        if (secretDirty) body.secret = secret;
+        if (secretDirty) {
+          if (secret) {
+            if (!vault.ensureUnlocked()) {
+              setError(t("vault.unlockRequired"));
+              setSaving(false);
+              return;
+            }
+            body.secretCipher = await vault.encryptSecret(secret, "personal");
+          } else {
+            body.secret = "";
+          }
+        }
         await vaultApi.update(token, editing.id, body);
       } else {
         body.loginId = loginId.trim() || undefined;
-        body.secret = secret || undefined;
+        if (secret) {
+          if (!vault.ensureUnlocked()) {
+            setError(t("vault.unlockRequired"));
+            setSaving(false);
+            return;
+          }
+          body.secretCipher = await vault.encryptSecret(secret, "personal");
+        }
         await vaultApi.create(token, body);
       }
       setShowForm(false);
@@ -147,7 +167,16 @@ export default function VaultPage() {
     setRevealing(true);
     setError(null);
     try {
-      setRevealed(await vaultApi.revealCredentials(token, detail.id));
+      const result = await vaultApi.revealCredentials(token, detail.id);
+      let secret = result.secret;
+      if (result.encryption === "e2e" && result.secretCipher) {
+        if (!vault.ensureUnlocked()) {
+          setError(t("vault.unlockRequired"));
+          return;
+        }
+        secret = await vault.decryptSecret(result.secretCipher);
+      }
+      setRevealed({ loginId: result.loginId, secret });
     } catch (err) {
       const code = err instanceof ApiError ? err.code : null;
       setError(

@@ -49,8 +49,11 @@ import type { FamilyIcloudAlbumRepository } from "./domain/familyIcloudAlbumRepo
 import { MemoryFamilyIcloudAlbumRepository } from "./domain/memoryFamilyIcloudAlbumRepository.js";
 import { AlbumCoverStore, defaultAlbumCoverDir } from "./storage/albumCoverStore.js";
 import type { VaultItemRepository } from "./domain/vaultTypes.js";
+import type { VaultKeyRepository } from "./domain/vaultKeyRepository.js";
 import { VaultService } from "./services/vaultService.js";
+import { VaultKeyService } from "./services/vaultKeyService.js";
 import { createVaultRouter } from "./routes/vaultRoutes.js";
+import { createVaultKeyRouter } from "./routes/vaultKeyRoutes.js";
 import type { CompanyCalendarRepository } from "./domain/companyCalendarRepository.js";
 import { MemoryCompanyCalendarRepository } from "./domain/memoryCompanyCalendarRepository.js";
 import { CompanyCalendarService } from "./services/companyCalendarService.js";
@@ -72,6 +75,7 @@ export interface AppDeps {
   calendarFetch?: typeof fetch;
   icloudAlbumRepo?: FamilyIcloudAlbumRepository;
   vaultRepo?: VaultItemRepository;
+  vaultKeyRepo?: VaultKeyRepository;
   companyCalendarRepo?: CompanyCalendarRepository;
   pushService?: PushService;
   reminderDispatcher?: ReminderDispatcher;
@@ -268,6 +272,11 @@ export function createApp(store: TaskStore, deps: AppDeps = {}): Express {
     if (deps.vaultRepo) {
       const vaultService = new VaultService(deps.authRepo, deps.vaultRepo, passkeyService);
       app.use("/api/vault", createVaultRouter(vaultService, jwtSecret));
+    }
+
+    if (deps.vaultKeyRepo) {
+      const vaultKeyService = new VaultKeyService(deps.authRepo, deps.vaultKeyRepo);
+      app.use("/api/vault-keys", createVaultKeyRouter(vaultKeyService, jwtSecret));
     }
 
     if (deps.pushService) {

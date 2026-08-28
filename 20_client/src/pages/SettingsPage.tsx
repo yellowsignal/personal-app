@@ -1,11 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronRight, Copy, Bell, Fingerprint, Globe, LogOut, UserPlus, Users, CalendarDays, Factory } from "lucide-react";
+import {
+  ChevronRight,
+  Copy,
+  Bell,
+  Fingerprint,
+  Globe,
+  KeyRound,
+  LogOut,
+  UserPlus,
+  Users,
+  CalendarDays,
+  Factory,
+} from "lucide-react";
 import TopBar from "../components/TopBar";
 import HolidayPrefPicker, { parseHolidayPref, type HolidayPref } from "../components/HolidayPrefPicker";
 import { ApiError } from "../api/http";
 import { companyCalendarApi, defaultCompanyCalendarUrl, fiscalYearRange, japanFiscalYear, type CompanyCalendar } from "../api/companyCalendar";
 import { passkeyApi } from "../api/passkey";
+import { vaultKeysApi, type VaultKeyFamilyMember } from "../api/vaultKeys";
 import {
   disableHomeScreenPush,
   enableHomeScreenPush,
@@ -14,17 +27,25 @@ import {
   pushApi,
 } from "../api/push";
 import { useAuth } from "../context/AuthContext";
+import { useVault } from "../context/VaultContext";
 import { useLanguage } from "../i18n/LanguageContext";
 
 export default function SettingsPage() {
   const navigate = useNavigate();
   const { user, family, logout, token, updateMe, refresh } = useAuth();
+  const vault = useVault();
   const { lang, toggleLang, t } = useLanguage();
   const [copied, setCopied] = useState(false);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [creatingInvite, setCreatingInvite] = useState(false);
   const [passkeyMsg, setPasskeyMsg] = useState<string | null>(null);
   const [linkingPasskey, setLinkingPasskey] = useState(false);
+  const [vaultPassphrase, setVaultPassphrase] = useState("");
+  const [vaultPassphraseConfirm, setVaultPassphraseConfirm] = useState("");
+  const [vaultBusy, setVaultBusy] = useState(false);
+  const [vaultMsg, setVaultMsg] = useState<string | null>(null);
+  const [vaultMembers, setVaultMembers] = useState<VaultKeyFamilyMember[]>([]);
+  const [deliveringUserId, setDeliveringUserId] = useState<number | null>(null);
   const [savingHolidayPref, setSavingHolidayPref] = useState(false);
   const [savingCompanyHoliday, setSavingCompanyHoliday] = useState(false);
   const [companyCal, setCompanyCal] = useState<CompanyCalendar | null>(null);
@@ -52,6 +73,100 @@ export default function SettingsPage() {
       .then((s) => setPushSubscribed(s.subscribed))
       .catch(() => setPushSubscribed(false));
   }, [token]);
+
+  useEffect(() => {
+    if (!token || vault.status === "unknown") return;
+    if (vault.status === "unlocked" && vault.hasFamilyDek) {
+      void vaultKeysApi
+        .family(token)
+        .then((res) => setVaultMembers(res.members.filter((m) => m.userId !== user?.id)))
+        .catch(() => setVaultMembers([]));
+    } else {
+      setVaultMembers([]);
+    }
+  }, [token, user?.id, vault.hasFamilyDek, vault.status]);
+
+  async function submitVaultSetup() {
+    setVaultMsg(null);
+    if (vaultPassphrase.length < 8) {
+      setVaultMsg(t("settings.vaultTooShort"));
+      return;
+    }
+    if (vaultPassphrase !== vaultPassphraseConfirm) {
+      setVaultMsg(t("settings.vaultMismatch"));
+      return;
+    }
+    setVaultBusy(true);
+    try {
+      await vault.setup(vaultPassphrase);
+      setVaultPassphrase("");
+      setVaultPassphraseConfirm("");
+      setVaultMsg(t("settings.vaultSetupOk"));
+    } catch (err) {
+      setVaultMsg(err instanceof Error ? err.message : t("settings.vaultUnlockFail"));
+    } finally {
+      setVaultBusy(false);
+    }
+  }
+
+  async function submitVaultUnlock() {
+    setVaultMsg(null);
+    if (vaultPassphrase.length < 8) {
+      setVaultMsg(t("settings.vaultTooShort"));
+      return;
+    }
+    setVaultBusy(true);
+    try {
+      await vault.unlock(vaultPassphrase);
+      setVaultPassphrase("");
+      setVaultPassphraseConfirm("");
+      setVaultMsg(t("settings.vaultUnlockOk"));
+    } catch {
+      setVaultMsg(t("settings.vaultUnlockFail"));
+    } finally {
+      setVaultBusy(false);
+    }
+  }
+
+  async function acceptFamilyVaultKey() {
+    setVaultMsg(null);
+    setVaultBusy(true);
+    try {
+      if (vault.status === "unlocked") {
+        await vault.acceptPendingFamilyDek();
+      } else {
+        if (vaultPassphrase.length < 8) {
+          setVaultMsg(t("settings.vaultTooShort"));
+          return;
+        }
+        await vault.acceptPendingFamilyDek(vaultPassphrase);
+        setVaultPassphrase("");
+      }
+      setVaultMsg(t("settings.vaultAcceptOk"));
+    } catch (err) {
+      setVaultMsg(err instanceof Error ? err.message : t("settings.vaultUnlockFail"));
+    } finally {
+      setVaultBusy(false);
+    }
+  }
+
+  async function deliverFamilyKey(member: VaultKeyFamilyMember) {
+    if (!member.publicKeyJwk) return;
+    setDeliveringUserId(member.userId);
+    setVaultMsg(null);
+    try {
+      await vault.deliverFamilyDekTo(member.userId, member.publicKeyJwk);
+      setVaultMsg(t("settings.vaultDeliverOk"));
+      if (token) {
+        const res = await vaultKeysApi.family(token);
+        setVaultMembers(res.members.filter((m) => m.userId !== user?.id));
+      }
+    } catch (err) {
+      setVaultMsg(err instanceof Error ? err.message : t("settings.vaultUnlockFail"));
+    } finally {
+      setDeliveringUserId(null);
+    }
+  }
 
   useEffect(() => {
     if (!token) return;
@@ -244,6 +359,148 @@ export default function SettingsPage() {
             <p className="text-xs text-neutral-400">
               {user?.email?.includes("@passkey.myfamily") ? t("login.button.faceId") : user?.email}
             </p>
+          </div>
+        </section>
+
+        <section className="mt-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5">
+          <div className="flex items-start gap-3">
+            <KeyRound size={18} className="mt-0.5 shrink-0 text-neutral-400" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-neutral-800">{t("settings.vault")}</p>
+                <span className="text-[11px] font-semibold text-neutral-400">
+                  {vault.status === "missing"
+                    ? t("settings.vaultStatusMissing")
+                    : vault.status === "unlocked"
+                      ? t("settings.vaultStatusUnlocked")
+                      : vault.status === "locked"
+                        ? t("settings.vaultStatusLocked")
+                        : "…"}
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] leading-relaxed text-neutral-400">{t("settings.vaultHint")}</p>
+
+              {vault.status === "missing" || vault.status === "locked" ? (
+                <div className="mt-3 space-y-2">
+                  <label className="block text-[11px] font-semibold text-neutral-500">
+                    {t("settings.vaultPassphrase")}
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={vaultPassphrase}
+                      onChange={(e) => setVaultPassphrase(e.target.value)}
+                      placeholder={t("settings.vaultPassphrasePlaceholder")}
+                      className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm text-neutral-800"
+                    />
+                  </label>
+                  {vault.status === "missing" ? (
+                    <label className="block text-[11px] font-semibold text-neutral-500">
+                      {t("settings.vaultPassphraseConfirm")}
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={vaultPassphraseConfirm}
+                        onChange={(e) => setVaultPassphraseConfirm(e.target.value)}
+                        placeholder={t("settings.vaultPassphrasePlaceholder")}
+                        className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm text-neutral-800"
+                      />
+                    </label>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={vaultBusy}
+                    onClick={() =>
+                      void (vault.status === "missing" ? submitVaultSetup() : submitVaultUnlock())
+                    }
+                    className="w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    {vaultBusy
+                      ? "…"
+                      : vault.status === "missing"
+                        ? t("settings.vaultSetup")
+                        : t("settings.vaultUnlock")}
+                  </button>
+                </div>
+              ) : null}
+
+              {vault.status === "unlocked" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    vault.lock();
+                    setVaultMsg(null);
+                  }}
+                  className="mt-3 w-full rounded-xl bg-neutral-100 py-2.5 text-sm font-semibold text-neutral-600"
+                >
+                  {t("settings.vaultLock")}
+                </button>
+              ) : null}
+
+              {vault.pendingDelivery ? (
+                <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2">
+                  <p className="text-[11px] text-amber-800">{t("settings.vaultPending")}</p>
+                  {vault.status !== "unlocked" ? (
+                    <label className="mt-2 block text-[11px] font-semibold text-neutral-500">
+                      {t("settings.vaultPassphrase")}
+                      <input
+                        type="password"
+                        value={vaultPassphrase}
+                        onChange={(e) => setVaultPassphrase(e.target.value)}
+                        placeholder={t("settings.vaultPassphrasePlaceholder")}
+                        className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm text-neutral-800"
+                      />
+                    </label>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={vaultBusy}
+                    onClick={() => void acceptFamilyVaultKey()}
+                    className="mt-2 w-full rounded-xl bg-amber-600 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                  >
+                    {vaultBusy ? "…" : t("settings.vaultAccept")}
+                  </button>
+                </div>
+              ) : null}
+
+              {vault.status === "unlocked" && vault.hasFamilyDek && vaultMembers.length > 0 ? (
+                <div className="mt-3 border-t border-neutral-100 pt-3">
+                  <p className="text-xs font-medium text-neutral-700">{t("settings.vaultFamilyShare")}</p>
+                  <p className="mt-0.5 text-[11px] text-neutral-400">{t("settings.vaultFamilyShareHint")}</p>
+                  <ul className="mt-2 space-y-2">
+                    {vaultMembers.map((m) => (
+                      <li
+                        key={m.userId}
+                        className="flex items-center justify-between gap-2 rounded-xl bg-neutral-50 px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-neutral-800">{m.name}</p>
+                          <p className="text-[10px] text-neutral-400">
+                            {!m.configured
+                              ? t("settings.vaultNotConfigured")
+                              : m.hasFamilyDek
+                                ? t("settings.vaultHasFamilyDek")
+                                : t("settings.vaultNoFamilyDek")}
+                          </p>
+                        </div>
+                        {m.configured && !m.hasFamilyDek && m.publicKeyJwk ? (
+                          <button
+                            type="button"
+                            disabled={deliveringUserId === m.userId}
+                            onClick={() => void deliverFamilyKey(m)}
+                            className="shrink-0 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600 disabled:opacity-60"
+                          >
+                            {deliveringUserId === m.userId ? "…" : t("settings.vaultDeliver")}
+                          </button>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {vaultMsg ? <p className="mt-2 text-[11px] text-neutral-500">{vaultMsg}</p> : null}
+              {vault.error ? <p className="mt-1 text-[11px] text-rose-600">{vault.error}</p> : null}
+            </div>
           </div>
         </section>
 

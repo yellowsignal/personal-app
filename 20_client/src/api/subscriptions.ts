@@ -38,6 +38,8 @@ export interface CreateSubscriptionInput {
   loginId?: string;
   /** Omit on edit to keep existing; empty string clears */
   loginPassword?: string;
+  /** Client E2E cipher (`e2e1.…`); preferred over plaintext loginPassword */
+  loginPasswordCipher?: string;
   cancelUrl?: string;
   reason?: string;
   isShared?: boolean;
@@ -77,7 +79,12 @@ export const subscriptionsApi = {
       { method: "POST", token, body: "{}" },
     );
     const response: AuthenticationResponseJSON = await startAuthentication({ optionsJSON: options });
-    return apiFetch<{ loginId: string | null; password: string | null }>(
+    return apiFetch<{
+      loginId: string | null;
+      password: string | null;
+      passwordCipher?: string | null;
+      encryption?: "e2e" | "legacy" | "none";
+    }>(
       `/api/subscriptions/${id}/credentials/reveal/verify`,
       {
         method: "POST",
