@@ -21,21 +21,11 @@ import {
 } from "../api/familyActivity";
 import { ApiError } from "../api/http";
 import { formatMoney } from "../utils/formatMoney";
+import { localDateKey, localDatePlusDays, pickDashboardUpcomingEvents } from "../utils/upcomingEvents";
 import { useOnAppResume } from "../hooks/useOnAppResume";
 
 const CURRENCIES: Currency[] = ["KRW", "JPY", "USD"];
 const CURRENCY_SYMBOL: Record<Currency, string> = { KRW: "₩", JPY: "¥", USD: "$" };
-
-function isoToday(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function isoPlusDays(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 function daysUntilIso(isoDate: string | null | undefined): number | null {
   if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
@@ -70,20 +60,6 @@ function reminderLabel(
 
 function formatDaysLeftLabel(days: number): string {
   return `D-${days}`;
-}
-
-/** Keep the soonest item per series so a recurring rule only appears once on the dashboard. */
-function uniqueBySeries(events: PublicCalendarEvent[], limit: number): PublicCalendarEvent[] {
-  const seen = new Set<string>();
-  const out: PublicCalendarEvent[] = [];
-  for (const e of events) {
-    const key = e.seriesId || e.id;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(e);
-    if (out.length >= limit) break;
-  }
-  return out;
 }
 
 export default function DashboardPage() {
@@ -135,13 +111,13 @@ export default function DashboardPage() {
   const loadUpcoming = useCallback(async () => {
     if (!token) return;
     try {
-      const items = await calendarApi.listEvents(token, isoToday(), isoPlusDays(60), "all");
-      setUpcomingEvents(
-        uniqueBySeries(
-          items.filter((e) => e.category !== "holiday" && e.category !== "subscription_billing"),
-          3,
-        ),
+      const items = await calendarApi.listEvents(
+        token,
+        localDateKey(),
+        localDatePlusDays(60),
+        "all",
       );
+      setUpcomingEvents(pickDashboardUpcomingEvents(items));
     } catch {
       setUpcomingEvents([]);
     }
@@ -174,10 +150,9 @@ export default function DashboardPage() {
     void loadActivitySummary();
   }, [loadActivitySummary]);
 
-  // iOS PWA stays mounted on the home tab while backgrounded — remount-only
-  // fetch misses new family activity until the user navigates away and back.
   useOnAppResume(() => {
     void loadActivitySummary();
+    void loadUpcoming();
   });
 
   async function openActivitySheet() {
