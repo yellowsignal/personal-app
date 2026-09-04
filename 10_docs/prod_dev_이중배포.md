@@ -152,6 +152,9 @@ bash ~/personal-app/40_server/infra/scripts/deploy-prod.sh --skip-pull
 | `scripts/deploy-static.sh prod\|dev` | 프론트만 |
 | `scripts/transfer-personal-to-new-user.sh` | Passkey 재가입 후 동일 이름 dig 유저 → 새 user_id 로 개인 행 이관 |
 | `scripts/remove-stale-family-users.sh` | 컷오버 후 남은 옛 유저 삭제(대시보드에 4명처럼 보일 때). `--list` → `--keep` dry-run → `--apply` |
+| `scripts/backup-db.sh` / `install-backup-cron.sh` | 일일 Postgres 덤프 + cron (상세: `10_docs/DB_백업.md`) |
+| `scripts/list-backups.sh` / `purge-backup.sh` | 서버 덤프 목록·다운로드 표시·삭제 |
+| `scripts/fetch-backup-to-pc.sh` | **PC에서** scp로 받기 (+옵션 서버 삭제) |
 
 ### Passkey 재가입 후 멤버가 4명으로 보일 때
 
