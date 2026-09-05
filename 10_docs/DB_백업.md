@@ -118,20 +118,55 @@ bash ~/personal-app/40_server/infra/scripts/purge-backup.sh --delete prod/파일
 bash ~/personal-app/40_server/infra/scripts/purge-backup.sh --delete-downloaded
 ```
 
-### SSH가 안 될 때
+### Windows SSH 키 (`Permission denied (publickey)`)
 
-| 증상 | 대처 |
-| --- | --- |
-| `Permission denied (publickey)` | PC에서 `ssh ubuntu@129.225.196.226` 이 되는지 먼저 확인. 평소 쓰는 `-i 키경로` 를 스크립트에도: `$env:GIT_SSH` / OpenSSH `IdentityFile` 설정. Git Bash면 `SSH_OPTS="-i ~/.ssh/내키" bash .../fetch-backup-to-pc.sh` |
-| `No dumps found` | Termius에서 `backup-db.sh prod` 또는 `install-backup-cron.sh` 먼저 |
-| 서버에서 fetch 실행 | **하지 말 것** — PC에서만 |
+이 에러는 **덤프가 없어서가 아니라**, PowerShell의 `ssh`/`scp`가 OCI에 **로그인할 키가 없을 때** 납니다.  
+Termius로 서버에 들어갈 수 있어도, **Windows OpenSSH는 Termius 키를 자동으로 안 씁니다.**
 
-키를 명시하려면 (Git Bash 예):
+1. PC에서 먼저 로그인 테스트:
+
+```powershell
+ssh ubuntu@129.225.196.226
+```
+
+2. 여기도 `Permission denied` 이면, Termius에 쓰는 **개인키 파일**을 PC에 두고 OpenSSH에 연결합니다.
+
+   - Termius → Keychain / 해당 호스트 키 → **Export private key** (또는 이미 `90_secret` / USB에 있는 `.pem` / `id_ed25519`)
+   - 예: `C:\Users\민호\.ssh\oci_ed25519` 로 저장  
+   - 권한: 해당 사용자만 읽기 (다른 계정·Everyone 제거)
+
+```powershell
+# 키로 로그인되는지 확인
+ssh -i $env:USERPROFILE\.ssh\oci_ed25519 -o IdentitiesOnly=yes ubuntu@129.225.196.226
+```
+
+3. 백업 받을 때 같은 키를 지정:
+
+```powershell
+cd E:\personal-app
+powershell -ExecutionPolicy Bypass -File .\40_server\infra\scripts\fetch-backup-to-pc.ps1 `
+  -IdentityFile $env:USERPROFILE\.ssh\oci_ed25519
+```
+
+또는 환경 변수로 기본 키 지정:
+
+```powershell
+$env:MYFAMILYHUB_SSH_KEY = "$env:USERPROFILE\.ssh\oci_ed25519"
+powershell -ExecutionPolicy Bypass -File .\40_server\infra\scripts\fetch-backup-to-pc.ps1
+```
+
+Git Bash:
 
 ```bash
-SSH_OPTS="-i /c/Users/민호/.ssh/id_ed25519" \
+SSH_OPTS="-i /c/Users/민호/.ssh/oci_ed25519 -o IdentitiesOnly=yes" \
   bash 40_server/infra/scripts/fetch-backup-to-pc.sh
 ```
+
+| 증상 | 의미 / 대처 |
+| --- | --- |
+| `Permission denied (publickey)` | PC OpenSSH 키 문제 → 위 1~3 |
+| `SSH OK, but no dumps` | 로그인은 됨, 서버에 dump 없음 → Termius에서 `backup-db.sh prod` |
+| 서버에서 fetch 실행 | **하지 말 것** — PC에서만 |
 
 ---
 

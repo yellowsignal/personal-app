@@ -35,11 +35,23 @@ mkdir -p "$DEST"
 
 REMOTE_DIR="${REMOTE_ROOT}/30_data/backups/${TARGET}"
 echo "==> Listing remote dumps ($HOST:$REMOTE_DIR)"
+set +e
 LATEST="$(ssh $SSH_OPTS "$HOST" "ls -1t ${REMOTE_DIR}/myfamilyhub-*.dump 2>/dev/null | head -1")"
+SSH_RC=$?
+set -e
+if [[ "$SSH_RC" -ne 0 ]]; then
+  echo "SSH failed (exit $SSH_RC). PC OpenSSH cannot log in to OCI." >&2
+  echo "Test: ssh $SSH_OPTS $HOST" >&2
+  echo "Pass the Termius private key, e.g.:" >&2
+  echo "  SSH_OPTS='-i /c/Users/YOU/.ssh/oci_ed25519 -o IdentitiesOnly=yes' bash $0" >&2
+  echo "See 10_docs/DB_백업.md → Windows SSH 키" >&2
+  exit 1
+fi
 if [[ -z "$LATEST" ]]; then
-  echo "No dumps found on server for target=$TARGET" >&2
+  echo "SSH OK, but no dumps on server for target=$TARGET" >&2
   echo "On OCI (Termius) run:" >&2
   echo "  bash ~/personal-app/40_server/infra/scripts/backup-db.sh $TARGET" >&2
+  echo "  bash ~/personal-app/40_server/infra/scripts/list-backups.sh" >&2
   exit 1
 fi
 
