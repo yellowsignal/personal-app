@@ -79,14 +79,18 @@ bash ~/personal-app/40_server/infra/scripts/list-backups.sh
 cd E:\personal-app
 
 # 최신 prod 덤프 → E:\personal-app\50_backup\
-powershell -ExecutionPolicy Bypass -File .\40_server\infra\scripts\fetch-backup-to-pc.ps1
+# Termius와 같은 개인키가 필요하면 -IdentityFile 지정
+powershell -ExecutionPolicy Bypass -File .\40_server\infra\scripts\fetch-backup-to-pc.ps1 `
+  -IdentityFile $env:USERPROFILE\.ssh\oci_ed25519
 ```
 
 3. 탐색기에서 `E:\personal-app\50_backup` 에 `.dump` 생겼는지 확인
 4. (선택) 서버 파일까지 바로 삭제:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\40_server\infra\scripts\fetch-backup-to-pc.ps1 -DeleteAfter
+powershell -ExecutionPolicy Bypass -File .\40_server\infra\scripts\fetch-backup-to-pc.ps1 `
+  -IdentityFile $env:USERPROFILE\.ssh\oci_ed25519 `
+  -DeleteAfter
 ```
 
 ### 방법 B — Git Bash
