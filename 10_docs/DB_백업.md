@@ -1,107 +1,164 @@
-# DB 일일 백업 → PC 다운로드 → 서버 단기 삭제
+# DB 일일 백업 → PC(`E:\personal-app\50_backup`) → 서버 단기 삭제
 
-서버에 **하루 1회** Postgres 덤프를 두고, 나중에 PC로 받은 뒤 서버 쪽은 지우거나 짧게만 남깁니다.
+서버에 **하루 1회** Postgres 덤프를 두고, 나중에 **Windows PC**로 받은 뒤 서버 쪽은 지우거나 짧게만 남깁니다.
 
 ## 원칙
 
 | | 역할 |
 | --- | --- |
 | 서버 | 매일 dump, **기본 7일**만 보관 (장애·실수 복구용) |
-| PC | 장기 보관본 (오프사이트) |
-| 다운로드 후 | 서버 파일 삭제 가능 (`purge-backup.sh` / `DELETE_AFTER=1`) |
+| PC | 장기 보관본 → **`E:\personal-app\50_backup`** |
+| 다운로드 후 | 서버 파일 삭제 가능 |
 
 덤프에는 가족 데이터(암호문·메타 포함)가 들어 있습니다.  
-로컬은 암호화 디스크/암호 폴더에 두고, JWT·DB 비밀번호와 같은 곳에 두지 마세요. **git에 올리지 마세요.**
+BitLocker 등 암호 디스크에 두고, JWT·DB 비밀번호와 같은 곳에 두지 마세요. **git에 `.dump`를 올리지 마세요.**
 
-경로(서버):
+서버 경로:
 
 ```text
 ~/personal-app/30_data/backups/prod/myfamilyhub-YYYYMMDD-HHMMSS.dump
 ~/personal-app/30_data/backups/dig/...
-~/personal-app/30_data/backups/logs/{prod,dig}.log
+~/personal-app/30_data/backups/logs/...
 ```
 
-`30_data/backups/` 는 `.gitignore` 대상입니다.
+PC 경로:
 
-## 최초 1회 (OCI / Termius)
+```text
+E:\personal-app\50_backup\myfamilyhub-YYYYMMDD-HHMMSS.dump
+```
+
+`50_backup/` 은 README만 커밋되고 `.dump`는 gitignore됩니다.
+
+---
+
+## 1) 서버 준비 (최초 1회, Termius)
+
+**OCI 서버에서** (PC에서 `fetch` 하기 전에 덤프가 있어야 합니다):
 
 ```bash
 cd ~/personal-app
-git pull   # 또는 해당 브랜치 checkout 후
-chmod +x 40_server/infra/scripts/backup-db.sh \
-         40_server/infra/scripts/install-backup-cron.sh \
-         40_server/infra/scripts/list-backups.sh \
-         40_server/infra/scripts/purge-backup.sh \
-         40_server/infra/scripts/fetch-backup-to-pc.sh
+git fetch origin && git checkout cursor/db-daily-backup-69de
+git reset --hard origin/cursor/db-daily-backup-69de
 
-# 지금 한 번 만들고 cron 등록 (기본: 매일 03:15 Asia/Tokyo, prod)
+chmod +x 40_server/infra/scripts/*.sh
+
+# 지금 한 번 만들고, 매일 03:15(Asia/Tokyo) cron 등록
 bash ~/personal-app/40_server/infra/scripts/install-backup-cron.sh
 
-# dig도 같이 받으려면:
-# INCLUDE_DIG=1 bash ~/personal-app/40_server/infra/scripts/install-backup-cron.sh
+bash ~/personal-app/40_server/infra/scripts/list-backups.sh
 ```
 
-수동 백업만:
+수동만:
 
 ```bash
 bash ~/personal-app/40_server/infra/scripts/backup-db.sh prod
 bash ~/personal-app/40_server/infra/scripts/list-backups.sh
 ```
 
-보관 일수 변경: `RETENTION_DAYS=14 bash .../backup-db.sh prod`  
-cron 시각 변경: `CRON_SCHEDULE="0 4 * * *" bash .../install-backup-cron.sh`
+> 서버 안에서 `fetch-backup-to-pc.sh` 를 실행하지 마세요.  
+> 그건 **PC → 서버 scp** 용입니다. 서버에서 자기 IP로 SSH 하면 `Permission denied` 납니다.
 
-## PC에서 받기
+---
 
-PC에 SSH 키가 있을 때:
+## 2) PC에서 받기 (Windows) — 자세 절차
+
+### 준비물
+
+1. PC에 레포가 `E:\personal-app` 에 있음 (없으면 clone)
+2. **평소 Termius/SSH로 OCI 접속할 때 쓰는 개인키**가 PC OpenSSH에 등록됨  
+   - 예: `C:\Users\<이름>\.ssh\id_ed25519`  
+   - 또는 `ssh-agent` / Pageant에 로드됨
+3. 서버에 덤프가 이미 있음 (`list-backups.sh`에 파일 보임)
+
+### 방법 A — PowerShell (추천)
+
+1. **PowerShell** 또는 **Windows Terminal** 열기 (서버 Termius 아님)
+2. 실행:
+
+```powershell
+cd E:\personal-app
+
+# 최신 prod 덤프 → E:\personal-app\50_backup\
+powershell -ExecutionPolicy Bypass -File .\40_server\infra\scripts\fetch-backup-to-pc.ps1
+```
+
+3. 탐색기에서 `E:\personal-app\50_backup` 에 `.dump` 생겼는지 확인
+4. (선택) 서버 파일까지 바로 삭제:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\40_server\infra\scripts\fetch-backup-to-pc.ps1 -DeleteAfter
+```
+
+### 방법 B — Git Bash
+
+Git for Windows 설치 후:
 
 ```bash
-# 레포를 clone 해 두었거나, 스크립트만 복사해도 됨
-HOST=ubuntu@129.225.196.226 \
-DEST=~/Backups/myfamilyhub \
+cd /e/personal-app
 bash 40_server/infra/scripts/fetch-backup-to-pc.sh
+# 기본 DEST = 레포의 50_backup (= E:\personal-app\50_backup)
+
+# 받은 뒤 서버 삭제
+DELETE_AFTER=1 bash 40_server/infra/scripts/fetch-backup-to-pc.sh
 ```
 
-받은 뒤 **서버 파일까지 바로 삭제**:
+### 방법 C — scp만 (스크립트 없이)
 
-```bash
-DELETE_AFTER=1 HOST=ubuntu@129.225.196.226 bash 40_server/infra/scripts/fetch-backup-to-pc.sh
+```powershell
+mkdir E:\personal-app\50_backup -Force
+scp ubuntu@129.225.196.226:~/personal-app/30_data/backups/prod/myfamilyhub-*.dump E:\personal-app\50_backup\
 ```
 
-또는 scp만 직접:
-
-```bash
-scp ubuntu@129.225.196.226:~/personal-app/30_data/backups/prod/myfamilyhub-*.dump ~/Backups/myfamilyhub/
-```
-
-서버에서 표시·삭제:
+그다음 서버(Termius)에서:
 
 ```bash
 bash ~/personal-app/40_server/infra/scripts/list-backups.sh
-bash ~/personal-app/40_server/infra/scripts/purge-backup.sh --mark prod/myfamilyhub-20260904-031500.dump
-bash ~/personal-app/40_server/infra/scripts/purge-backup.sh --delete prod/myfamilyhub-20260904-031500.dump
-# 또는 표시된 것만 일괄 삭제
+bash ~/personal-app/40_server/infra/scripts/purge-backup.sh --delete prod/파일이름.dump
+# 또는 표시된 것만
 bash ~/personal-app/40_server/infra/scripts/purge-backup.sh --delete-downloaded
 ```
 
-## 복원 (비상 시)
+### SSH가 안 될 때
 
-덤프는 `pg_dump -Fc` 형식입니다. **실수로 덮어쓰지 않도록** 복원 전 prod API를 멈추고, 필요하면 별도 DB/컨테이너에 먼저 올려 확인하세요.
+| 증상 | 대처 |
+| --- | --- |
+| `Permission denied (publickey)` | PC에서 `ssh ubuntu@129.225.196.226` 이 되는지 먼저 확인. 평소 쓰는 `-i 키경로` 를 스크립트에도: `$env:GIT_SSH` / OpenSSH `IdentityFile` 설정. Git Bash면 `SSH_OPTS="-i ~/.ssh/내키" bash .../fetch-backup-to-pc.sh` |
+| `No dumps found` | Termius에서 `backup-db.sh prod` 또는 `install-backup-cron.sh` 먼저 |
+| 서버에서 fetch 실행 | **하지 말 것** — PC에서만 |
 
-대략적인 흐름(숙련자용):
+키를 명시하려면 (Git Bash 예):
 
 ```bash
-# 예: 컨테이너로 dump 복사 후
+SSH_OPTS="-i /c/Users/민호/.ssh/id_ed25519" \
+  bash 40_server/infra/scripts/fetch-backup-to-pc.sh
+```
+
+---
+
+## 3) 서버에서 목록·삭제
+
+```bash
+bash ~/personal-app/40_server/infra/scripts/list-backups.sh
+bash ~/personal-app/40_server/infra/scripts/purge-backup.sh --mark prod/myfamilyhub-....dump
+bash ~/personal-app/40_server/infra/scripts/purge-backup.sh --delete prod/myfamilyhub-....dump
+bash ~/personal-app/40_server/infra/scripts/purge-backup.sh --delete-downloaded
+```
+
+---
+
+## 복원 (비상, 숙련자)
+
+`pg_dump -Fc` 형식. prod를 덮어쓰기 전에 API를 멈추고, 가능하면 별도 DB에서 먼저 확인.
+
+```bash
 sudo docker compose -p myfamilyhub-prod -f docker-compose.prod.yml --env-file .env.prod exec -T postgres \
   pg_restore -U myfamilyhub -d myfamilyhub --clean --if-exists --no-owner --no-acl /tmp/restore.dump
 ```
 
-일상 복원 절차를 자주 쓸 일은 없습니다. 필요하면 그때 전용 스크립트를 추가합니다.
-
 ## 아직 안 하는 것
 
-- 사진·스캔 파일(`30_data/photos` 등) 자동 tar — DB와 별도로 필요하면 이후 추가
-- 앱 UI에서 백업 다운로드 — 관리자 스크립트만 (아이폰보다는 PC)
+- 사진·스캔 파일 자동 tar
+- 앱 UI에서 백업 다운로드
 
 ## 스크립트 요약
 
@@ -109,6 +166,7 @@ sudo docker compose -p myfamilyhub-prod -f docker-compose.prod.yml --env-file .e
 | --- | --- | --- |
 | `backup-db.sh` | OCI | dump + 오래된 파일 삭제 |
 | `install-backup-cron.sh` | OCI | cron 등록 + 스모크 dump |
-| `list-backups.sh` | OCI | 목록 / downloaded 표시 |
+| `list-backups.sh` | OCI | 목록 |
 | `purge-backup.sh` | OCI | 표시·삭제 |
-| `fetch-backup-to-pc.sh` | PC | scp + (옵션) 서버 삭제 |
+| `fetch-backup-to-pc.sh` | **PC (Git Bash)** | → `50_backup/` |
+| `fetch-backup-to-pc.ps1` | **PC (PowerShell)** | → `E:\personal-app\50_backup\` |

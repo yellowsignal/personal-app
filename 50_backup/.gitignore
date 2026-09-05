@@ -1,0 +1,4 @@
+# Never commit database dumps
+*
+!.gitignore
+!README.md
