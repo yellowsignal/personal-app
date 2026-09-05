@@ -17,8 +17,12 @@ dist/
 .env.local
 # Prod file stores (dig keeps 30_data/photos etc.)
 30_data/prod/
-# Daily DB dumps (never commit)
+# DB backups — never commit dumps (server or PC)
 30_data/backups/
+50_backup/**
+!50_backup/.gitignore
+!50_backup/README.md
+*.dump
 .idea/
 # key
 *.key
